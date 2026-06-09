@@ -3,9 +3,30 @@
 > _Rises from its own ashes. Senses when it's broken, heals itself, and gets better with use._
 
 ## One sentence
-**ATV-Phoenix is a fast, Rust-based agentic harness that makes intent-to-outcome physical:
-it carries portable skills (agentskills.io), senses and heals its own failures, and compounds
-capability over time — frozen model, evolving scaffolding.**
+**ATV-Phoenix is a self-healing harness *for GitHub Copilot* — installed like ATV-StarterKit
+(plugin marketplace + npx) — that carries portable agentskills.io skills, senses and heals failures
+via a fast Rust MCP companion, and compounds capability over time. Built with Claude Code; runs on Copilot.**
+
+## Target runtime: GitHub Copilot (this is a Copilot harness, not a standalone agent)
+Phoenix does NOT ship its own model loop. **The agent runtime is GitHub Copilot** (CLI + VS Code).
+Phoenix is the orchestration/skills/healing layer that installs INTO Copilot — exactly as
+ATV-StarterKit does — using Copilot's real extension points:
+| Copilot extension point | Phoenix uses it for |
+|---|---|
+| **`/skills`** (agentskills.io `SKILL.md`) | the portable capability library (discover→activate→execute) |
+| **`/agent`** definitions | specialized personas/behavioral contracts |
+| **instructions** (`copilot-instructions.md`, `AGENTS.md`, `.github/instructions/**`) | lean behavioral contracts / context engineering |
+| **`/mcp`** servers | **the Rust spine** — a fast MCP companion exposing sense / heal / skill-index / trace tools |
+| **`/plugin` marketplace** + npx installer | distribution: `copilot plugin marketplace add` + `npx atv-phoenix init` into `.github/`, `~/.copilot/` |
+
+**Where Rust earns its place:** a single fast, inspectable **Rust MCP server** that Copilot connects to,
+providing the capabilities Copilot can't do natively — objective **sensing**, bounded **self-healing**,
+a token-cheap **skill index** (lazy/retrieval activation), and an append-only **trace** with per-step
+token cost. The skills/agents/instructions stay portable markdown; the *spine* is Rust.
+
+**Build vs. run (don't confuse them):** we BUILD Phoenix using **Claude Code CLI dynamic workflows**
+(dev-time tool). The PRODUCT runs on **GitHub Copilot** (the thing users install). Claude Code never
+ships to users.
 
 ## The thesis (grounded in our own ATV POV + today's channel signal)
 **The orchestration layer — not the model — determines agent success.** (All-The-Vibes/Agent-Harness
@@ -117,17 +138,21 @@ No PMI ritual, no Gantt theater, no story-point liturgy. Instead:
   Build new only where the Rust speed/sensing/healing spine genuinely needs it.
 
 ## The first verifiable slice (v0 — defined so this can't become architecture astronomy)
-**A Rust harness that: (1) discovers + loads an agentskills.io skill from disk, (2) executes a
-task through it, (3) SENSES success/failure from an objective signal, and (4) on failure performs
-ONE bounded, logged self-heal (retry-or-rollback) — with every step written to an inspectable
-trace.** Success = a runnable binary where an injected failure is *detected and recovered*, proven
-by the trace, not by assertion. Everything else (RSI, compounding, multi-skill, integrations)
-builds on top of that proven spine.
+**A Rust MCP server that GitHub Copilot connects to via `/mcp`, exposing three tools — `sense`
+(check an objective signal: exit code / test / file-or-hash), `heal` (one bounded, logged recovery:
+retry-or-rollback), and `trace` (append-only JSONL with per-step token cost) — proven by a real
+Copilot session where an injected fault is SENSED and a heal FIRES, shown in the trace.** The skill it
+operates on is a single agentskills.io `SKILL.md`. Success = inside an actual Copilot run, the fault
+is *detected and recovered*, evidenced by the trace, not by assertion. Everything else (skill-index
+retrieval, RSI/compounding, multi-skill, agents, npx installer, marketplace) builds on this proven spine.
 
 ## What success looks like (the verifiable outcome, not vibes)
-- v0: `cargo run` executes a skill, an injected fault is sensed, a heal fires, trace shows it. ✅/❌
+- v0: Copilot loads the Phoenix MCP server; a skill runs; an injected fault is sensed; a heal fires;
+  the trace (with token cost) proves it. ✅/❌
 - v1: skills self-improve against a sealed eval with a *measured* gain (reusing our eval-harness pattern).
-- vN: Phoenix runs a real goal from the user's digital life end-to-end, with evidence at each stage.
+- v2: one-command install (`copilot plugin marketplace add` / `npx atv-phoenix init`) lands the full
+  Phoenix harness (skills + agents + instructions + MCP server) into a repo, ATV-StarterKit-style.
+- vN: Phoenix runs a real goal from the user's digital life end-to-end on Copilot, evidence at each stage.
 
 ## Grounding (researched 2026-06-09)
 - Hermes Agent (NousResearch, local `code/hermes`): self-improving loop, autonomous skill creation,
