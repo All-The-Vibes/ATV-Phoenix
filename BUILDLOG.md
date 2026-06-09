@@ -193,3 +193,49 @@ CONCRETE mechanism behind the previously hand-wavy "skill index."
 ### Next step
 Design v0 Rust MCP server tool contracts (sense / heal / trace / skill_index) + trace JSONL format,
 scaffold via Claude Code CLI, prove fault->heal in a live Copilot session.
+
+## 2026-06-09 - Day 0 (cont. 5): TokenMasterX is the token pillar - ALREADY BUILT + MEASURED
+
+**Q: "check shyamsridhar123/TokenMasterX"** -> This is the user's OWN repo and it IS Phoenix's Context
+Assembly / token-efficiency pillar, already shipped and measured. Not inspiration - adopt directly.
+
+### What it is (decisive)
+- Routing agent for **Claude Code + GitHub Copilot CLI** (Phoenix's exact hosts), distributed the
+  **exact same way** Phoenix will be: /plugin marketplace add shyamsridhar123/TokenMasterX +
+  /plugin install token-master, then a per-repo /token-master command builds the graph and installs
+  a routing agent to ~/.copilot/agents/token-master.agent.md with MCP servers declared inline.
+- Backend: **graphify** (default, no-LLM structural index) + **codegraph** (AST precise escalation).
+- Thesis = Phoenix's pillar verbatim: pay once to understand structure, then route structural questions
+  ("who calls X", "what breaks if I change Y") to a prebuilt graph instead of grep-re-reading every turn.
+
+### Measured (use these, don't re-derive)
+- **-73% cumulative input tokens, 3.71x overall, up to 7.8x on blast-radius, 12/12 from graph, 0
+  regressions** - 36 live Copilot runs (scikit-learn + sympy). Honest negative reported (-44% one
+  sympy inheritor; codegraph ~3-4x graphify on simple tasks). Optimizes AREA UNDER CONTEXT CURVE
+  (cumulative tokens), not $ - matches our tokens-per-verified-outcome metric exactly.
+- Design lesson Phoenix inherits: **ENFORCE routing, don't just offer** (model used graph 0/15
+  unprompted, 8/8 when nudged). "A graph the model never queries saves nothing."
+
+### Strategic implication (big)
+- **TokenMasterX is effectively a PROVEN single-pillar prototype of the Phoenix architecture** - same
+  hosts, same marketplace install, same MCP+routing-agent mechanism. One Phoenix pillar already ships
+  with hard numbers. This massively de-risks the platform thesis and answers Hurlburt's "why not just X":
+  we're composing a proven part, not reinventing.
+- **Build strategy crystallized: Phoenix = COMPOSE proven parts (TokenMasterX + Addy MIT skills +
+  agentskills.io) + BUILD only the novel spine (sense / heal / self-improve).** Updated the
+  "steal shamelessly" principle accordingly.
+
+### Net change to mission
+- Context Assembly pillar 1 = "adopt TokenMasterX" (was "Rust skill+code graph (graphify)").
+- New section replaces the graphify-from-scratch section with "adopt TokenMasterX."
+- Grounding now leads with TokenMasterX as the #1 reusable asset.
+
+### Re-scoped v0 (smaller + sharper)
+- v0 is now JUST the novel spine: a Rust MCP server exposing sense / heal / trace, proven by an injected
+  fault detected+recovered in a live Copilot session. Token/retrieval is DONE (install TokenMasterX
+  alongside). This makes v0 smaller and the whole thing more credible.
+
+### Next step
+Design the v0 sense/heal/trace MCP tool contracts + trace JSONL format; scaffold via Claude Code CLI;
+prove fault->heal in a live Copilot session. Separately: try installing TokenMasterX into Copilot to
+validate the shared install path end-to-end.
