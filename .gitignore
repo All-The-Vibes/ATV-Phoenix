@@ -4,3 +4,7 @@ Cargo.lock.bak
 .DS_Store
 *.log
 .env
+
+# graphify scratch
+graphify-out/
+.token-master/
