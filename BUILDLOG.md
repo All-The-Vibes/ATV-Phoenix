@@ -163,3 +163,33 @@ correct host. v1 = measured skill self-improvement; v2 = one-command install of 
 ### Next step
 Design the v0 Rust MCP server contract (sense/heal/trace tool schemas + trace JSONL format) and
 scaffold it with Claude Code CLI, then connect it to a live Copilot session and prove fault->heal.
+
+## 2026-06-09 - Day 0 (cont. 4): two decisions - reuse Addy's skills (MIT) + graphify for retrieval
+
+**Q: "are we using addyosmani/agent-skills?"** -> YES. Verified **MIT license (c) 2025 Addy Osmani**,
+so we can ship its 22 lifecycle skills + anti-rationalization gates DIRECTLY in Phoenix's starter skill
+pack (with attribution), not just as inspiration. Promoted in MISSION from "inspiration" to "reusable input."
+Policy added: bundle good MIT/Apache agentskills.io packs; build new only for the Rust spine.
+
+**Directive: "add code graph or graphify for token efficiency and fast retrieval."** -> Adopted as the
+CONCRETE mechanism behind the previously hand-wavy "skill index."
+- **graphify** is already installed (~/.local/bin/graphify, "any input -> knowledge graph", outputs graphify-out/).
+- Two graphs: (1) SKILL graph - index every SKILL.md so the MCP skill_index tool returns only the
+  relevant skill SUBGRAPH for the current intent (not all 50 -> kills the "45k tokens for 50 skills" problem);
+  (2) CODE graph - graphify the target repo so retrieval pulls relevant symbols/callers/callees/blast-radius
+  as a subgraph instead of dumping directories. Graph retrieval = structural (relationships) which flat
+  embedding search misses. Directly serves Pillar 1 (Context Assembly) + tokens-per-verified-outcome.
+- Ownership: Rust MCP server owns graph build/query; graphify does extraction.
+
+### Net change
+- Pillar 1 extension is now "skill+code GRAPH (graphify)" not a vague "index."
+- New mission section "Token-efficient retrieval = a CODE GRAPH (graphify)".
+- Starter skill pack now explicitly includes Addy's MIT lifecycle skills.
+
+### v0 implication
+- v0 stays the sense/heal/trace MCP spine, but the FOURTH tool (skill_index via graphify subgraph
+  query) is now concretely specified for v0.5/v1 rather than left abstract.
+
+### Next step
+Design v0 Rust MCP server tool contracts (sense / heal / trace / skill_index) + trace JSONL format,
+scaffold via Claude Code CLI, prove fault->heal in a live Copilot session.
