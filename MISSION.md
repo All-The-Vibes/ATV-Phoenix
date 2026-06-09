@@ -79,18 +79,24 @@ makes them native, fast, and inspectable:
   directly as part of Phoenix's starter skill pack — not as inspiration, as a real reusable input.
   Same for any other MIT/Apache agentskills.io packs. We bundle good skills; we build new only for the spine.
 
-## Token-efficient retrieval = a CODE GRAPH (graphify), not file-dumping
-The token problem isn't just "too many skills" — it's *dumping whole files/skills into context when only
-a slice is relevant.* Phoenix's answer is a **graph-based retrieval layer** built on **graphify** (already
-installed: `~/.local/bin/graphify`, "any input → knowledge graph", outputs to `graphify-out/`):
-- **Skill graph:** index every `SKILL.md` (name, description, triggers, deps) as nodes/edges so the
-  MCP `skill_index` tool returns only the relevant skill *subgraph* for the current intent — not all 50.
-- **Repo/code graph:** graphify the target codebase so retrieval pulls the relevant symbols/files
-  (callers, callees, impacted modules) as a subgraph instead of dumping directories into context.
-- **Why it's the right primitive:** a graph gives *structural* retrieval (relationships, blast radius)
-  that flat embedding-search misses — directly serving Context Assembly (pillar 1) and the
-  tokens-per-verified-outcome metric. The Rust MCP server owns graph build/query; graphify does the
-  extraction. This is the concrete mechanism behind the earlier hand-wavy "skill index."
+## Token-efficient retrieval = ADOPT TokenMasterX (already built + measured by you)
+We do NOT build this from scratch — **you already built and measured it: `shyamsridhar123/TokenMasterX`.**
+It is a routing agent for **the exact same hosts** (Claude Code + GitHub Copilot CLI), distributed the
+**exact same way** Phoenix will be (plugin marketplace + a per-repo `/token-master` command), backed by
+**graphify** (default, no-LLM structural index) with **codegraph** (AST) as a precise escalation. Its thesis
+is Phoenix's Context Assembly pillar verbatim: *the model pays once to understand structure, then never again
+— structural questions ("who calls X", "what breaks if I change Y") route to a prebuilt code graph instead of
+grep-re-reading the transcript every turn.*
+- **Measured (don't re-derive):** −73% cumulative input tokens, 3.71× more efficient, up to **7.8× on
+  blast-radius**, 12/12 tasks answered from the graph, **zero correctness regressions** — 36 live Copilot
+  runs across scikit-learn + sympy; honest negative reported (−44% on one sympy inheritor case).
+- **Key design lesson it already proved:** *offering* the graph isn't enough (model used it 0/15 times
+  unprompted) — you must **enforce** routing (8/8 when nudged). Phoenix inherits "enforce, don't offer."
+- **Phoenix's move: COMPOSE, not rebuild.** TokenMasterX IS Phoenix's Context Assembly + skill/code-graph
+  retrieval layer. Phoenix adds the other pillars (sense / heal / trace / lifecycle skills / agents) around it.
+- **Why this is huge for credibility:** TokenMasterX is effectively a **proven single-pillar prototype of the
+  Phoenix architecture** — same hosts, same install path, same MCP+routing-agent mechanism. One pillar already
+  ships and works with hard numbers, which de-risks the whole platform thesis.
 
 ## Phoenix stands on the Five Pillars (ATV Agent-Harness POV) — and extends them
 A production harness needs all five; remove one and it collapses inside the first multi-step task.
@@ -99,7 +105,7 @@ Phoenix implements them in Rust and adds the two things the POV repo's TS prompt
 
 | # | Pillar (ATV POV) | Guarantee | Phoenix's extension |
 |---|---|---|---|
-| 1 | **Context Assembly** | max comprehension per token | Rust skill+code GRAPH (graphify) — only the relevant *subgraph* enters context, not whole files/skills |
+| 1 | **Context Assembly** | max comprehension per token | **adopt TokenMasterX** — graph-routed structural retrieval (graphify+codegraph), proven −73% tokens; only the relevant subgraph enters context |
 | 2 | **Tool Integrity** | every tool call schema-validated, actionable errors | validation errors are fed back as heal signals, not dead ends |
 | 3 | **Loop Discipline** | explicit signals (not heuristics) to continue/retry/halt | the **Sensor** — objective signals (exit code/test/hash), never self-grading |
 | 4 | **Policy Enforcement** | permission gate before any side effect | reversible-by-default; destructive acts require confirmation/are rollback-eligible |
@@ -151,8 +157,11 @@ No PMI ritual, no Gantt theater, no story-point liturgy. Instead:
 - **Document what worked AND what didn't.** `BUILDLOG.md` is a running, honest engineering log —
   dead ends, wrong turns, and reversals included. Failure that's recorded is progress; failure
   that's hidden is debt.
-- **Steal shamelessly, fork reluctantly.** Reuse agentskills.io, Hermes patterns, ATV pillars.
-  Build new only where the Rust speed/sensing/healing spine genuinely needs it.
+- **Steal shamelessly, fork reluctantly — COMPOSE proven parts.** Phoenix is mostly *assembly* of
+  things that already work: **TokenMasterX** (your measured token/retrieval layer), **Addy's MIT
+  lifecycle skills**, agentskills.io packs, Hermes patterns, ATV pillars. **Build new ONLY for the
+  genuinely-novel spine: objective sensing, bounded self-healing, and measured self-improvement.**
+  If a capability already ships and is measured (TokenMasterX), we adopt it, we don't reimplement it.
 
 ## The first verifiable slice (v0 — defined so this can't become architecture astronomy)
 **A Rust MCP server that GitHub Copilot connects to via `/mcp`, exposing three tools — `sense`
@@ -172,6 +181,10 @@ retrieval, RSI/compounding, multi-skill, agents, npx installer, marketplace) bui
 - vN: Phoenix runs a real goal from the user's digital life end-to-end on Copilot, evidence at each stage.
 
 ## Grounding (researched 2026-06-09)
+- **TokenMasterX (shyamsridhar123/TokenMasterX — YOUR repo):** routing agent for Claude Code + Copilot
+  CLI; graph-routed structural retrieval (graphify default + codegraph AST escalation); measured −73%
+  cumulative input tokens / 3.71× / up to 7.8× blast-radius / 0 regressions over 36 live Copilot runs;
+  same plugin-marketplace install path Phoenix uses. **Adopt as Phoenix's Context Assembly pillar.**
 - Hermes Agent (NousResearch, local `code/hermes`): self-improving loop, autonomous skill creation,
   skills improve during use, agentskills.io-compatible.
 - agentskills.io: open SKILL.md standard, progressive disclosure (Anthropic-originated, multi-vendor).
