@@ -122,3 +122,44 @@ the Cargo project via Claude Code CLI dynamic workflows.
 
 ### Next step
 Design v0 architecture and scaffold the Cargo project via Claude Code CLI dynamic workflows.
+
+## 2026-06-09 - Day 0 (cont. 3): ARCHITECTURE-DEFINING correction - Phoenix is a harness FOR GitHub Copilot
+
+**User directive:** "this will be a harness for github copilot. just like how atv starter kit gets
+installed it will be installed in a similar fashion. we will use claude code to build out atv phoenix
+but the tool itself is built for github copilot."
+
+### What this corrected (big)
+- WRONG earlier model: Phoenix as a standalone Rust agent runtime that shells to an LLM (claude -p).
+- RIGHT model: **Phoenix is an installable harness FOR GitHub Copilot** (like ATV-StarterKit). The
+  agent RUNTIME is GitHub Copilot (CLI + VS Code). Phoenix = the skills/agents/instructions/MCP layer
+  that installs INTO Copilot. **Claude Code is the BUILD tool (dev-time), not the product.**
+
+### What worked (grounded via authoritative Copilot extensibility surface)
+- Copilot's real extension points (from Copilot CLI help): /skills (agentskills.io SKILL.md native),
+  /agent, instructions files (copilot-instructions.md / AGENTS.md / .github/instructions/**),
+  /mcp (MCP servers), /plugin marketplace. /env enumerates: instructions, MCP servers, skills,
+  agents, plugins, LSPs, extensions.
+- **Where Rust earns its place is now crisp: a fast Rust MCP SERVER** that Copilot connects to via
+  /mcp, exposing the capabilities Copilot lacks natively - objective SENSE, bounded HEAL, a
+  token-cheap skill INDEX (lazy/retrieval), and an append-only TRACE with per-step token cost. Skills/
+  agents/instructions stay portable markdown; the spine is Rust. This resolves the "where does Rust fit"
+  tension cleanly and keeps us standards-native (agentskills.io + MCP), answering a community member's challenge.
+- **Distribution mirrors ATV-StarterKit:** copilot plugin marketplace add + 
+px atv-phoenix init
+  landing files in .github/ and ~/.copilot/.
+
+### v0 RE-CAST (Copilot-native, not standalone)
+OLD: a cargo run binary that loads+executes a skill standalone.
+NEW: **a Rust MCP server Copilot connects to, exposing sense/heal/trace tools; proven by a REAL
+Copilot session where an injected fault is sensed and a heal fires, shown in the trace.** Same spine,
+correct host. v1 = measured skill self-improvement; v2 = one-command install of the full harness.
+
+### Open question now ANSWERED
+- "How does Phoenix execute a skill?" -> it doesn't; GitHub Copilot does. Phoenix senses/heals/traces
+  around Copilot's execution via the MCP server + hooks/instructions. Local-first model choice is
+  Copilot's /model, not ours.
+
+### Next step
+Design the v0 Rust MCP server contract (sense/heal/trace tool schemas + trace JSONL format) and
+scaffold it with Claude Code CLI, then connect it to a live Copilot session and prove fault->heal.
