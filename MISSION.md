@@ -7,14 +7,22 @@
 it carries portable skills (agentskills.io), senses and heals its own failures, and compounds
 capability over time — frozen model, evolving scaffolding.**
 
-## The thesis (grounded in our own ATV POV, last-10-days channel signal)
+## The thesis (grounded in our own ATV POV + today's channel signal)
 **The orchestration layer — not the model — determines agent success.** (All-The-Vibes/Agent-Harness
-white paper; "the harness is the chassis, the model is the engine" — a community member; "if your code
-fails, fix your harness not your code" — a community member.) Most failures blamed on the model are *harness*
-failures: infinite loops (no explicit completion signal), context exhaustion (no summarization),
-destructive actions (no policy gate), tool misuse (vague tool contracts), no self-correction (the
-harness never feeds actionable errors back into the loop). Phoenix is a bet on the harness being the
-thing worth building — fast, self-healing, and measured.
+white paper; "the harness is the chassis, the model is the engine" — a community member.) Most failures
+blamed on the model are *harness* failures: infinite loops (no explicit completion signal), context
+exhaustion (no summarization), destructive actions (no policy gate), tool misuse (vague tool contracts),
+no self-correction (the harness never feeds actionable errors back into the loop). Phoenix is a bet on
+the harness being the thing worth building — fast, self-healing, and measured.
+
+## But Phoenix is an INTELLIGENT PLATFORM, not just a harness (your reframe, today)
+Today in-channel you drew the line: *"that's just agent behaviour — now we're talking about an
+**intelligent platform**."* That's the ambition. A harness orchestrates one agent's turn; an intelligent
+platform **carries skills, senses its own health, heals, improves, and hosts an extensible ecosystem**
+across many runs. Phoenix is the harness done so well it becomes a platform. (a community member in the
+same thread anchored it to **Hermes**; a community member rightly challenged "isn't this just Agency / a
+GHCP plugin marketplace?" — so Phoenix must EARN its existence by doing what those don't: a *fast,
+self-healing, self-improving, token-measured* core, and reuse — not reinvent — the skill/plugin standards.)
 
 ## Why this exists
 Most agent harnesses are answer machines: you ask, they reply, and nobody checks whether the
@@ -57,18 +65,21 @@ Phoenix implements them in Rust and adds the two things the POV repo's TS prompt
 | 2 | **Tool Integrity** | every tool call schema-validated, actionable errors | validation errors are fed back as heal signals, not dead ends |
 | 3 | **Loop Discipline** | explicit signals (not heuristics) to continue/retry/halt | the **Sensor** — objective signals (exit code/test/hash), never self-grading |
 | 4 | **Policy Enforcement** | permission gate before any side effect | reversible-by-default; destructive acts require confirmation/are rollback-eligible |
-| 5 | **Context Lifecycle** | context window = finite depletable resource | **token-per-outcome** is a tracked metric; "make every token pay rent" |
-| + | **Self-Healing** (Phoenix) | sensed failures trigger bounded, logged recovery | "fix your harness not your code" — heal the harness (context/tools/loop), then retry |
+| 5 | **Context Lifecycle** | context window = finite depletable resource | **tokens-per-verified-outcome** is a tracked metric |
+| + | **Self-Healing** (Phoenix) | sensed failures trigger bounded, logged recovery | suspect the harness first (context/tools/loop), heal, then retry |
 | + | **Self-Improvement** (Phoenix) | skills/prompts get better with use | measured gains on sealed evals (our criteria-first result), human-directed |
 
-## Token efficiency is a first-class, MEASURED non-negotiable
+## Token efficiency is a first-class, MEASURED non-negotiable (with one honest caveat)
 The community pain is real and recent: *"a user will burn 45k tokens when he shows up with 50 skills"*
-(a community member); *"make every token pay rent"* (a community member). agentskills.io progressive disclosure
-helps (load names+descriptions at discovery, full instructions only on activation) — but at 50+ skills
-even descriptions are expensive. **Phoenix's answer: a Rust-side skill index with lazy / retrieval-based
-activation, so the model only ever sees skills relevant to the current intent.** We track
-**tokens-per-verified-outcome** as a primary metric alongside verified-outcome rate. A harness that
-wins the outcome but wastes the context budget is only half-built.
+(a community member). agentskills.io progressive disclosure helps (load names+descriptions at discovery,
+full instructions only on activation) — but at 50+ skills even descriptions are expensive. **Phoenix's
+answer: a Rust-side skill index with lazy / retrieval-based activation, so the model only ever sees
+skills relevant to the current intent.** We track **tokens-per-verified-outcome** as a primary metric
+alongside verified-outcome rate.
+> **Honest caveat (a community member, today):** *"Do token costs actually matter for us? I thought it's all
+> unlimited."* For internal users on flat-rate plans, raw $ may not bite — but tokens are still a
+> *latency* and *context-window* budget: fewer tokens = faster turns + more room for the actual task.
+> So we keep token-efficiency as an engineering metric (speed/quality), not primarily a cost one.
 
 ## Positioning: a context-engineering harness, not a spec/persona generator
 Your own channel question: *"isn't spec kit and persona based harnesses getting obsoleted for modern
@@ -81,7 +92,10 @@ technical reason behind "disregard process ceremony" — ceremony burns tokens f
 
 ## Non-negotiables (the architecture's spine)
 - **The harness determines the outcome.** When something fails, suspect the harness first
-  (context, tool feedback, loop discipline) before the model or the task — "fix your harness not your code."
+  (context, tool feedback, loop discipline) before the model or the task.
+- **Reuse standards, don't reinvent.** Phoenix must earn its existence vs Agency / GHCP plugin
+  marketplace / Hermes — by being a faster, self-healing, self-improving, token-measured core that
+  ADOPTS agentskills.io rather than forking the ecosystem.
 - **Token efficiency is a measured guarantee,** not a nice-to-have. Track tokens-per-verified-outcome.
 - **Evidence-first.** Every claimed outcome carries objective evidence (exit code, test pass,
   schema/hash check, artifact). "Unknown" is allowed; fabricated success is a severe failure.

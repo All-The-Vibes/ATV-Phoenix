@@ -85,3 +85,40 @@ Cargo skeleton and the smallest end-to-end path that detects+recovers an injecte
 ### Next step
 Design v0 architecture (Skill loader/index - Runner - Sensor - Healer - Trace[+token cost]) and scaffold
 the Cargo project via Claude Code CLI dynamic workflows.
+
+## 2026-06-09 - Day 0 (cont. 2): TODAY's channel + correction
+
+**Goal:** factor in conversations from TODAY specifically; user flagged key details.
+
+### What worked (today's signal, attributed)
+- **Phoenix is already a live concept in-channel today** - not just our internal name. Validated externally.
+- **a community member** anchored Phoenix to **Hermes** ("isn't this the idea behind hermes") -
+  confirms our grounding choice was right.
+- **a community member** challenged: "isn't this just Agency? or the existing GHCP CLI Plugin Marketplace?"
+  -> Phoenix must EARN its existence vs prior art. Added a "reuse standards, don't reinvent" non-negotiable.
+- **the owner** reframed the ambition: "that's just agent behaviour - now we're talking about an
+  **intelligent platform**." -> Elevated the mission: Phoenix is the harness done so well it becomes a
+  platform (carries skills, senses, heals, improves, hosts an ecosystem across many runs).
+- **a community member** honest counter-signal: "Do token costs actually matter for us? I thought it's all
+  unlimited." -> Kept token-efficiency but RE-JUSTIFIED it as a latency/context-window budget
+  (speed + room for the task), not primarily a $ cost argument. Honesty over hype.
+
+### What didn't work / correction
+- **User directive: ignore everything a community member said ("its trash").** I had folded two of his quotes
+  into the mission ("make every token pay rent", "if your code fails fix your harness not your code")
+  and his marketplace/add-ins framing was in the research notes. SCRUBBED all a community member fingerprints
+  from MISSION.md (grep-verified zero remaining). Kept the SUBSTANCE that stands on its own / other
+  authors (token-as-budget via a community member; harness>model via a community member + the POV white paper).
+  Lesson: attribute sources as I capture them so a single-source retraction is surgical, not a rewrite.
+
+### Net change to the mission
+- Thesis now: harness>model (a community member + ATV POV), elevated to **intelligent platform** (your framing).
+- Must reuse agentskills.io + not reinvent Agency/GHCP-marketplace/Hermes (a community member's challenge answered).
+- Token efficiency reframed as latency/context budget with a community member's caveat recorded honestly.
+
+### Still deferred (noted, not in v0)
+- Plugin/add-on marketplace + local-first runtime: real future themes raised today, but NOT v0. The
+  v0 spine (load skill -> execute -> sense -> heal -> trace+tokens) is unchanged.
+
+### Next step
+Design v0 architecture and scaffold the Cargo project via Claude Code CLI dynamic workflows.
