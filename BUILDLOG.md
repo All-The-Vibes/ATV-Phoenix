@@ -239,3 +239,38 @@ Assembly / token-efficiency pillar, already shipped and measured. Not inspiratio
 Design the v0 sense/heal/trace MCP tool contracts + trace JSONL format; scaffold via Claude Code CLI;
 prove fault->heal in a live Copilot session. Separately: try installing TokenMasterX into Copilot to
 validate the shared install path end-to-end.
+
+## 2026-06-09 - Day 0 (cont. 6): MILESTONE M0 - install-path + token pillar VALIDATED (evals + screenshot)
+
+**User directive:** "do it and we need clear evals and screenshots at every milestone." -> Stored as a
+standing Phoenix convention (evals/ + evals/screenshots/ per milestone). M0 is the first to honor it.
+
+### M0 result: PASS (objective)
+- Prereqs: uv 0.9.24, graphify (pkg 0.8.13), copilot CLI 1.0.61, node - all present.
+- TokenMasterX mechanism ALREADY installed on disk = the Phoenix install pattern, live:
+  ~/.copilot/agents/token-master.agent.md (routing agent + inline graphify-nav MCP server:
+  find/callers/callees/impact/inheritors/explain over .token-master/graph.json) +
+  ~/.copilot/installed-plugins/_direct/token-master-plugin + anthropic-agent-skills packs.
+- Built a real graph: graphify update on ATV-Teams/packages/shared/src (TS) = **1322 nodes, 1717
+  edges, 70 communities in 10.7s**, no LLM/API key.
+- Structural query answered FROM THE GRAPH and verified vs source: explain/query showed
+  deriveAgentUrlKey() --calls--> normalizeAgentUrlKey(); ground-truth agent-url-key.ts:21 confirms it. CORRECT.
+- Evidence captured: evals/m0-install-path/RESULT.md + evals/screenshots/m0-graph-viz.png (1322-node
+  interactive graph, headless-Chrome render). Screenshot visually verified (not blank).
+
+### What worked
+- The entire Phoenix install + token-retrieval pillar is REAL and already on this box -> massive de-risk.
+- graphify is fast + offline; correct structural answer on first try.
+
+### What didn't / friction (honest)
+- copilot CLI not on PATH (lives %APPDATA%/npm) - used absolute path. Document in install steps.
+- graphify skill 0.4.1 vs package 0.8.13 mismatch warning - cosmetic now, fix before relying on skill side.
+- kimi-webbridge daemon down -> headless Chrome (isolated profile) for the screenshot. Worked first try.
+
+### Decision
+- Token/retrieval pillar = VALIDATED, adopt TokenMasterX as-is. v0 scope NARROWS to the novel spine only
+  (Rust MCP sense/heal/trace). No need to build any retrieval.
+
+### Next step
+Design v0 Rust MCP server tool contracts (sense/heal/trace + trace JSONL), scaffold via Claude Code CLI,
+prove fault->heal in a live Copilot session -> that becomes Milestone M1 (with its own eval + screenshot).

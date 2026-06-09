@@ -1,0 +1,472 @@
+{
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\adapter-type.ts": {
+    "mtime": 1779486860.2548993,
+    "ast_hash": "35c5063a44331c591d06f0d0c6feb95f",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\adapter-types.test.ts": {
+    "mtime": 1779486860.2548993,
+    "ast_hash": "664d866b6d90fcd4be898d75d51c59af",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\agent-url-key.ts": {
+    "mtime": 1779486860.2601032,
+    "ast_hash": "365f0f62321e5a1e96035983eeecfe8a",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\api.ts": {
+    "mtime": 1779486860.2601032,
+    "ast_hash": "06f10604327abf62dc7bf0ca66c8423d",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\config-schema.test.ts": {
+    "mtime": 1779486860.2601032,
+    "ast_hash": "899d554268dbcc1d1255dce80e893a22",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\config-schema.ts": {
+    "mtime": 1779486860.2601032,
+    "ast_hash": "3088e6ade8a7e0e9096dd054478744c7",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\constants.ts": {
+    "mtime": 1779509615.1673496,
+    "ast_hash": "11b52d6dac019bf573b4b02f8aae6fe8",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\environment-support.test.ts": {
+    "mtime": 1779486860.2652729,
+    "ast_hash": "cb1b14947b11437ab1bd1bb74d11b7b0",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\environment-support.ts": {
+    "mtime": 1779486860.2652729,
+    "ast_hash": "8a7fcdc560ffd5a3445a903ad01d31a1",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\execution-workspace-guards.ts": {
+    "mtime": 1779486860.2652729,
+    "ast_hash": "46fc6eae878ae98268b9d4988220be5e",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\home-paths.test.ts": {
+    "mtime": 1779486860.2652729,
+    "ast_hash": "2a57d7975eb62883978d09e267b14dce",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\home-paths.ts": {
+    "mtime": 1779486860.2652729,
+    "ast_hash": "80782fb3fe3e0be39245f6d00e6a8a44",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\index.ts": {
+    "mtime": 1779486860.2652729,
+    "ast_hash": "fe36f7c404eaece716511ad9234c7df9",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\issue-references.test.ts": {
+    "mtime": 1779486860.2652729,
+    "ast_hash": "6991195649183cf4738641a3c95f7b2c",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\issue-references.ts": {
+    "mtime": 1779486860.275309,
+    "ast_hash": "b47e23ce3be0483234752100259790d1",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\issue-thread-interactions.test.ts": {
+    "mtime": 1779486860.275309,
+    "ast_hash": "5d8fa54da099b8616aac85cc76633754",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\network-bind.ts": {
+    "mtime": 1779486860.275309,
+    "ast_hash": "462b69fa800978f21a328093edfd8396",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\project-mentions.test.ts": {
+    "mtime": 1779509615.1693501,
+    "ast_hash": "ff746c75ffa9f9dac5c7cde505837e30",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\project-mentions.ts": {
+    "mtime": 1779486860.275309,
+    "ast_hash": "429fbe1fe3d6cff12fce8636308812d3",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\project-url-key.ts": {
+    "mtime": 1779486860.275309,
+    "ast_hash": "fd3f5828c1ff376281b4a7a1ef520bd0",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\routine-variables.test.ts": {
+    "mtime": 1779486860.275309,
+    "ast_hash": "25b7d14dff34e33d29601bf1a4123ecb",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\routine-variables.ts": {
+    "mtime": 1779486860.275309,
+    "ast_hash": "dfce11a91023adf83a3717a8a5714379",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\workspace-commands.test.ts": {
+    "mtime": 1779486860.370028,
+    "ast_hash": "2c67850a49f03d7df011df61f5ab8495",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\workspace-commands.ts": {
+    "mtime": 1779486860.370028,
+    "ast_hash": "de6632f13f82e73319d0b62926989c7c",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\telemetry\\client.ts": {
+    "mtime": 1779486860.2853417,
+    "ast_hash": "7f3ef8d2430a89d2d926d74059b63d6c",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\telemetry\\config.ts": {
+    "mtime": 1779486860.2853417,
+    "ast_hash": "4f00ae7170d5f0880f806f23754db2e9",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\telemetry\\events.ts": {
+    "mtime": 1779486860.2853417,
+    "ast_hash": "8d164af005e97c7bb6bb3f671ba935d2",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\telemetry\\index.ts": {
+    "mtime": 1779486860.2853417,
+    "ast_hash": "3c94c7ace85f3403c7423b4076f787c5",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\telemetry\\state.ts": {
+    "mtime": 1779486860.2853417,
+    "ast_hash": "7bc942276e2cbb4911f049c35b755b72",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\telemetry\\types.ts": {
+    "mtime": 1779486860.2853417,
+    "ast_hash": "7360d6a0777a2ceb0099209069aef968",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\types\\access.ts": {
+    "mtime": 1779486860.2853417,
+    "ast_hash": "573a603858ed27d7b8c5ec63d72a9a4d",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\types\\activity.ts": {
+    "mtime": 1779486860.2954688,
+    "ast_hash": "69e959477b05ed96697998b2d8ed6f5b",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\types\\adapter-skills.ts": {
+    "mtime": 1779486860.2954688,
+    "ast_hash": "3781b260dca709ff24a0ba897e6e92fe",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\types\\agent.ts": {
+    "mtime": 1779486860.2954688,
+    "ast_hash": "777538f162559b199314a6d3830af490",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\types\\approval.ts": {
+    "mtime": 1779486860.2954688,
+    "ast_hash": "7e7bfd839440c98d23f9bfec62c6409b",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\types\\asset.ts": {
+    "mtime": 1779486860.2954688,
+    "ast_hash": "a62b0e8ff1c1ed038ce83687e37a31ea",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\types\\budget.ts": {
+    "mtime": 1779486860.2954688,
+    "ast_hash": "10d121acfac925930b26d28d9054ded6",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\types\\company-portability.ts": {
+    "mtime": 1779486860.2954688,
+    "ast_hash": "a81a281e1496ea315d943b9c4e94e326",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\types\\company-skill.ts": {
+    "mtime": 1779486860.2954688,
+    "ast_hash": "ae31bde5ed5cdd2192737466926fac39",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\types\\company.ts": {
+    "mtime": 1779486860.2954688,
+    "ast_hash": "43c8c042f1c8d55a2ac8aa20729f012a",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\types\\cost.ts": {
+    "mtime": 1779486860.3057113,
+    "ast_hash": "503ccd63d76d4958f2b8e56813b7c15f",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\types\\dashboard.ts": {
+    "mtime": 1779486860.3057113,
+    "ast_hash": "109799c97562fc469d99bf32f3721357",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\types\\environment.ts": {
+    "mtime": 1779486860.3057113,
+    "ast_hash": "32a988540295fe86f731027a46e49be2",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\types\\feedback.ts": {
+    "mtime": 1779486860.3057113,
+    "ast_hash": "b66c1f078cb86709bec0cd456c60ac5e",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\types\\finance.ts": {
+    "mtime": 1779486860.3057113,
+    "ast_hash": "49d45e9dd72d6fab43c2b932e86e42af",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\types\\goal.ts": {
+    "mtime": 1779486860.3057113,
+    "ast_hash": "0baca08b00913bcddd99af0f0602741d",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\types\\heartbeat.ts": {
+    "mtime": 1779486860.3057113,
+    "ast_hash": "ce3abd075d8c4b3d75d6648d0735a37d",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\types\\inbox-dismissal.ts": {
+    "mtime": 1779486860.3057113,
+    "ast_hash": "25b6abf4ea41ade3e2f8955d2ee2cb1f",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\types\\index.ts": {
+    "mtime": 1779486860.3057113,
+    "ast_hash": "12a380ad3fb961b8571439de1be66447",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\types\\instance.ts": {
+    "mtime": 1779486860.3057113,
+    "ast_hash": "1fcb1515207dec1f9430a87e6b43523a",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\types\\issue-tree-control.ts": {
+    "mtime": 1779486860.3159187,
+    "ast_hash": "0f3a1b84ea2fdad1cf62e2653a5b5eba",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\types\\issue.ts": {
+    "mtime": 1779486860.3159187,
+    "ast_hash": "c00e4c03d1acf54231ba785f51bfcb85",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\types\\live.ts": {
+    "mtime": 1779486860.3159187,
+    "ast_hash": "5a2d9823df78e15c3e20d41d52836ad0",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\types\\plugin.ts": {
+    "mtime": 1779509615.1723576,
+    "ast_hash": "0aef4a0447f6050e382abc944177b58f",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\types\\project.ts": {
+    "mtime": 1779486860.3159187,
+    "ast_hash": "9cd94547cfa1e0ce5b857a2811e67a14",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\types\\quota.ts": {
+    "mtime": 1779486860.3159187,
+    "ast_hash": "4969d441a49083cf8209594c6d5ae85d",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\types\\routine.ts": {
+    "mtime": 1779486860.3159187,
+    "ast_hash": "f3c28e1d03a0bbc6c79242d9d1b1c90c",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\types\\search.ts": {
+    "mtime": 1779486860.323593,
+    "ast_hash": "27b1601e9b7ef08b2a60bebaaf024d0d",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\types\\sidebar-badges.ts": {
+    "mtime": 1779486860.3256037,
+    "ast_hash": "ab1df95e8f64e5d425d2ba55d261790c",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\types\\sidebar-preferences.ts": {
+    "mtime": 1779486860.3256037,
+    "ast_hash": "2a0ba76b4a05469a97904937301d082d",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\types\\user-profile.ts": {
+    "mtime": 1779486860.3256037,
+    "ast_hash": "cf109d0e6022eb08fc254ff0923b3154",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\types\\work-product.ts": {
+    "mtime": 1779486860.3256037,
+    "ast_hash": "64dfbeefa6838cfbe45527a880043caf",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\types\\workspace-operation.ts": {
+    "mtime": 1779486860.331133,
+    "ast_hash": "3eac9d6f03f5796a45cb1cd3312a3ced",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\types\\workspace-runtime.ts": {
+    "mtime": 1779486860.332971,
+    "ast_hash": "52ca11c3a5433a2396323ecc623887f6",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\validators\\access.ts": {
+    "mtime": 1779486860.3351762,
+    "ast_hash": "01198320f943f9f201dcdeacdc901727",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\validators\\adapter-skills.ts": {
+    "mtime": 1779486860.3351762,
+    "ast_hash": "6346d3fbd9ee07c37bb72745c00421be",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\validators\\agent.ts": {
+    "mtime": 1779509615.1743615,
+    "ast_hash": "75ce7bec58d06b201cef473dfc1f3f64",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\validators\\approval.test.ts": {
+    "mtime": 1779486860.3351762,
+    "ast_hash": "2508b74c0adedcda95543b98b2fd6886",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\validators\\approval.ts": {
+    "mtime": 1779486860.3351762,
+    "ast_hash": "925ac848ce458f5d6fa4e65808583c19",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\validators\\asset.ts": {
+    "mtime": 1779486860.3351762,
+    "ast_hash": "e495571bea2161f70500178d58ed2f4c",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\validators\\budget.ts": {
+    "mtime": 1779486860.3351762,
+    "ast_hash": "7b912d7a351fdd1f002e9b55390dd04c",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\validators\\company-portability.ts": {
+    "mtime": 1779486860.3351762,
+    "ast_hash": "7100ee18dd5606a4255f3d513b9e146e",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\validators\\company-skill.ts": {
+    "mtime": 1779486860.34346,
+    "ast_hash": "f53ce49165d83b540b759a286a3d0e42",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\validators\\company.ts": {
+    "mtime": 1779486860.34346,
+    "ast_hash": "d0796a152859ba3d0fa29985c1c46aa8",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\validators\\cost.ts": {
+    "mtime": 1779486860.3452015,
+    "ast_hash": "141e41a73dbca133e29c5c3734bc7e22",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\validators\\environment.ts": {
+    "mtime": 1779486860.3452015,
+    "ast_hash": "d735c998679e805a180c7ca66fe06dc6",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\validators\\execution-workspace.ts": {
+    "mtime": 1779486860.3475182,
+    "ast_hash": "4fb44659375ffbf6812418e08af5bc47",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\validators\\feedback.ts": {
+    "mtime": 1779486860.3475182,
+    "ast_hash": "c63d9aae49ab2bdeff92d0f416e7635e",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\validators\\finance.ts": {
+    "mtime": 1779486860.3492067,
+    "ast_hash": "4c03bc2ce5d39fb09b2c43b397d62c31",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\validators\\goal.ts": {
+    "mtime": 1779486860.3492067,
+    "ast_hash": "9886031dac03002f6ef0051fbb0f7498",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\validators\\index.ts": {
+    "mtime": 1779486860.3492067,
+    "ast_hash": "64e13933cecdbdd74f4974e24b8a3e19",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\validators\\instance.ts": {
+    "mtime": 1779486860.3492067,
+    "ast_hash": "704117d806fb5a28caa10bd42e1bb604",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\validators\\issue-tree-control.ts": {
+    "mtime": 1779486860.3534818,
+    "ast_hash": "cab413a2a5248e2ac648befe7745d4d7",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\validators\\issue.test.ts": {
+    "mtime": 1779509615.176622,
+    "ast_hash": "d09a59d404bf93060d4c46616b2e2158",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\validators\\issue.ts": {
+    "mtime": 1779486860.3534818,
+    "ast_hash": "c1338f8e707b6d4beadc4f97e93df9de",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\validators\\plugin.test.ts": {
+    "mtime": 1779509615.1786232,
+    "ast_hash": "272b6e08bf6e4660d17746a13c6e8849",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\validators\\plugin.ts": {
+    "mtime": 1779486860.3534818,
+    "ast_hash": "ce1040b03913520aa27ae9b60ac4104e",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\validators\\project.ts": {
+    "mtime": 1779486860.3534818,
+    "ast_hash": "6f34f4a0ce45b3f816c9b9042c6b6c4d",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\validators\\routine.test.ts": {
+    "mtime": 1779486860.3534818,
+    "ast_hash": "985d262476fcdbb23488fd51acfa3d4d",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\validators\\routine.ts": {
+    "mtime": 1779486860.3618174,
+    "ast_hash": "cb57b7005bbac1243c833a879b44f3e7",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\validators\\search.ts": {
+    "mtime": 1779486860.3618174,
+    "ast_hash": "15d414c94f909ec4d34d29a5a831b931",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\validators\\sidebar-preferences.ts": {
+    "mtime": 1779486860.3655884,
+    "ast_hash": "5d62865443a1e131bff3106bafb861c2",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\validators\\text.ts": {
+    "mtime": 1779486860.3655884,
+    "ast_hash": "08fafb9723d9712f0513c27eb1038a1b",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\shyamsridhar\\code\\shyamsridhar123_ATV-Teams\\packages\\shared\\src\\validators\\work-product.ts": {
+    "mtime": 1779486860.3655884,
+    "ast_hash": "a5cbc88fc083674f13e965d5fb7b8aa2",
+    "semantic_hash": ""
+  }
+}
