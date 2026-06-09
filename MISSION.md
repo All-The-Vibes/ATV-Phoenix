@@ -7,6 +7,15 @@
 it carries portable skills (agentskills.io), senses and heals its own failures, and compounds
 capability over time — frozen model, evolving scaffolding.**
 
+## The thesis (grounded in our own ATV POV, last-10-days channel signal)
+**The orchestration layer — not the model — determines agent success.** (All-The-Vibes/Agent-Harness
+white paper; "the harness is the chassis, the model is the engine" — David Crawford; "if your code
+fails, fix your harness not your code" — Mark Rowe.) Most failures blamed on the model are *harness*
+failures: infinite loops (no explicit completion signal), context exhaustion (no summarization),
+destructive actions (no policy gate), tool misuse (vague tool contracts), no self-correction (the
+harness never feeds actionable errors back into the loop). Phoenix is a bet on the harness being the
+thing worth building — fast, self-healing, and measured.
+
 ## Why this exists
 Most agent harnesses are answer machines: you ask, they reply, and nobody checks whether the
 *outcome* actually happened. The thing that separates a reliable agent from a chatbot is not a
@@ -37,7 +46,43 @@ makes them native, fast, and inspectable:
 - **Portable:** skills authored for Phoenix run on any agentskills.io-compatible client, and
   vice-versa. We adopt the standard; we don't fork it.
 
+## Phoenix stands on the Five Pillars (ATV Agent-Harness POV) — and extends them
+A production harness needs all five; remove one and it collapses inside the first multi-step task.
+Phoenix implements them in Rust and adds the two things the POV repo's TS prompt-skeleton does NOT have:
+**self-healing** and **measured self-improvement**.
+
+| # | Pillar (ATV POV) | Guarantee | Phoenix's extension |
+|---|---|---|---|
+| 1 | **Context Assembly** | max comprehension per token | Rust skill INDEX + lazy/retrieval activation — only *relevant* skill descriptions enter context |
+| 2 | **Tool Integrity** | every tool call schema-validated, actionable errors | validation errors are fed back as heal signals, not dead ends |
+| 3 | **Loop Discipline** | explicit signals (not heuristics) to continue/retry/halt | the **Sensor** — objective signals (exit code/test/hash), never self-grading |
+| 4 | **Policy Enforcement** | permission gate before any side effect | reversible-by-default; destructive acts require confirmation/are rollback-eligible |
+| 5 | **Context Lifecycle** | context window = finite depletable resource | **token-per-outcome** is a tracked metric; "make every token pay rent" |
+| + | **Self-Healing** (Phoenix) | sensed failures trigger bounded, logged recovery | "fix your harness not your code" — heal the harness (context/tools/loop), then retry |
+| + | **Self-Improvement** (Phoenix) | skills/prompts get better with use | measured gains on sealed evals (our criteria-first result), human-directed |
+
+## Token efficiency is a first-class, MEASURED non-negotiable
+The community pain is real and recent: *"Liam will burn 45k tokens when he shows up with 50 skills"*
+(Andreas Wasita); *"make every token pay rent"* (Mark Rowe). agentskills.io progressive disclosure
+helps (load names+descriptions at discovery, full instructions only on activation) — but at 50+ skills
+even descriptions are expensive. **Phoenix's answer: a Rust-side skill index with lazy / retrieval-based
+activation, so the model only ever sees skills relevant to the current intent.** We track
+**tokens-per-verified-outcome** as a primary metric alongside verified-outcome rate. A harness that
+wins the outcome but wastes the context budget is only half-built.
+
+## Positioning: a context-engineering harness, not a spec/persona generator
+Your own channel question: *"isn't spec kit and persona based harnesses getting obsoleted for modern
+AIs?"* The consensus is yes — *"specs next to featureset… personas → behavioral contracts… all in
+favor of Context Engineering"* (Hassan Tariq); *"spec-driven burns more tokens for everyday use…
+harness engineering burns way less and feels like riding the agents rather than vibing"* (Andreas
+Wasita). Phoenix is deliberately on the **harness/context-engineering** side: lean behavioral
+contracts + just-in-time context, NOT monolith spec docs or heavyweight personas. This is the
+technical reason behind "disregard process ceremony" — ceremony burns tokens for no outcome gain.
+
 ## Non-negotiables (the architecture's spine)
+- **The harness determines the outcome.** When something fails, suspect the harness first
+  (context, tool feedback, loop discipline) before the model or the task — "fix your harness not your code."
+- **Token efficiency is a measured guarantee,** not a nice-to-have. Track tokens-per-verified-outcome.
 - **Evidence-first.** Every claimed outcome carries objective evidence (exit code, test pass,
   schema/hash check, artifact). "Unknown" is allowed; fabricated success is a severe failure.
 - **Frozen model + evolving scaffolding.** No weight training. Improvement is skills/prompts/

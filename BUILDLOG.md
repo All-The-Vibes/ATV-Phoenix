@@ -43,3 +43,45 @@ reversals, and surprises included. Failure that's recorded is progress; failure 
 ### Next step
 Define v0 architecture (the spine: Skill loader · Runner · Sensor · Healer · Trace), then build the
 Cargo skeleton and the smallest end-to-end path that detects+recovers an injected fault.
+
+## 2026-06-09 - Day 0 (cont.): community signal from All The Vibes "Hack & Furious" (last 10 days)
+
+**Goal:** pressure-test the mission against what real practitioners are saying NOW.
+
+### What worked
+- WorkIQ surfaced high-signal, recent (last-10-days) quotes. Key grounding: the user's OWN published
+  thesis repo **All-The-Vibes/Agent-Harness** ("Why the orchestration layer - not the model -
+  determines agent success") with a canonical **Five Pillars** framework + an "attribution error" table.
+- Folded the Five Pillars into the mission as Phoenix's spine, and positioned Phoenix's two
+  differentiators (self-healing + measured self-improvement) as explicit EXTENSIONS of them.
+- Promoted **token efficiency to a first-class measured non-negotiable** (tokens-per-verified-outcome),
+  driven by real quotes: Andreas Wasita "Liam will burn 45k tokens with 50 skills"; Mark Rowe "make
+  every token pay rent." This also gives agentskills.io progressive disclosure a concrete Rust upgrade:
+  a skill index with lazy/retrieval activation so only relevant skills enter context.
+- Sharpened positioning with the channel consensus that spec-kit/personas are being obsoleted in favor
+  of **context engineering** (Hassan Tariq; Andreas Wasita "harness engineering ... burns way less and
+  feels like riding the agents"). This is the real technical reason behind "disregard ceremony."
+
+### Verbatim signal (attributed)
+- David Crawford: "the harness is the chassis to the model which is the engine" + harness efficacy is benchmarkable.
+- Mark Rowe: "if your code fails, fix your harness not your code" / "make every token pay rent."
+- Hassan Tariq: "specs next to featureset... personas -> behavioral contracts... all in favor of Context Engineering."
+- Andreas Wasita: "Liam will burn 45k tokens when he shows up with 50 skills"; "harness engineering burns way less."
+- Shyam (you): posted the Agent-Harness POV; asked "isn't spec kit and persona based harnesses getting obsoleted?"
+
+### What didn't work / friction
+- "SharkBait" (your earlier poor-man's-claude-code harness) had NO mentions in the last 10 days — it's
+  older context. Noted as prior art to potentially mine, not current signal.
+- "Parallelism / worktrees" came up in the BROADER history (multi-agent consensus, "15 vibing agents",
+  tmux panes) but NOT in the last-10-days channel window. Deferred: parallel/multi-agent orchestration
+  is a real future theme but out of v0 scope. Recorded so we don't forget it.
+- One WorkIQ query got interrupted mid-flight (rapid follow-up); re-scoped to 10 days and it returned cleanly.
+
+### Decision
+- Phoenix = a **Five-Pillar harness, in Rust, that self-heals and self-improves, and treats tokens as a
+  measured budget.** v0 scope UNCHANGED (load skill -> execute -> sense -> heal -> trace) but now the
+  trace must also record **token cost per step**, so token-per-outcome is measurable from day one.
+
+### Next step
+Design v0 architecture (Skill loader/index - Runner - Sensor - Healer - Trace[+token cost]) and scaffold
+the Cargo project via Claude Code CLI dynamic workflows.
