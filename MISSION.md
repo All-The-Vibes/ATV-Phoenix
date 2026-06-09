@@ -74,6 +74,23 @@ makes them native, fast, and inspectable:
   build → **verify** → review → ship, with verification as a hard gate, not a suggestion.
 - **Portable:** skills authored for Phoenix run on any agentskills.io-compatible client, and
   vice-versa. We adopt the standard; we don't fork it.
+- **Reuse, with attribution:** **Addy Osmani's `agent-skills` is MIT-licensed** (© 2025 Addy Osmani),
+  so we ship its lifecycle skills (spec/plan/build/test/review/ship + anti-rationalization gates)
+  directly as part of Phoenix's starter skill pack — not as inspiration, as a real reusable input.
+  Same for any other MIT/Apache agentskills.io packs. We bundle good skills; we build new only for the spine.
+
+## Token-efficient retrieval = a CODE GRAPH (graphify), not file-dumping
+The token problem isn't just "too many skills" — it's *dumping whole files/skills into context when only
+a slice is relevant.* Phoenix's answer is a **graph-based retrieval layer** built on **graphify** (already
+installed: `~/.local/bin/graphify`, "any input → knowledge graph", outputs to `graphify-out/`):
+- **Skill graph:** index every `SKILL.md` (name, description, triggers, deps) as nodes/edges so the
+  MCP `skill_index` tool returns only the relevant skill *subgraph* for the current intent — not all 50.
+- **Repo/code graph:** graphify the target codebase so retrieval pulls the relevant symbols/files
+  (callers, callees, impacted modules) as a subgraph instead of dumping directories into context.
+- **Why it's the right primitive:** a graph gives *structural* retrieval (relationships, blast radius)
+  that flat embedding-search misses — directly serving Context Assembly (pillar 1) and the
+  tokens-per-verified-outcome metric. The Rust MCP server owns graph build/query; graphify does the
+  extraction. This is the concrete mechanism behind the earlier hand-wavy "skill index."
 
 ## Phoenix stands on the Five Pillars (ATV Agent-Harness POV) — and extends them
 A production harness needs all five; remove one and it collapses inside the first multi-step task.
@@ -82,7 +99,7 @@ Phoenix implements them in Rust and adds the two things the POV repo's TS prompt
 
 | # | Pillar (ATV POV) | Guarantee | Phoenix's extension |
 |---|---|---|---|
-| 1 | **Context Assembly** | max comprehension per token | Rust skill INDEX + lazy/retrieval activation — only *relevant* skill descriptions enter context |
+| 1 | **Context Assembly** | max comprehension per token | Rust skill+code GRAPH (graphify) — only the relevant *subgraph* enters context, not whole files/skills |
 | 2 | **Tool Integrity** | every tool call schema-validated, actionable errors | validation errors are fed back as heal signals, not dead ends |
 | 3 | **Loop Discipline** | explicit signals (not heuristics) to continue/retry/halt | the **Sensor** — objective signals (exit code/test/hash), never self-grading |
 | 4 | **Policy Enforcement** | permission gate before any side effect | reversible-by-default; destructive acts require confirmation/are rollback-eligible |
@@ -158,7 +175,10 @@ retrieval, RSI/compounding, multi-skill, agents, npx installer, marketplace) bui
 - Hermes Agent (NousResearch, local `code/hermes`): self-improving loop, autonomous skill creation,
   skills improve during use, agentskills.io-compatible.
 - agentskills.io: open SKILL.md standard, progressive disclosure (Anthropic-originated, multi-vendor).
-- Addy Osmani agent-skills: lifecycle commands + verification gates + anti-rationalization tables.
+- Addy Osmani agent-skills (MIT, © 2025): lifecycle commands + verification gates + anti-rationalization
+  tables — REUSABLE directly (ship in the starter pack with attribution).
+- graphify (installed `~/.local/bin/graphify`): any input → knowledge graph; the extraction engine for
+  Phoenix's skill-graph + code-graph token-efficient retrieval.
 - ATV-StarterKit (All-The-Vibes): one-command Copilot agentic setup; pillars = Karpathy guardrails,
   Autoresearch, Compound Engineering, gstack, agent-browser; "repo gets smarter every session."
 - This session's I2O result: criteria-first verification beats raw utterance where constraints matter.
