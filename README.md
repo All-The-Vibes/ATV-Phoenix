@@ -88,6 +88,8 @@ and composes with proven companions rather than reinventing them (see the stack 
 
 ## Intent-to-Outcome: this harness is the radio before the TV
 
+![Radio before the TV](assets/radio-tv.jpg)
+
 Phoenix isn't the destination — it's the **first working organ** of a larger system: an
 **Intent-to-Outcome (I2O)** loop whose purpose is to reliably turn a human's *intent* into a
 *verified outcome* across all of digital life — work, career, learning, and project delivery.
@@ -118,8 +120,9 @@ What carries over unchanged from the radio to the TV:
 
 The experiments in this repo — H1 (intent-fidelity), H2 (verifier-pass), H3 (memory-lift), and the
 SWE-bench-style benchmark — *are* the early I2O hypotheses, tested first in the one domain with a
-perfect grader. They're the radio broadcasts that prove the signal before the picture arrives — see
-[`evals/`](evals/) for the raw data behind each.
+perfect grader. They're the radio broadcasts that prove the signal before the picture arrives — read
+the full loop, the Intent Contract, and the H1–H6 backlog in **[`docs/intent-to-outcome.md`](docs/intent-to-outcome.md)**,
+and see [`evals/`](evals/) for the raw data behind each.
 
 ## The recommended stack (Phoenix composes, it doesn't reinvent)
 
