@@ -117,12 +117,9 @@ def install_tokenmaster(repo: Path):
 
 
 def check_companions(repo: Path):
-    """Install the bundled TokenMasterX; recommend the optional Addy lifecycle pack."""
+    """Install the bundled TokenMasterX (token-efficient retrieval)."""
     print("\n[phoenix] companions:")
     install_tokenmaster(repo)
-    print("  - (optional) Addy Osmani's agent-skills (MIT general lifecycle pack):")
-    print("      copilot plugin marketplace add addyosmani/agent-skills")
-    print("      copilot plugin install agent-skills@addy-agent-skills")
 
 
 def install_skills(repo: Path, binpath: Path):

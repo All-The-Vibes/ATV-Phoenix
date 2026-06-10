@@ -6,8 +6,8 @@
 > Phoenix was built against. For what has actually shipped, see [`README.md`](README.md) and
 > [`CHANGELOG.md`](CHANGELOG.md). Two things below describe the *intended* future, not today's reality:
 > the **install path** is `setup.py` today (the `copilot plugin marketplace` / `npx` distribution is
-> still scaffolded), and Phoenix ships its **own 13 ground-up skills** — Addy Osmani's pack is an
-> *optional companion*, not bundled.
+> still scaffolded), and Phoenix ships its **own 13 ground-up skills** (all original, written from
+> scratch — no third-party skill packs).
 
 ## One sentence
 **ATV-Phoenix is a self-healing harness *for GitHub Copilot* (and Microsoft Scout) — installed today via
@@ -78,16 +78,16 @@ makes them native, fast, and inspectable:
 - **agentskills.io-native:** a skill is a folder with a `SKILL.md` (metadata + instructions),
   optionally bundling scripts/references/assets. Phoenix loads skills by **progressive disclosure**
   (discover names/descriptions → activate full instructions on match → execute).
-- **Lifecycle gates** (à la Addy's agent-skills / ATV's compound-engineering): think → plan →
+- **Lifecycle gates** (verification-first compound engineering): think → plan →
   build → test → debug → context → **review** → ship, with verification as a hard gate, not a suggestion.
 - **Portable:** skills authored for Phoenix run on any agentskills.io-compatible client, and
   vice-versa. We adopt the standard; we don't fork it.
-- **Built ground-up, with attribution where due:** Phoenix ships its **own 13-skill pack**, written
-  from scratch in the `SKILL.md` standard — rebuilding the *structure* Addy Osmani's MIT `agent-skills`
-  pioneered (ASCII diagrams, Common Rationalizations tables, Red Flags) but faster, self-healing, and
-  token-efficient, and folding in craft from Karpathy, Mat Pocock, and Emil Kowalski. **Addy's pack
-  remains an *optional companion*** you can install alongside; we build new for the spine and the
-  verification-gated lifecycle, and compose proven companions (TokenMasterX) rather than fork them.
+- **Built ground-up:** Phoenix ships its **own 13-skill pack**, written from scratch in the `SKILL.md`
+  standard — proven structural devices (ASCII decision diagrams, *Common Rationalizations* tables,
+  *Red Flags*) but with **every gate an objective `phoenix_sense` check**, fast, self-healing, and
+  token-efficient, folding in craft from Karpathy, Mat Pocock, and Emil Kowalski. We build new for the
+  spine and the verification-gated lifecycle, and compose proven companions (TokenMasterX) rather than
+  fork them. Every skill is original.
 
 ## Token-efficient retrieval = ADOPT TokenMasterX (already built + measured by you)
 We do NOT build this from scratch — **you already built and measured it: `shyamsridhar123/TokenMasterX`.**
@@ -167,11 +167,12 @@ No PMI ritual, no Gantt theater, no story-point liturgy. Instead:
 - **Document what worked AND what didn't.** `BUILDLOG.md` is a running, honest engineering log —
   dead ends, wrong turns, and reversals included. Failure that's recorded is progress; failure
   that's hidden is debt.
-- **Steal shamelessly, fork reluctantly — COMPOSE proven parts.** Phoenix is mostly *assembly* of
-  things that already work: **TokenMasterX** (your measured token/retrieval layer), **Addy's MIT
-  lifecycle skills**, agentskills.io packs, Hermes patterns, ATV pillars. **Build new ONLY for the
-  genuinely-novel spine: objective sensing, bounded self-healing, and measured self-improvement.**
-  If a capability already ships and is measured (TokenMasterX), we adopt it, we don't reimplement it.
+- **Steal shamelessly, fork reluctantly — COMPOSE proven parts.** Phoenix *assembles* what already
+  works (**TokenMasterX** — the measured token/retrieval layer, agentskills.io patterns, Hermes
+  patterns, ATV pillars) and **builds new for everything that defines it: the 13-skill
+  verification-gated pack and the genuinely-novel spine — objective sensing, bounded self-healing, and
+  measured self-improvement.** If a capability already ships and is measured (TokenMasterX), we adopt
+  it; the skills and spine are original.
 
 ## The first verifiable slice (v0 — defined so this can't become architecture astronomy)
 **A Rust MCP server that GitHub Copilot connects to via `/mcp`, exposing four tools — `sense`
@@ -199,8 +200,6 @@ retrieval, RSI/compounding, multi-skill, agents, npx installer, marketplace) bui
 - Hermes Agent (NousResearch, local `code/hermes`): self-improving loop, autonomous skill creation,
   skills improve during use, agentskills.io-compatible.
 - agentskills.io: open SKILL.md standard, progressive disclosure (Anthropic-originated, multi-vendor).
-- Addy Osmani agent-skills (MIT, © 2025): lifecycle commands + verification gates + anti-rationalization
-  tables — REUSABLE directly (ship in the starter pack with attribution).
 - graphify (installed `~/.local/bin/graphify`): any input → knowledge graph; the extraction engine for
   Phoenix's skill-graph + code-graph token-efficient retrieval.
 - ATV-StarterKit (All-The-Vibes): one-command Copilot agentic setup; pillars = Karpathy guardrails,
