@@ -21,8 +21,18 @@ First shippable release. A self-healing harness for AI coding agents, multi-host
 - M1: behavioral self-heal (`cargo test`, non-tautological — recovery judged by an external signal).
 - M2: full sense→heal→verify over real MCP stdio JSON-RPC.
 - M3: a live GitHub Copilot session autonomously sensed + healed a fault; file fixed on disk; traced.
+- H1: criteria-first verification lifts verified-outcome rate by +0.125 (mean), replicated across 3/3 runs.
 - H2: across 20 live Copilot sessions, Phoenix cut the silent-failure rate from 40% to 0% on tasks with
   hidden acceptance criteria, with zero regressions.
+- H3: injecting a project's convention lifted Copilot from 0% to 100% on tasks whose correct output is
+  unguessable from the spec alone.
+
+### Install & DX
+- One-command install via `.copilot-plugin/skills/phoenix-setup/setup.py` (idempotent: builds binary,
+  registers MCP server, installs agent).
+- Dogfooding fix: `sense` inputs are now lenient (`target` accepts a string or array; `expect` accepts
+  an int, string, or null) with an example in the tool description — cut a measured live run from
+  72 credits / ~25 failed calls to 15 credits / 4 calls.
 
 ### Known limitations
 - `command_exit` timeout documented but not yet enforced in-process.
