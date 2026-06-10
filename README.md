@@ -8,19 +8,18 @@ heal it** — instead of declaring "done" on silently-broken work.
 
 ---
 
-## The result that justifies it
+## The results that justify it
 
-On **20 live GitHub Copilot sessions**, with vs. without Phoenix, scored by hidden acceptance checkers:
+Three hypotheses, all tested on **live GitHub Copilot sessions**, scored by hidden checkers (ground truth):
 
-| | Vanilla Copilot | Copilot + Phoenix |
-|---|---|---|
-| Well-specified tasks | 6/6 pass | 6/6 pass *(no regression)* |
-| **Underspecified tasks** (hidden acceptance criteria) | **0/4 pass — 4 silent failures** | **4/4 pass — 0 silent failures** |
-| **Silent-failure rate** | **40%** | **0%** |
+| Question | Result |
+|---|---|
+| **Does objective verification beat self-judgment?** (H2) | Silent-failure rate **40% → 0%** across 20 sessions — vanilla Copilot shipped broken code with false confidence on tasks with hidden acceptance criteria; Phoenix caught and healed every one. **Zero regressions.** |
+| **Does formalizing intent into a check first help?** (H1) | **+0.125** mean verified-outcome lift, **replicated 3/3 runs** (criteria-first perfect every run). |
+| **Does injecting the right context/memory help?** (H3) | **0% → 100%** — without a project's convention, Copilot produced a plausible-but-wrong default every time; with it injected, correct every time. |
 
-**Vanilla Copilot shipped broken code with false confidence; Phoenix caught and healed every case** —
-with zero regressions on tasks the model already gets right. Full method + raw data:
-[`evals/h2-experiment/`](evals/h2-experiment/RESULT.md).
+Together: **formalize intent + verify objectively + supply the right context.** Full method + raw data
+per experiment under [`evals/`](evals/).
 
 ---
 
@@ -40,15 +39,16 @@ The loop: **baseline-green → snapshot → edit → sense → heal if red → c
 
 ## Install
 
-### GitHub Copilot CLI (MCP server)
-Register the Phoenix MCP server, then it's available in any session:
+### GitHub Copilot CLI (recommended)
 ```powershell
 git clone https://github.com/All-The-Vibes/ATV-Phoenix
 cd ATV-Phoenix
-./dist/install.ps1          # builds the release binary + installs the Copilot agent
+python .copilot-plugin/skills/phoenix-setup/setup.py --repo .
 ```
-Phoenix registers as an MCP server (`~/.copilot/mcp-config.json`) exposing the four tools.
-Ask Copilot to verify + heal a task and it calls them. (See [`dist/`](dist/) for details.)
+The setup script is idempotent: it builds the Rust binary if needed, registers the `phoenix` MCP
+server in `~/.copilot/mcp-config.json`, and installs the `phoenix` agent. Restart Copilot, then ask it
+to verify + heal a task — it calls the tools automatically. (Requires [Rust](https://rustup.rs) +
+Python. `dist/install.ps1` is a PowerShell equivalent.)
 
 ### Microsoft Scout (CLI adapter)
 Scout doesn't take external MCP servers, so Phoenix ships a **CLI** the Scout agent calls via its
@@ -82,16 +82,23 @@ spine: **objective sensing, bounded healing, measured improvement.**
 
 ## Status (v0.1.0)
 
+Every milestone has a measured eval + a screenshot.
+
 | Milestone | Proven | Evidence |
 |---|---|---|
-| M1 | self-healing spine (Rust) | `cargo test` + [screenshot](evals/screenshots/m1-self-heal.png) |
-| M2 | works over real MCP | [screenshot](evals/screenshots/m2-mcp-session.png) |
-| M3 | heals live inside Copilot | [screenshot](evals/screenshots/m3-live-copilot.png) |
-| H2 | 40%→0% silent failures | [screenshot](evals/screenshots/h2-results.png) |
+| M0 | token/retrieval pillar (TokenMasterX/graphify) validated | [result](evals/m0-install-path/RESULT.md) · [shot](evals/screenshots/m0-graph-viz.png) |
+| M1 | self-healing spine in Rust (`cargo test`) | [result](evals/m1-self-heal/RESULT.md) · [shot](evals/screenshots/m1-self-heal.png) |
+| M2 | works over real MCP protocol | [result](evals/m2-mcp/RESULT.md) · [shot](evals/screenshots/m2-mcp-session.png) |
+| M3 | heals a fault **live inside Copilot** | [result](evals/m3-live-copilot/RESULT.md) · [shot](evals/screenshots/m3-live-copilot.png) |
+| H1 | criteria-first lift +0.125, replicated 3/3 | (goose I2O scorecard) |
+| H2 | silent failures **40%→0%** | [result](evals/h2-experiment/RESULT.md) · [shot](evals/screenshots/h2-results.png) |
+| H3 | context/memory lift **0%→100%** | [result](evals/h3-experiment/RESULT.md) · [shot](evals/screenshots/h3-results.png) |
 
 **Honest limits:** results are directional (small n, single model, deterministic checkers). Recovery is
 "bounded objective recovery," not broad self-healing. Command timeouts aren't yet enforced in-process.
-See [`BUILDLOG.md`](BUILDLOG.md) for the full honest engineering record — every bug, reversal, and dead end.
+`copilot plugin install <repo>` (marketplace path) is scaffolded but not yet verified end-to-end —
+install via `setup.py` today. See [`BUILDLOG.md`](BUILDLOG.md) for the full honest engineering record —
+every bug, reversal, and dead end (including a dogfooding fix that cut a real run from 72 credits to 15).
 
 ## License
 MIT — see [LICENSE](LICENSE). Composes MIT/open components (TokenMasterX, agentskills.io packs) with attribution.
