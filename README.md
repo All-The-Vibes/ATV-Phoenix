@@ -86,42 +86,44 @@ and composes with proven companions rather than reinventing them (see the stack 
 
 ---
 
-## Intent-to-Outcome: this harness is the radio before the TV
+## Intent-to-Outcome: we're still running radio shows on the television
 
-![Radio before the TV](assets/radio-tv.jpg)
+![Radio for TV — a new medium still broadcasting the old format](assets/radio-for-tv.jpg)
 
-Phoenix isn't the destination — it's the **first working organ** of a larger system: an
-**Intent-to-Outcome (I2O)** loop whose purpose is to reliably turn a human's *intent* into a
-*verified outcome* across all of digital life — work, career, learning, and project delivery.
+When television was new, nobody knew how to make *television*. So broadcasters pointed a camera at
+people doing **radio** — same scripts, same formats, a brand-new visual medium used to run an old
+audio art form. The new medium was already in the room; the native way to use it hadn't been invented
+yet.
 
-The I2O machine is a 7-stage loop — **SENSE → MODEL → FORMALIZE → PLAN/ACT → VERIFY → REFLECT →
-DISTILL.** Phoenix productizes the three hardest middle stages — **FORMALIZE an intent into an
-objective check, ACT, and VERIFY against that check (then heal)** — for one narrow domain: coding
-agents, where the grader can be perfectly objective because code either runs or it doesn't.
+**That is exactly where agentic AI is — and where Phoenix honestly sits.** We have a genuinely new
+medium: an agent that can sense, act, verify, and compound. And we're mostly still using it to run the
+*old* show — autocomplete, one-shot chat, "generate code and hope." Phoenix is an attempt to use a
+little more of what the new medium can actually do — **FORMALIZE intent into an objective check, ACT,
+VERIFY against it, then heal** — but make no mistake: **this is still radio *for* television.** It's
+one of the first awkward broadcasts on new hardware. Its value isn't that it's the finished form; it's
+that it proves the new medium can carry a signal the old one couldn't — **objective verification on a
+frozen model** (silent failures **40%→0%**, underspecified resolved-rate **50%→100%**).
 
-**That narrowness is the strategy, not a limitation.** Radio proved the core primitive — broadcast a
-signal over the air, a receiver reconstructs it — before television inherited that exact
-infrastructure and added the picture. **Phoenix is the radio.** It proves, on live Copilot sessions
-with hidden graders, that a *frozen* model plus a thin enforcement harness converts "looks done" into
-"is done" (silent failures **40%→0%**, underspecified resolved-rate **50%→100%**). **The full I2O
-system is the television** — the same closed-loop verification, generalized across the four pillars,
-running *proactively* and *persistently*: sensing your Teams / mail / calendar, proposing Intent
-Contracts, executing and verifying them, and compounding what it learns. Same signal, same loop,
-bigger screen.
+Phoenix productizes the three hardest middle stages of a 7-stage loop —
+**SENSE → MODEL → FORMALIZE → PLAN/ACT → VERIFY → REFLECT → DISTILL** — for the one domain where the
+grader can be perfectly objective: code, which either runs or it doesn't. The full **Intent-to-Outcome
+(I2O)** system is the bet on what the *native* format becomes once we stop imitating the old one: the
+same closed-loop verification, generalized across all of digital life — work, career, learning,
+projects — running *proactively* and *persistently*, proposing Intent Contracts, executing and
+verifying them, and compounding what it learns.
 
-What carries over unchanged from the radio to the TV:
-
-| Principle | In Phoenix today | In the full I2O system |
+| Principle | What the new medium already lets Phoenix do | What the native I2O format adds |
 |---|---|---|
-| **The Intent Contract** (`intent → verifiable success_criteria → evidence → outcome → delta`) | a `phoenix_sense` check *is* the success-criteria + evidence made executable | proposed automatically from sensed context, promoted by a human |
+| **The Intent Contract** (`intent → verifiable success_criteria → evidence → outcome → delta`) | a `phoenix_sense` check *is* the success-criteria + evidence made executable | contracts proposed automatically from sensed context, promoted by a human |
 | **Evidence over self-grading** | `phoenix_sense` reports only objective signals; a fabricated "done!" is the failure mode it exists to kill | the non-negotiable that keeps a *proactive* system trustworthy |
-| **Enforce, don't offer** | value comes from the loop being *run*, not merely available (unprompted self-verify: 0/10) | the heartbeat runs SENSE→FORMALIZE→VERIFY without being asked |
+| **Enforce, don't offer** | value comes from the loop being *run*, not merely available (unprompted self-verify: 0/10) | the loop runs SENSE→FORMALIZE→VERIFY without being asked |
 | **Frozen weights, human direction** | improvement is scaffolding-level (skills, checks, memory), evidence-gated | the human still sets goals; the system compounds the means |
 
 The experiments in this repo — H1 (intent-fidelity), H2 (verifier-pass), H3 (memory-lift), and the
 SWE-bench-style benchmark — *are* the early I2O hypotheses, tested first in the one domain with a
-perfect grader. They're the radio broadcasts that prove the signal before the picture arrives — read
-the full loop, the Intent Contract, and the H1–H6 backlog in **[`docs/intent-to-outcome.md`](docs/intent-to-outcome.md)**,
+perfect grader. They're the first broadcasts on the new medium — proof of signal, not the native
+format yet — read the full loop, the Intent Contract, and the H1–H6 backlog in
+**[`docs/intent-to-outcome.md`](docs/intent-to-outcome.md)**,
 and see [`evals/`](evals/) for the raw data behind each.
 
 ## The recommended stack (Phoenix composes, it doesn't reinvent)

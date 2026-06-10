@@ -27,7 +27,8 @@ real end-to-end build, and a SWE-bench-style benchmark.
 ### Changed
 - `setup.py` now installs the whole stack in one command (binary, MCP registration, 13 skills, doctor
   self-check, bundled TokenMasterX).
-- README consolidated: full evidence table, the Intent-to-Outcome ("radio before the TV") framing,
+- README consolidated: full evidence table, the Intent-to-Outcome ("radio *for* TV" — a new medium
+  still running the old format) framing + concept doc (`docs/intent-to-outcome.md`),
   honest bundled-vs-companion stack, hero + loop imagery.
 - `dist/install.ps1` now registers the MCP server (was agent-only).
 
