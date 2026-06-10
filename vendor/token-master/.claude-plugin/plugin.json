@@ -1,0 +1,13 @@
+{
+  "name": "token-master",
+  "description": "Token-efficient code-understanding harness. Routes structural questions (callers, callees, impact, inheritors) to a prebuilt code graph instead of repeated grep and file-reads, cutting cumulative context tokens. Type /token-master in a repo to build the index and turn on routing.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Shyam Sridhar"
+  },
+  "homepage": "https://github.com/shyamsridhar123/TokenMasterX",
+  "repository": "https://github.com/shyamsridhar123/TokenMasterX",
+  "license": "MIT",
+  "keywords": ["tokens", "context", "code-graph", "routing", "efficiency"],
+  "skills": ["skills/"]
+}

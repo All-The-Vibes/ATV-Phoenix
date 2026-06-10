@@ -28,3 +28,7 @@ evals/h2-experiment/run_h2*.log
 
 evals/h3-experiment/*.html
 evals/h3-experiment/run_h3.log
+.codegraph/
+
+vendor/**/__pycache__/
+vendor/**/*.pyc

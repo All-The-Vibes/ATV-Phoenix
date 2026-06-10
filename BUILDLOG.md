@@ -501,3 +501,16 @@ TokenMasterX is a detected recommended companion; Addy's pack optional.
 
 **What this fixes:** the repo previously shipped ZERO bundled skills while the README claimed to compose
 them. Now it ships its own verification-gated lifecycle pack that it can verify and heal itself.
+
+## 2026-06-10 - Day 1 (cont. 2): BUNDLE TokenMasterX (user: "bundle it because it is mine")
+
+- TokenMasterX is the user's OWN MIT plugin (c) 2026 Shyam Sridhar - so vendoring it makes Phoenix
+  truly self-contained (NOT the reinvent-someone-elses-wheel anti-pattern). Vendored to
+  vendor/token-master/ (plugin.json + SKILL.md + graphify_mcp.py + setup.py + agent templates + LICENSE).
+- setup.py now INSTALLS the bundled TokenMasterX (invokes its setup.py --host=copilot) instead of just
+  recommending it. Verified end-to-end: token-master agent installed + graph built on the phoenix repo.
+- One command now installs the FULL stack: lifecycle skills + self-heal MCP + bundled TokenMasterX.
+- README stack table: TokenMasterX now BUNDLED (needs graphify); only Addy's general pack stays optional.
+- .gitignore: vendor pycache excluded; .token-master/ graph already ignored.
+
+Net: Phoenix is self-contained (skills + token retrieval bundled) AND self-maintaining (doctor + cargo test).
