@@ -7,6 +7,25 @@ use std::time::Instant;
 
 const MAX_EVIDENCE: usize = 2048;
 
+/// Accept `target` as a JSON array of strings OR a single string. A lone string is split on
+/// whitespace into argv (so "cmd /C findstr x" works), matching how LLMs sometimes pass commands.
+fn de_string_or_vec<'de, D>(d: D) -> Result<Vec<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::Deserialize;
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum VecOrStr {
+        V(Vec<String>),
+        S(String),
+    }
+    Ok(match VecOrStr::deserialize(d)? {
+        VecOrStr::V(v) => v,
+        VecOrStr::S(s) => s.split_whitespace().map(|x| x.to_string()).collect(),
+    })
+}
+
 /// Accept `expect` as a JSON string, number, or null — LLM callers often pass an exit code as `0`
 /// rather than `"0"`. Normalizes everything to `Option<String>`.
 fn de_string_or_number<'de, D>(d: D) -> Result<Option<String>, D::Error>
@@ -45,6 +64,9 @@ pub enum CheckKind {
 pub struct Check {
     pub kind: CheckKind,
     /// For CommandExit: argv (first element is the program). For file checks: a single path.
+    /// Accepts a JSON array OR a single string (a lone string becomes a one-element argv), because
+    /// LLM callers sometimes pass a command as a string.
+    #[serde(deserialize_with = "de_string_or_vec")]
     pub target: Vec<String>,
     /// CommandExit: expected exit code (default "0"). FileSha256: expected hex digest.
     /// RegexInFile: the regex pattern. Accepts a string OR a number (e.g. `0` or `"0"`),
@@ -181,5 +203,17 @@ mod expect_flex {
         // absent
         let c: Check = serde_json::from_str(r#"{"kind":"command_exit","target":["x"]}"#).unwrap();
         assert_eq!(c.expect, None);
+    }
+}
+
+#[cfg(test)]
+mod target_flex {
+    use super::*;
+    #[test]
+    fn target_accepts_array_or_string() {
+        let c: Check = serde_json::from_str(r#"{"kind":"command_exit","target":["pytest","-q"]}"#).unwrap();
+        assert_eq!(c.target, vec!["pytest","-q"]);
+        let c: Check = serde_json::from_str(r#"{"kind":"command_exit","target":"cmd /C findstr x f.txt"}"#).unwrap();
+        assert_eq!(c.target, vec!["cmd","/C","findstr","x","f.txt"]);
     }
 }

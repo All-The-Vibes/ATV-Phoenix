@@ -1,0 +1,21 @@
+{
+  "name": "atv-phoenix",
+  "owner": {
+    "name": "All-The-Vibes"
+  },
+  "metadata": {
+    "description": "ATV-Phoenix — a self-healing harness for AI coding agents (objective sense + bounded heal + tamper-evident trace).",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "phoenix",
+      "description": "Self-healing harness: gives Copilot phoenix_sense / phoenix_snapshot / phoenix_heal / phoenix_verify_trace so it objectively verifies success and recovers from silent failures instead of self-judging. Run /phoenix-setup once to register the agent + MCP server.",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./skills/phoenix-setup"
+      ]
+    }
+  ]
+}
