@@ -90,15 +90,15 @@ the rest.
 | Layer | Component | Ships with Phoenix? |
 |---|---|---|
 | **Self-heal + full lifecycle** (the core) | `phoenix-self-heal` + a verification-gated lifecycle pack (`phoenix-spec/plan/build/review/ship`) + the `phoenix` MCP server / CLI | **Bundled** (`skills/`, installed automatically) |
-| **Token-efficient retrieval** | [TokenMasterX](https://github.com/shyamsridhar123/TokenMasterX) — graph-routed code navigation (−73% tokens) | Recommended companion (`token-master@token-master`) |
+| **Token-efficient retrieval** | [TokenMasterX](https://github.com/shyamsridhar123/TokenMasterX) — graph-routed code navigation (−73% tokens) | **Bundled** (`vendor/token-master`, installed automatically; needs `graphify`) |
 | **Extra lifecycle skills** | [Addy Osmani's agent-skills](https://github.com/addyosmani/agent-skills) — MIT general workflow pack | Optional companion (`agent-skills@addy-agent-skills`) |
 
-Phoenix ships its **own** verification-gated lifecycle pack — spec → plan → build → review → ship,
-where *every stage is gated by an objective `phoenix_sense` check* (the differentiator: most lifecycle
-skills are workflow prose with no objective gate). These install automatically and are **self-maintaining**:
-`phoenix-mcp doctor` validates every bundled skill with Phoenix's own spine, and `cargo test` fails if any
-skill drifts — the harness verifies itself. TokenMasterX (token retrieval) is a recommended companion; the
-installer detects it and prints the one-command install.
+`setup.py` installs the whole stack in one command: the verification-gated lifecycle pack, the self-heal
+MCP server, **and the bundled TokenMasterX** (vendored MIT, `graphify`-backed). Every lifecycle stage is
+gated by an objective `phoenix_sense` check — the differentiator vs. generic workflow skills. The pack is
+**self-maintaining**: `phoenix-mcp doctor` validates every bundled skill with Phoenix's own spine, and
+`cargo test` fails if any skill drifts — the harness verifies itself. Only Addy's general pack stays an
+optional add-on.
 
 ---
 

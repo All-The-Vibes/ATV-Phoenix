@@ -92,28 +92,35 @@ def install_agent(binpath: Path):
     print(f"[phoenix] installed agent: {dest}")
 
 
-def check_companions():
-    """Phoenix composes with two companion plugins. Detect what's present and recommend the rest."""
-    home = Path.home() / ".copilot"
-    installed = set()
-    cfg = home / "config.json"
-    if cfg.exists():
-        try:
-            for p in json.loads(cfg.read_text(encoding="utf-8")).get("installedPlugins", []):
-                installed.add(p.get("name", ""))
-        except Exception:
-            pass
-    agents = home / "agents"
-    has_tokenmaster = "token-master" in installed or (agents / "token-master.agent.md").exists()
+def install_tokenmaster(repo: Path):
+    """Install the BUNDLED TokenMasterX (vendor/token-master) for token-efficient code retrieval.
+    It's the user's own MIT plugin, vendored so Phoenix is self-contained. Best-effort: needs graphify."""
+    tm_setup = repo / "vendor" / "token-master" / "skills" / "token-master" / "setup.py"
+    if not tm_setup.exists():
+        return False
+    if not shutil.which("graphify"):
+        print("[phoenix] TokenMasterX bundled but graphify not found. Install it, then run:")
+        print(f"          python {tm_setup} . --host=copilot   (and: uv tool install graphifyy)")
+        return False
+    try:
+        env = dict(os.environ, TOKEN_MASTER_HOST="copilot")
+        r = subprocess.run([sys.executable, str(tm_setup), str(Path.cwd()), "--host=copilot"],
+                           capture_output=True, text=True, timeout=300, env=env)
+        ok = r.returncode == 0
+        print(f"[phoenix] TokenMasterX (bundled): {'installed/refreshed' if ok else 'setup returned ' + str(r.returncode)}")
+        if not ok:
+            print("          " + (r.stderr.strip()[:300] or r.stdout.strip()[:300]))
+        return ok
+    except Exception as e:
+        print(f"[phoenix] TokenMasterX install skipped: {e}")
+        return False
 
-    print("\n[phoenix] recommended companions (Phoenix composes, it doesn't reinvent):")
-    if has_tokenmaster:
-        print("  - TokenMasterX (token-efficient code retrieval): [installed]")
-    else:
-        print("  - TokenMasterX (token-efficient code retrieval) — NOT found. Install:")
-        print("      copilot plugin marketplace add shyamsridhar123/TokenMasterX")
-        print("      copilot plugin install token-master@token-master")
-    print("  - Addy Osmani's agent-skills (MIT lifecycle: spec/plan/build/test/review/ship). Install:")
+
+def check_companions(repo: Path):
+    """Install the bundled TokenMasterX; recommend the optional Addy lifecycle pack."""
+    print("\n[phoenix] companions:")
+    install_tokenmaster(repo)
+    print("  - (optional) Addy Osmani's agent-skills (MIT general lifecycle pack):")
     print("      copilot plugin marketplace add addyosmani/agent-skills")
     print("      copilot plugin install agent-skills@addy-agent-skills")
 
@@ -159,7 +166,7 @@ def main():
     print("[phoenix] Tools: phoenix_sense, phoenix_snapshot, phoenix_heal, phoenix_verify_trace")
     print("[phoenix] Bundled skills: phoenix-spec/plan/build/review/ship + phoenix-self-heal")
     if not args.no_companions:
-        check_companions()
+        check_companions(repo)
 
 
 if __name__ == "__main__":
