@@ -583,3 +583,34 @@ Restored real mcp-config afterward. The isolated-HOME install proves the path is
 
 This is the strongest evidence yet: a stranger could clone, one-command install, and have Copilot build
 + objectively verify a real game. The whole product works end to end.
+
+== 2026-06-10 (cont.) :: SWE-bench-style lite benchmark ==
+WHY: "can we do a swebench or some lite version of a legit benchmarking tool". Needed a citable,
+rigged-proof resolved-rate number, not a vibe.
+WHAT: borrowed the SWE-bench EVALUATION CONTRACT (the part that earns trust) without the official
+Docker/repo machinery: RESOLVED iff all FAIL_TO_PASS go green AND all PASS_TO_PASS stay green.
+Every task pre-validated TWO ways before any agent ran: (a) buggy state = F2P red + P2P green (a real
+bug), (b) solvable = a reference fix turns F2P green keeping P2P green (no impossible/rigged tasks).
+Two arms: A_vanilla (problem.md only, tests HIDDEN, self-judges) vs B_phoenix (same + tests as the
+enforced phoenix_sense gate). Confound stated openly: B seeing the tests IS the intervention.
+
+RESULT (9 tasks x 2 arms, Copilot CLI 1.0.61):
+- Tier 1 well-specified (5): vanilla 100% / phoenix 100%. CEILING -- Phoenix adds no lift AND no harm.
+  Honest null, same regime the I2O H1 nulls located. A benchmark that only showed this would be boring
+  but true.
+- Tier 2 underspecified (4, terse GitHub-issue style, hidden edge cases): vanilla 50% / phoenix 100%.
+  2 tasks (hard-slugify, hard-titlecase) flipped unresolved->resolved.
+- Overall: 78% -> 100%, +22 pts, 0 regressions in EITHER arm.
+KEY: both vanilla misses were SILENT FAILURES not crashes (f2p=0, p2p=1) -- the happy path passed, the
+hidden edge didn't; the fix LOOKED done. Same failure mode H2 measured, now under a SWE-bench contract.
+An enforced objective gate converts "looks done" into "is done."
+
+HONEST LIMITS: n=9, 1 rep, 1 model = directional. SWE-bench-STYLE (self-contained tasks), not the
+official dataset. The headline lift is entirely from the underspecified tier -- which is exactly where
+an objective gate is supposed to pay off; on clear specs the model already wins.
+PROCESS NOTE: first run was the well-specified tier alone = 100/100 ceiling. Rather than ship a null or
+juice it, added a designed underspecified tier to LOCATE the regime where the gate matters (the H1
+null->null->positive playbook). Added -Filter/-OutFile/-Append to run_swe.ps1 so tiers run without
+re-spending calls.
+Evidence: evals/swe-bench-lite/RESULT.md + results.jsonl (+tier1/tier2) + run_swe.ps1 + tasks/ +
+evals/screenshots/swe-bench-result.png.

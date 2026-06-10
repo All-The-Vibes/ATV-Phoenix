@@ -119,6 +119,7 @@ Every milestone has a measured eval + a screenshot.
 | H1 | criteria-first lift +0.125, replicated 3/3 | (goose I2O scorecard) |
 | H2 | silent failures **40%→0%** | [result](evals/h2-experiment/RESULT.md) · [shot](evals/screenshots/h2-results.png) |
 | H3 | context/memory lift **0%→100%** | [result](evals/h3-experiment/RESULT.md) · [shot](evals/screenshots/h3-results.png) |
+| SWE-bench-lite | resolved-rate, underspecified tier **50%→100%** (overall 78%→100%, **0 regressions**) | [result](evals/swe-bench-lite/RESULT.md) · [shot](evals/screenshots/swe-bench-result.png) |
 
 **Honest limits:** results are directional (small n, single model, deterministic checkers). Recovery is
 "bounded objective recovery," not broad self-healing. Command timeouts aren't yet enforced in-process.

@@ -1,0 +1,10 @@
+{"id":"cache-lru-A-1","resolved":1,"f2p":1,"p2p":1,"arm":"A_vanilla","rep":1,"task":"cache-lru"}
+{"id":"cache-lru-B-1","resolved":1,"f2p":1,"p2p":1,"arm":"B_phoenix","rep":1,"task":"cache-lru"}
+{"id":"csv-parser-A-1","resolved":1,"f2p":1,"p2p":1,"arm":"A_vanilla","rep":1,"task":"csv-parser"}
+{"id":"csv-parser-B-1","resolved":1,"f2p":1,"p2p":1,"arm":"B_phoenix","rep":1,"task":"csv-parser"}
+{"id":"date-range-A-1","resolved":1,"f2p":1,"p2p":1,"arm":"A_vanilla","rep":1,"task":"date-range"}
+{"id":"date-range-B-1","resolved":1,"f2p":1,"p2p":1,"arm":"B_phoenix","rep":1,"task":"date-range"}
+{"id":"money-round-A-1","resolved":1,"f2p":1,"p2p":1,"arm":"A_vanilla","rep":1,"task":"money-round"}
+{"id":"money-round-B-1","resolved":1,"f2p":1,"p2p":1,"arm":"B_phoenix","rep":1,"task":"money-round"}
+{"id":"retry-backoff-A-1","resolved":1,"f2p":1,"p2p":1,"arm":"A_vanilla","rep":1,"task":"retry-backoff"}
+{"id":"retry-backoff-B-1","resolved":1,"f2p":1,"p2p":1,"arm":"B_phoenix","rep":1,"task":"retry-backoff"}
