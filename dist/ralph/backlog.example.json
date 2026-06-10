@@ -1,0 +1,23 @@
+[
+  {
+    "id": "parse-args",
+    "title": "CLI parses --input and --output flags",
+    "priority": 1,
+    "done": false,
+    "check": { "kind": "command_exit", "target": ["npm", "test", "--", "-t", "parses flags"], "expect": 0 }
+  },
+  {
+    "id": "read-file",
+    "title": "Reads the input file and errors clearly if missing",
+    "priority": 2,
+    "done": false,
+    "check": { "kind": "command_exit", "target": ["npm", "test", "--", "-t", "reads input"], "expect": 0 }
+  },
+  {
+    "id": "transform",
+    "title": "Transforms rows per the spec",
+    "priority": 3,
+    "done": false,
+    "check": { "kind": "command_exit", "target": ["npm", "test", "--", "-t", "transforms rows"], "expect": 0 }
+  }
+]

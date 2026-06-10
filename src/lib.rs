@@ -9,9 +9,11 @@ pub mod snapshot;
 pub mod heal;
 pub mod trace;
 pub mod doctor;
+pub mod accept;
 
 pub use doctor::{doctor, DoctorReport};
 pub use heal::{heal, HealCtx, HealResult, Strategy};
 pub use sense::{sense, Check, CheckKind, SenseResult};
 pub use snapshot::{snapshot, SnapshotResult};
 pub use trace::{Trace, TraceVerify};
+pub use accept::{verify_gate, GateResult};

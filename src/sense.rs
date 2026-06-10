@@ -119,6 +119,29 @@ pub fn sense(check: &Check) -> SenseResult {
     }
 }
 
+/// Stable identity digest of a check — IDENTICAL in the MCP path, the CLI path, and the gate ledger,
+/// so one logical check is uniquely findable across the trace. Hashes the *parsed* check (kind,
+/// target, normalized expect), not the raw input bytes, so a command passed as `"pytest -q"` or
+/// `["pytest","-q"]`, or an exit code as `0` or `"0"`, all digest the same. `cwd`/`timeout` are
+/// execution context, not check identity, so they're excluded. This is the key that lets
+/// `accept` prove a specific check went red→green (see `crate::accept`).
+pub fn canonical_digest(check: &Check) -> String {
+    use sha2::{Digest, Sha256};
+    let expect = match (&check.kind, &check.expect) {
+        (CheckKind::CommandExit, None) => Some("0".to_string()),
+        (_, e) => e.clone(),
+    };
+    let canonical = serde_json::json!({
+        "kind": check.kind,
+        "target": check.target,
+        "expect": expect,
+    });
+    let s = serde_json::to_string(&canonical).unwrap_or_default();
+    let mut h = Sha256::new();
+    h.update(s.as_bytes());
+    hex(&h.finalize())
+}
+
 fn sense_command(check: &Check) -> SenseResult {
     if check.target.is_empty() {
         return SenseResult { ok: false, signal: "command_exit".into(), evidence: "empty argv".into() };

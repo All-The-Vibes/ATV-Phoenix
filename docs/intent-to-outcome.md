@@ -117,7 +117,7 @@ a camera pointed at a radio, but television finally being television.
 | VERIFY | `phoenix_sense` — command-exit / file-hash / regex, no self-grading |
 | heal | `phoenix_heal` — bounded recovery (rollback to a blessed snapshot, or retry ≤3×), confirmed by an external recheck |
 | evidence | `phoenix_verify_trace` — a tamper-evident, hash-chained record of everything sensed and healed |
-| DISTILL | the 13-skill pack + `doctor` self-validation; checks and skills compound over time |
+| DISTILL | the 16-skill pack + `doctor` self-validation; checks and skills compound over time |
 
 ---
 

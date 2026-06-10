@@ -2,6 +2,32 @@
 
 All notable changes to ATV-Phoenix are documented here.
 
+## [0.3.0] — 2026-06-10
+
+Autonomous workflows — the same capabilities as Claude Code's ralph/autopilot, but gated by objective,
+tamper-evident proof instead of an LLM's opinion. Grounded in researched primary sources
+(`research/autonomous-workflows-research.md`).
+
+### Added
+- **Gate ledger** (`src/accept.rs`, `phoenix-mcp accept`): completion is **derived from the trace, not
+  authored** — a check counts as done only if the tamper-evident trace proves it went **red → green**
+  (failure-first) for the same canonical check and is green now. Rejects vacuous (never-red) checks and
+  tampered traces. New `canonical_digest(&Check)` makes a check identifiable identically across the MCP
+  path, CLI path, and ledger. (`tests/gate_ledger.rs`, 3/3.)
+- **Three autonomous-workflow skills** (pack now 16): `phoenix-ralph` (Huntley's persistence loop —
+  fresh context per iteration, filesystem as memory, driver-proven completion), `phoenix-goal`
+  (formalize an objective acceptance check, then decompose + drive), `phoenix-auto` (dynamic
+  state-sensing router with oscillation + confidence guards). The base `phoenix` router stays a stable
+  fixed tree and dispatches to these only in autonomous mode.
+- **Ralph loop driver** (`dist/ralph/phoenix-ralph.ps1` + bash twin): the external loop (Copilot/Scout
+  are one-shot — no re-injection hook). The **driver owns** the loop/wall-clock/no-progress budgets, the
+  pre-turn accept, the trace-intact check, and the proof bundle + git tag; the agent only proposes. With
+  PROMPT/backlog/done-check templates under `dist/ralph/`.
+- **`@file` arg convention** for `phoenix-mcp sense|accept|snapshot|heal` — reads the check JSON from a
+  file, sidestepping PowerShell→exe quote-mangling of inline JSON.
+- Docs: `docs/autonomous-workflows.md` (design) + `research/autonomous-workflows-research.md` (sourced).
+  Eval + screenshot: `evals/autonomous-workflows/`.
+
 ## [0.2.0] — 2026-06-10
 
 The "everything composes" release: a comprehensive bundled skill pack, vendored TokenMasterX, a

@@ -1,0 +1,7 @@
+{
+  "_comment": "Top-level acceptance check for the whole goal. MUST be a real command_exit (tests/build), and MUST start RED (fail) so completion can be proven failure-first. The driver proves red->green on an intact trace before it will stop.",
+  "kind": "command_exit",
+  "target": ["npm", "test"],
+  "expect": 0,
+  "cwd": "."
+}
