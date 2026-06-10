@@ -384,3 +384,41 @@ real fault, file fixed on disk, verified trace. Not a test harness - the actual 
 ### Next (M4+)
 - Proper plugin packaging so copilot --agent phoenix works (one-command install).
 - Harder live scenario: Copilot edits real code, breaks a real test, self-heals - measured.
+
+## 2026-06-09 - Day 0 (cont. 10): H2 EXPERIMENT - objective verifier vs vanilla, LIVE on Copilot (20 sessions)
+
+**Goal:** Does giving real Copilot the phoenix_sense+heal loop change outcomes vs vanilla self-judgment?
+(H2 + Phoenix's core product claim, on the real runtime.)
+
+### Result: POSITIVE where it matters
+- WELL-SPECIFIED (slugify/duration/roman): vanilla 6/6 = phoenix 6/6 (CEILING - strong model, no harm).
+- UNDERSPECIFIED (clamp/initials, spec omits a checker-enforced criterion): vanilla 0/4 with 4 SILENT
+  FAILURES (claimed DONE every time, checker failed every time); phoenix 4/4, 0 silent failures.
+- OVERALL n=10/arm: silent-failure 40%->0%, verified-pass 60%->100%, 0 regressions. Phoenix tools used
+  10/10 phoenix runs, 0/10 vanilla (enforce-vs-offer replicated).
+- Evidence: evals/h2-experiment/RESULT.md + results_all.jsonl + evals/screenshots/h2-results.png.
+
+### What worked
+- Clean two-arm design scored by EXTERNAL hidden checkers (ground truth), pre-flighted (accept-good/
+  reject-naive) before spending credits. Adversarial underspecified tasks isolated the H2 signal cleanly.
+- Phoenix reliably invoked by live Copilot in every B run; healed every underspecified failure.
+
+### What didn't / friction (a LOT of harness debugging - documented honestly)
+- copilot needs --add-dir <cwd> to edit files in a temp dir (silent no-op without it).
+- Start-Job AND Start-Process both mangle the copilot.cmd arg quoting -> use the direct & \ call op.
+- PowerShell case-INSENSITIVE vars: \ (path) collided with \ (array) -> renamed \.
+- Specs with -> arrows / quotes / dash-led tokens get parsed as CLI options by the cmd shim -> rewrote
+  specs as plain prose + sanitize (strip quotes, collapse ws).
+- First well-specified round was a CEILING null (both 100%) - same lesson as H1; added adversarial
+  underspecified tasks to actually exercise the silent-failure-catch the experiment was built for.
+
+### Honest scope
+- 2 reps/task, single model, deterministic checkers, constructed underspecified tasks. Directional signal
+  with an unambiguous mechanism; replicate at larger n before a hard statistical claim. Report BOTH the
+  ceiling and the positive - no cherry-picking.
+
+### Product implication (M4)
+- Headline for shippable Phoenix: "cut Copilot silent-failure 40%->0% on hidden-criteria tasks, 0 regressions."
+
+### Next
+- M4 product packaging around this number; H1 replication still owed to the heartbeat; Scout adapter spike.

@@ -1,0 +1,1 @@
+Implement the function initials(name) which takes a full name and returns the first letter of each space separated word joined together. For example initials(ada lovelace) gives the letters a and l joined.

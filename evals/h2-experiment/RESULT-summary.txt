@@ -1,0 +1,29 @@
+ATV-Phoenix - H2 experiment: does an objective verifier (phoenix_sense + heal) change
+real GitHub Copilot outcomes vs vanilla self-judgment?   [live copilot -p, 20 sessions]
+
+Two arms, same tasks, scored externally by a hidden acceptance checker (ground truth):
+  A_vanilla : Copilot implements from the spec, self-judges, declares DONE.   (no Phoenix)
+  B_phoenix : Copilot must phoenix_sense the checker and heal until green.    (Phoenix loop)
+
+                          A_vanilla                 B_phoenix
+                    pass   silent-fail  phoenix    pass   silent-fail  phoenix
+WELL-SPECIFIED      6/6        0          0/6      6/6        0          6/6     (ceiling: both perfect)
+  slugify/duration/roman
+UNDERSPECIFIED      0/4        4          0/4      4/4        0          4/4     <== the signal
+  clamp / initials
+------------------------------------------------------------------------------------
+OVERALL (n=10)      6/10       4 (40%)    0/10     10/10      0 (0%)     10/10
+
+HEADLINE
+  * Vanilla Copilot shipped BROKEN code with false confidence on 4/4 underspecified
+    tasks - it claimed DONE every time, but the objective checker failed every time.
+  * Phoenix caught and HEALED all 4 - 100% verified-correct, zero silent failures.
+  * Silent-failure rate: 40% (vanilla) -> 0% (phoenix).  Verified-pass: 60% -> 100%.
+  * Zero regressions: on well-specified tasks where the model already nails it,
+    Phoenix changed nothing (both 100%). The value appears exactly where the agent
+    cannot anticipate the acceptance criteria - the real-world case.
+  * Enforce vs offer (TokenMasterX's lesson, replicated): Phoenix tools were used in
+    10/10 Phoenix runs and 0/10 vanilla runs. An unprompted agent never self-verifies.
+
+Honest scope: 2 reps/task, single model (Copilot default), deterministic checkers.
+A signal worth replicating at scale - but the mechanism is unambiguous and live.
