@@ -72,7 +72,7 @@ impl Phoenix {
     }
 
     /// Objectively sense whether a check passes (no self-grading).
-    #[tool(description = "Objectively sense whether a check passes (command exit code, file sha256, or regex in file). No self-grading. Returns JSON {ok, signal, evidence}.")]
+    #[tool(description = "Objectively check if a task succeeded. EXAMPLE call: {\"check\":{\"kind\":\"command_exit\",\"target\":[\"pytest\",\"-q\"],\"expect\":0}}. kind is one of command_exit (target=argv array, passes iff exit code==expect), file_sha256 (target=[path], expect=hex), regex_in_file (target=[path], expect=pattern). Returns {ok, signal, evidence}. No self-grading.")]
     async fn phoenix_sense(&self, args: Parameters<SenseArgs>) -> String {
         let r = sense(&args.0.check);
         let _ = trace().append("sense", &jdigest(&format!("{:?}", args.0.check.target)), r.ok, &r.signal, &r.evidence);
