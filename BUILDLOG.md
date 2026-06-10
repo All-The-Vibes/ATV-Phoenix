@@ -422,3 +422,26 @@ real fault, file fixed on disk, verified trace. Not a test harness - the actual 
 
 ### Next
 - M4 product packaging around this number; H1 replication still owed to the heartbeat; Scout adapter spike.
+
+## 2026-06-09 - Day 0 (cont. 11): M4 SHIP v0.1.0 + Scout spike + multi-host CLI
+
+**M4: Phoenix is now a shippable product.**
+- Product README (leads with the H2 number: 40%->0% silent failures), CHANGELOG, v0.1.0 tag pushed.
+- Added CLI MODE to phoenix-mcp: phoenix-mcp sense|snapshot|heal|verify-trace '<json>' with pass/fail
+  exit codes. SAME binary now serves Copilot (MCP, no args) AND Scout (shell CLI subcommands). cargo test 5/5.
+
+**Scout adapter spike (honest feasibility):**
+- FINDING: Scout does NOT accept arbitrary external MCP servers - its server set is fixed/builtin
+  (filesystem, playwright, shell, workiq), confirmed in ~/.copilot/m-mcp-servers.json + m-settings.json.
+- BUT Scout has a shell tool + a skills system. So the Scout adapter = the phoenix-mcp CLI (called via
+  shell, exit code = pass/fail) + dist/scout/phoenix-self-heal.skill.md (teaches the verify-heal loop).
+- One Rust core, two adapters (MCP for Copilot, CLI for Scout) = the multi-host promise, real. Validated
+  the CLI end-to-end: sense GREEN exit0, sense RED exit1, snapshot blessed, heal rollback healed, verify-trace ok 5 rows.
+
+**What worked:** the host-agnostic core paid off - shipping for a second host was a CLI dispatch + a skill
+file, not a rewrite. README anchored to a real measured number, not aspiration.
+
+**What didn't / honest:** --agent phoenix still needs marketplace/plugin registration (live use is via
+mcp-config registration); deferred to a later packaging pass. command_exit timeout still not in-process.
+
+**Next:** H1 replication (running off-peak in background) to be recorded when done.
