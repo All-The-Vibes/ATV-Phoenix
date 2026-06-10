@@ -1,0 +1,23 @@
+[package]
+name = "phoenix"
+version = "0.0.1"
+edition = "2021"
+description = "ATV-Phoenix - self-healing spine for GitHub Copilot (sense/heal/snapshot/trace)"
+license = "MIT"
+
+[[bin]]
+name = "phoenix-mcp"
+path = "src/bin/phoenix_mcp.rs"
+
+[lib]
+name = "phoenix"
+path = "src/lib.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+regex = "1"
+
+[dev-dependencies]
+tempfile = "3"

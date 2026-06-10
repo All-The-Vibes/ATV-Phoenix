@@ -8,3 +8,10 @@ Cargo.lock.bak
 # graphify scratch
 graphify-out/
 .token-master/
+
+# rust build
+/target
+# demo scratch
+.phoenix-demo/
+.phoenix/
+evals/m1-self-heal/m1-demo.html
