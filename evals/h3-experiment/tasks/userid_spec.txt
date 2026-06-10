@@ -1,0 +1,1 @@
+Implement the function user_id(n) which takes a positive integer and returns the canonical user id string for that number.
