@@ -7,7 +7,7 @@ use std::time::Instant;
 
 const MAX_EVIDENCE: usize = 2048;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum CheckKind {
     /// Run `target` as argv (no shell); pass iff exit code == expect (default 0).
@@ -18,7 +18,7 @@ pub enum CheckKind {
     RegexInFile,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Check {
     pub kind: CheckKind,
     /// For CommandExit: argv (first element is the program). For file checks: a single path.
