@@ -274,3 +274,38 @@ standing Phoenix convention (evals/ + evals/screenshots/ per milestone). M0 is t
 ### Next step
 Design v0 Rust MCP server tool contracts (sense/heal/trace + trace JSONL), scaffold via Claude Code CLI,
 prove fault->heal in a live Copilot session -> that becomes Milestone M1 (with its own eval + screenshot).
+
+## 2026-06-09 - Day 0 (cont. 7): MILESTONE M1 - self-healing spine BUILT + PASSING (evals + screenshot)
+
+**Goal:** build the one novel thing - a Rust spine that senses objective failure and heals it.
+
+### Design-first + critique (worked)
+- Wrote docs/v0-spine-design.md, then ran a rubber-duck critique BEFORE coding. It caught a real flaw:
+  the original demo (corrupt file -> restore -> check bytes==snapshot) is TAUTOLOGICAL (only proves
+  restore restores). Adopted fix: success criterion = an EXTERNAL invariant (a real command exit code),
+  not snapshot bytes. Also adopted: blessed snapshots (explicit snap_id, only snapshot a passing state),
+  verify_trace as tamper-EVIDENT (not proof), stdout=JSON-RPC-only rule, argv-only command exec, pin rmcp.
+
+### Built (Rust lib phoenix)
+- sense (command_exit/file_sha256/regex_in_file, no LLM), snapshot (bless-only-if-check-passes, atomic
+  restore), heal (rollback/retry, bounded <=3, healed only if EXTERNAL recheck passes), trace (append-only
+  hash-chained JSONL, verify() tamper-evident - same scheme as goose scorecard). phoenix-mcp bin = stub.
+
+### Evals: PASS
+- cargo test = 3/3 green: green_red_heal_green_with_trace (behavioral, external signal),
+  trace_is_tamper_evident (edits caught at broken_at=0), snapshot_refuses_to_bless_bad_state.
+- cargo run --example demo_self_heal emits a verified 4-row trace: sense(ok) -> snapshot(blessed) ->
+  sense(RED) -> heal(healed) ; trace.verify ok=true rows=4.
+- Evidence: evals/m1-self-heal/RESULT.md + evals/screenshots/m1-self-heal.png (visually verified).
+
+### What didn't / friction (honest)
+- First demo design was tautological - caught by critique before coding (cheapest possible fix).
+- command_exit timeout documented but not yet in-process enforced (v0 limit; harden before live Copilot).
+- rmcp/stdio MCP wiring DEFERRED to M2 - spine proven independently of protocol churn first.
+
+### Scope honesty
+- Called "bounded objective recovery," NOT broad self-healing. Rollback is one strategy; no diagnosis claimed.
+
+### Next (M2)
+Wire spine into a LIVE Copilot session via rmcp stdio MCP + /mcp; prove sense+heal from inside Copilot
+(not just cargo test). Eval + screenshot of the live session.
