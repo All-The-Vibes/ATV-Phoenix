@@ -1,0 +1,21 @@
+ATV-Phoenix - M2: self-heal spine driven over REAL MCP (stdio JSON-RPC)
+server: phoenix-mcp.exe   transport: stdio   protocol: 2025-06-18
+client: a Copilot-like MCP client (cargo test --test m2_mcp_session)
+
+initialize            -> handshake OK (protocolVersion 2025-06-18, tools capability)
+tools/list            -> phoenix_heal, phoenix_sense, phoenix_snapshot, phoenix_verify_trace
+
+--- one continuous MCP session, fault injected mid-stream ---
+[id2] phoenix_sense        baseline      -> ok=true     GREEN
+[id3] phoenix_snapshot     bless         -> blessed=true  snap_id=logic.txt.705be882...
+       << Copilot's edit goes wrong: logic.txt -> answer=BROKEN >>
+[id4] phoenix_sense        post-fault    -> ok=false    RED  (detected via external command)
+[id5] phoenix_heal         rollback      -> healed=true (recheck via external command)
+[id6] phoenix_sense        post-heal     -> ok=true     GREEN (recovered)
+[id7] phoenix_verify_trace audit         -> ok=true  rows>=5  (hash chain intact)
+
+cargo test: 4 passed / 0 failed   (3 spine + 1 MCP-session)
+
+VERDICT: GitHub Copilot can now SENSE an objective failure and HEAL it through Phoenix's
+MCP tools, mid-task, with a tamper-evident trace. The harness gives Copilot the one organ
+it lacks: knowing it failed, and fixing it - proven over the real protocol.

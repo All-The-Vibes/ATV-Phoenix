@@ -309,3 +309,41 @@ prove fault->heal in a live Copilot session -> that becomes Milestone M1 (with i
 ### Next (M2)
 Wire spine into a LIVE Copilot session via rmcp stdio MCP + /mcp; prove sense+heal from inside Copilot
 (not just cargo test). Eval + screenshot of the live session.
+
+## 2026-06-09 - Day 0 (cont. 8): MILESTONE M2 - spine works over REAL MCP (evals + screenshot)
+
+**Goal:** make the M1 spine callable by GitHub Copilot via an rmcp stdio MCP server; prove sense+heal
+THROUGH the protocol.
+
+### Built
+- src/bin/phoenix_mcp.rs: rmcp 1.7 stdio MCP server, 4 tools (phoenix_sense/snapshot/heal/verify_trace),
+  thin adapters over the M1 lib. stdout=JSON-RPC only, diagnostics->stderr.
+- tests/m2_mcp_session.rs: spawns the server, does the MCP handshake, drives the full self-heal flow
+  over real JSON-RPC with the fault injected MID-SESSION (one process = consistent trace).
+
+### Evals: PASS
+- initialize -> protocol 2025-06-18 + tools capability; tools/list -> 4 tools with full JSON schemas.
+- Full chain over MCP: sense(GREEN) -> snapshot(blessed) -> [inject fault] -> sense(RED) ->
+  heal(healed=true) -> sense(GREEN) -> verify_trace(ok, rows>=5).
+- cargo test = 4/4 (3 spine + 1 MCP-session). Evidence: evals/m2-mcp/RESULT.md + session.txt +
+  evals/screenshots/m2-mcp-session.png (visually verified).
+
+### What worked
+- rmcp macros generated correct MCP tool schemas from Rust types - Copilot gets typed contracts free.
+- M1 lib dropped straight behind the MCP adapter (compose, don't rewrite).
+
+### What didn't / friction (integration testing earned its keep)
+- REAL BUG caught only by end-to-end MCP testing: heal(rollback) resolved ctx.path against process CWD
+  not the workspace -> first run healed the wrong file (healed=false). Fixed: workspace.join(path)
+  (no-op for absolute paths, so M1 still passes). A library-only test would have missed this.
+- First harness drove TWO server processes (to inject fault between calls) -> fragmented trace + buggy
+  PowerShell parsing. Replaced with a single-process Rust integration test. Lesson: one stdio session.
+- ServerInfo is #[non_exhaustive] -> build via default()+assign, not struct literal.
+
+### Scope honesty
+- Proven against a Copilot-LIKE MCP client (the integration test). Driving from the actual interactive
+  copilot CLI (install agent + /mcp) is a thin remaining step (M3), not a code risk - protocol proven here.
+
+### Next (M3)
+Package as an installable Copilot plugin (agent def + mcp-servers block + npx/marketplace, ATV-StarterKit
+style) and drive a real fault->heal from inside an interactive copilot session. Eval + screenshot.

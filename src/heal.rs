@@ -9,14 +9,14 @@ use std::path::Path;
 
 pub const MAX_RETRIES: u32 = 3;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Strategy {
     Retry,
     Rollback,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct HealCtx {
     /// Retry: argv to re-run between rechecks.
     #[serde(default)]
@@ -56,9 +56,11 @@ fn heal_rollback(workspace: &Path, ctx: &HealCtx) -> HealResult {
             evidence: "rollback requires path + snap_id".into(), recheck: r,
         };
     };
-    let p = Path::new(path);
+    // Resolve `path` against the workspace. (join with an absolute path is a no-op, so M1's
+    // absolute-path tests keep working; relative paths from MCP callers resolve correctly.)
+    let p = workspace.join(path);
     let action = format!("rollback {} <- snapshot {}", path, snap_id);
-    if let Err(e) = restore(workspace, p, snap_id) {
+    if let Err(e) = restore(workspace, &p, snap_id) {
         let r = sense(&ctx.recheck);
         return HealResult { healed: false, attempts: 1, action, evidence: format!("restore failed: {e}"), recheck: r };
     }
