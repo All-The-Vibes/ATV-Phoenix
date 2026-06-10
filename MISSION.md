@@ -2,10 +2,18 @@
 
 > _Rises from its own ashes. Senses when it's broken, heals itself, and gets better with use._
 
+> **Status note (updated 2026-06-10).** This is the original **founding charter** — the vision and POV
+> Phoenix was built against. For what has actually shipped, see [`README.md`](README.md) and
+> [`CHANGELOG.md`](CHANGELOG.md). Two things below describe the *intended* future, not today's reality:
+> the **install path** is `setup.py` today (the `copilot plugin marketplace` / `npx` distribution is
+> still scaffolded), and Phoenix ships its **own 13 ground-up skills** — Addy Osmani's pack is an
+> *optional companion*, not bundled.
+
 ## One sentence
-**ATV-Phoenix is a self-healing harness *for GitHub Copilot* — installed like ATV-StarterKit
-(plugin marketplace + npx) — that carries portable agentskills.io skills, senses and heals failures
-via a fast Rust MCP companion, and compounds capability over time. Built with Claude Code; runs on Copilot.**
+**ATV-Phoenix is a self-healing harness *for GitHub Copilot* (and Microsoft Scout) — installed today via
+a one-command `setup.py` (a `plugin marketplace` + `npx` path is planned) — that carries a bundled pack
+of agentskills.io skills, senses and heals failures via a fast Rust MCP companion, and compounds
+capability over time. Built with Claude Code; runs on Copilot.**
 
 ## Target runtime: GitHub Copilot (this is a Copilot harness, not a standalone agent)
 Phoenix does NOT ship its own model loop. **The agent runtime is GitHub Copilot** (CLI + VS Code).
@@ -70,14 +78,16 @@ makes them native, fast, and inspectable:
 - **agentskills.io-native:** a skill is a folder with a `SKILL.md` (metadata + instructions),
   optionally bundling scripts/references/assets. Phoenix loads skills by **progressive disclosure**
   (discover names/descriptions → activate full instructions on match → execute).
-- **Lifecycle gates** (à la Addy's agent-skills / ATV's compound-engineering): spec → plan →
-  build → **verify** → review → ship, with verification as a hard gate, not a suggestion.
+- **Lifecycle gates** (à la Addy's agent-skills / ATV's compound-engineering): think → plan →
+  build → test → debug → context → **review** → ship, with verification as a hard gate, not a suggestion.
 - **Portable:** skills authored for Phoenix run on any agentskills.io-compatible client, and
   vice-versa. We adopt the standard; we don't fork it.
-- **Reuse, with attribution:** **Addy Osmani's `agent-skills` is MIT-licensed** (© 2025 Addy Osmani),
-  so we ship its lifecycle skills (spec/plan/build/test/review/ship + anti-rationalization gates)
-  directly as part of Phoenix's starter skill pack — not as inspiration, as a real reusable input.
-  Same for any other MIT/Apache agentskills.io packs. We bundle good skills; we build new only for the spine.
+- **Built ground-up, with attribution where due:** Phoenix ships its **own 13-skill pack**, written
+  from scratch in the `SKILL.md` standard — rebuilding the *structure* Addy Osmani's MIT `agent-skills`
+  pioneered (ASCII diagrams, Common Rationalizations tables, Red Flags) but faster, self-healing, and
+  token-efficient, and folding in craft from Karpathy, Mat Pocock, and Emil Kowalski. **Addy's pack
+  remains an *optional companion*** you can install alongside; we build new for the spine and the
+  verification-gated lifecycle, and compose proven companions (TokenMasterX) rather than fork them.
 
 ## Token-efficient retrieval = ADOPT TokenMasterX (already built + measured by you)
 We do NOT build this from scratch — **you already built and measured it: `shyamsridhar123/TokenMasterX`.**
@@ -164,10 +174,11 @@ No PMI ritual, no Gantt theater, no story-point liturgy. Instead:
   If a capability already ships and is measured (TokenMasterX), we adopt it, we don't reimplement it.
 
 ## The first verifiable slice (v0 — defined so this can't become architecture astronomy)
-**A Rust MCP server that GitHub Copilot connects to via `/mcp`, exposing three tools — `sense`
-(check an objective signal: exit code / test / file-or-hash), `heal` (one bounded, logged recovery:
-retry-or-rollback), and `trace` (append-only JSONL with per-step token cost) — proven by a real
-Copilot session where an injected fault is SENSED and a heal FIRES, shown in the trace.** The skill it
+**A Rust MCP server that GitHub Copilot connects to via `/mcp`, exposing four tools — `sense`
+(check an objective signal: exit code / test / file-or-hash), `snapshot` (bless a known-good state only
+if a check passes), `heal` (one bounded, logged recovery: retry-or-rollback), and `verify_trace`
+(audit the append-only hash-chained JSONL) — proven by a real Copilot session where an injected fault
+is SENSED and a heal FIRES, shown in the trace.**The skill it
 operates on is a single agentskills.io `SKILL.md`. Success = inside an actual Copilot run, the fault
 is *detected and recovered*, evidenced by the trace, not by assertion. Everything else (skill-index
 retrieval, RSI/compounding, multi-skill, agents, npx installer, marketplace) builds on this proven spine.
