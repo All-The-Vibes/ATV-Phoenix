@@ -89,12 +89,16 @@ the rest.
 
 | Layer | Component | Ships with Phoenix? |
 |---|---|---|
-| **Self-heal** (the novel core) | `phoenix-self-heal` skill + the `phoenix` MCP server / CLI | **Bundled** (`skills/phoenix-self-heal`) |
+| **Self-heal + full lifecycle** (the core) | `phoenix-self-heal` + a verification-gated lifecycle pack (`phoenix-spec/plan/build/review/ship`) + the `phoenix` MCP server / CLI | **Bundled** (`skills/`, installed automatically) |
 | **Token-efficient retrieval** | [TokenMasterX](https://github.com/shyamsridhar123/TokenMasterX) — graph-routed code navigation (−73% tokens) | Recommended companion (`token-master@token-master`) |
-| **Lifecycle discipline** | [Addy Osmani's agent-skills](https://github.com/addyosmani/agent-skills) — MIT spec/plan/build/test/review/ship | Recommended companion (`agent-skills@addy-agent-skills`) |
+| **Extra lifecycle skills** | [Addy Osmani's agent-skills](https://github.com/addyosmani/agent-skills) — MIT general workflow pack | Optional companion (`agent-skills@addy-agent-skills`) |
 
-Install all three and Copilot gets: cheap structural retrieval → disciplined lifecycle → objective
-verify-and-heal. Each is a separate, standards-native plugin; Phoenix wires them as a stack, not a fork.
+Phoenix ships its **own** verification-gated lifecycle pack — spec → plan → build → review → ship,
+where *every stage is gated by an objective `phoenix_sense` check* (the differentiator: most lifecycle
+skills are workflow prose with no objective gate). These install automatically and are **self-maintaining**:
+`phoenix-mcp doctor` validates every bundled skill with Phoenix's own spine, and `cargo test` fails if any
+skill drifts — the harness verifies itself. TokenMasterX (token retrieval) is a recommended companion; the
+installer detects it and prints the one-command install.
 
 ---
 

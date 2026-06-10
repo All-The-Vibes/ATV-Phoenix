@@ -39,3 +39,9 @@ First shippable release. A self-healing harness for AI coding agents, multi-host
 - `tokens_in/out` not yet captured (the host doesn't expose per-call counts to the server).
 - `--agent phoenix` requires marketplace/plugin registration; live use today is via MCP-config registration.
 - Results are directional (small n, single model, deterministic checkers).
+
+### Added (skills + self-maintenance)
+- Bundled, verification-gated lifecycle skill pack (skills/): phoenix-spec / plan / build / review /
+  ship + phoenix-self-heal — every stage gated by an objective phoenix_sense check.
+- phoenix-mcp doctor + src/doctor.rs: Phoenix validates its own bundled skills (self-maintenance);
+  cargo test fails on skill drift. setup.py installs all bundled skills and runs the self-check.
