@@ -1,6 +1,6 @@
 # Intent-to-Outcome (I2O): the system Phoenix is an early organ of
 
-> _Radio before the television. Phoenix proves the signal; I2O adds the picture._
+> _Radio for television. We have the new medium — we're still broadcasting the old show on it._
 
 This document explains the larger idea behind ATV-Phoenix. Phoenix is a shippable product on its
 own — a self-healing harness for coding agents — but it is also the **first working organ** of a
@@ -76,26 +76,36 @@ becomes explicit success criteria + an evidence plan, "did it work?" stops being
 
 ---
 
-## 4. Radio before the television
+## 4. Radio *for* television
 
-Phoenix is **not** the whole loop. It productizes the three hardest *middle* stages —
+When television was new, nobody knew how to make *television*. So broadcasters pointed a camera at
+people doing **radio** — same scripts, same formats, a brand-new visual medium used to run an old
+audio art form. The new medium was already in the room; the native way to use it hadn't been invented
+yet.
+
+**That is exactly where agentic AI is — and where Phoenix honestly sits.** We have a genuinely new
+medium: an agent that can sense, act, verify, and compound. And we're mostly still using it to run the
+*old* show — autocomplete, one-shot chat, "generate code and hope."
+
+Phoenix is **not** the finished form. It productizes the three hardest *middle* stages —
 **FORMALIZE → ACT → VERIFY (and heal)** — in the one domain where the grader can be made *perfect*:
-**code, which either runs or doesn't.**
+**code, which either runs or doesn't.** It uses a little more of what the new medium can actually do
+than autocomplete does. But make no mistake: **this is still radio *for* television** — one of the
+first awkward broadcasts on new hardware. Its value isn't that it's the native format; it's that it
+proves the new medium can carry a signal the old one couldn't: **objective verification on a frozen
+model** that converts "looks done" into "is done."
 
-That narrowness is the strategy. **Radio proved the core primitive** — broadcast a signal over the
-air, a receiver reconstructs it — *before* television inherited that exact infrastructure and added
-the picture. Phoenix is the radio: it proves, on live agent sessions with hidden graders, that a
-**frozen model + a thin enforcement harness converts "looks done" into "is done."** The full I2O
-system is the television: the **same loop**, generalized across all of digital life, running
-proactively and persistently. Same signal, same infrastructure, bigger screen.
+The full I2O system is the bet on what the *native* format becomes once we stop imitating the old one:
+the **same loop**, generalized across all of digital life, running proactively and persistently — not
+a camera pointed at a radio, but television finally being television.
 
-### What carries over unchanged
+### What the new medium already does vs what the native format adds
 
-| Principle | In Phoenix today | In the full I2O system |
+| Principle | What the new medium already lets Phoenix do | What the native I2O format adds |
 |---|---|---|
-| **The Intent Contract** | a `phoenix_sense` check *is* the success-criteria + evidence made executable | proposed automatically from sensed context, promoted by a human |
+| **The Intent Contract** | a `phoenix_sense` check *is* the success-criteria + evidence made executable | contracts proposed automatically from sensed context, promoted by a human |
 | **Evidence over self-grading** | `phoenix_sense` reports only objective signals; a fabricated "done!" is the failure mode it kills | the non-negotiable that keeps a *proactive* system trustworthy |
-| **Enforce, don't offer** | value comes from the loop being *run*, not merely available (unprompted self-verify measured 0/10) | the heartbeat runs `SENSE→FORMALIZE→VERIFY` without being asked |
+| **Enforce, don't offer** | value comes from the loop being *run*, not merely available (unprompted self-verify measured 0/10) | the loop runs `SENSE→FORMALIZE→VERIFY` without being asked |
 | **Frozen weights, human direction** | improvement is scaffolding-level (skills, checks, memory), evidence-gated | the human still sets goals; the system compounds the means |
 
 ### Phoenix → I2O stage map
@@ -162,12 +172,12 @@ in the coding domain.
 
 ## 8. Honest limits
 
-This is **radio**, not television. Today's evidence is narrow-domain, small-n, single-model, and still
-largely *reactive* rather than proactive. Turning the signal into the picture requires: replication to
-significance, breadth across the four pillars, and a proactive loop that closes one full cycle
-end-to-end without a human in every step. The infrastructure that makes the television possible —
-objective sensing, bounded healing, an evidence trail, compounding skills — is what Phoenix proves and
-ships.
+This is still **radio *for* television** — a new medium running an old format. Today's evidence is
+narrow-domain, small-n, single-model, and still largely *reactive* rather than proactive. Discovering
+the *native* format requires: replication to significance, breadth across the four pillars, and a
+proactive loop that closes one full cycle end-to-end without a human in every step. The infrastructure
+that makes the native format possible — objective sensing, bounded healing, an evidence trail,
+compounding skills — is what Phoenix proves and ships.
 
 ---
 
