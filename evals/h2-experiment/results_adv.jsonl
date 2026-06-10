@@ -1,0 +1,8 @@
+{"id":"clamp-A-1","used_phoenix":0,"arm":"A_vanilla","actual_pass":0,"claimed_done":1,"rep":1,"task":"clamp"}
+{"id":"clamp-B-1","used_phoenix":1,"arm":"B_phoenix","actual_pass":1,"claimed_done":1,"rep":1,"task":"clamp"}
+{"id":"clamp-A-2","used_phoenix":0,"arm":"A_vanilla","actual_pass":0,"claimed_done":1,"rep":2,"task":"clamp"}
+{"id":"clamp-B-2","used_phoenix":1,"arm":"B_phoenix","actual_pass":1,"claimed_done":1,"rep":2,"task":"clamp"}
+{"id":"initials-A-1","used_phoenix":0,"arm":"A_vanilla","actual_pass":0,"claimed_done":1,"rep":1,"task":"initials"}
+{"id":"initials-B-1","used_phoenix":1,"arm":"B_phoenix","actual_pass":1,"claimed_done":1,"rep":1,"task":"initials"}
+{"id":"initials-A-2","used_phoenix":0,"arm":"A_vanilla","actual_pass":0,"claimed_done":1,"rep":2,"task":"initials"}
+{"id":"initials-B-2","used_phoenix":1,"arm":"B_phoenix","actual_pass":1,"claimed_done":1,"rep":2,"task":"initials"}

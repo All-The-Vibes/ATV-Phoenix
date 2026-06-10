@@ -1,0 +1,1 @@
+Implement the function clamp(x) which takes a number and returns it unchanged, except that if x is greater than 100 it returns 100. For example clamp(50) gives 50 and clamp(150) gives 100.

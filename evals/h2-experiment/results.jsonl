@@ -1,0 +1,12 @@
+{"id":"slugify-A-1","used_phoenix":0,"arm":"A_vanilla","actual_pass":1,"claimed_done":1,"rep":1,"task":"slugify"}
+{"id":"slugify-B-1","used_phoenix":1,"arm":"B_phoenix","actual_pass":1,"claimed_done":1,"rep":1,"task":"slugify"}
+{"id":"slugify-A-2","used_phoenix":0,"arm":"A_vanilla","actual_pass":1,"claimed_done":1,"rep":2,"task":"slugify"}
+{"id":"slugify-B-2","used_phoenix":1,"arm":"B_phoenix","actual_pass":1,"claimed_done":1,"rep":2,"task":"slugify"}
+{"id":"duration-A-1","used_phoenix":0,"arm":"A_vanilla","actual_pass":1,"claimed_done":1,"rep":1,"task":"duration"}
+{"id":"duration-B-1","used_phoenix":1,"arm":"B_phoenix","actual_pass":1,"claimed_done":1,"rep":1,"task":"duration"}
+{"id":"duration-A-2","used_phoenix":0,"arm":"A_vanilla","actual_pass":1,"claimed_done":1,"rep":2,"task":"duration"}
+{"id":"duration-B-2","used_phoenix":1,"arm":"B_phoenix","actual_pass":1,"claimed_done":1,"rep":2,"task":"duration"}
+{"id":"roman-A-1","used_phoenix":0,"arm":"A_vanilla","actual_pass":1,"claimed_done":1,"rep":1,"task":"roman"}
+{"id":"roman-B-1","used_phoenix":1,"arm":"B_phoenix","actual_pass":1,"claimed_done":1,"rep":1,"task":"roman"}
+{"id":"roman-A-2","used_phoenix":0,"arm":"A_vanilla","actual_pass":1,"claimed_done":1,"rep":2,"task":"roman"}
+{"id":"roman-B-2","used_phoenix":1,"arm":"B_phoenix","actual_pass":1,"claimed_done":1,"rep":2,"task":"roman"}
