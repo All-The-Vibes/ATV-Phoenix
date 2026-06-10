@@ -6,7 +6,7 @@
 > Phoenix was built against. For what has actually shipped, see [`README.md`](README.md) and
 > [`CHANGELOG.md`](CHANGELOG.md). Two things below describe the *intended* future, not today's reality:
 > the **install path** is `setup.py` today (the `copilot plugin marketplace` / `npx` distribution is
-> still scaffolded), and Phoenix ships its **own 13 ground-up skills** (all original, written from
+> still scaffolded), and Phoenix ships its **own 16 ground-up skills** (all original, written from
 > scratch — no third-party skill packs).
 
 ## One sentence
@@ -82,7 +82,7 @@ makes them native, fast, and inspectable:
   build → test → debug → context → **review** → ship, with verification as a hard gate, not a suggestion.
 - **Portable:** skills authored for Phoenix run on any agentskills.io-compatible client, and
   vice-versa. We adopt the standard; we don't fork it.
-- **Built ground-up:** Phoenix ships its **own 13-skill pack**, written from scratch in the `SKILL.md`
+- **Built ground-up:** Phoenix ships its **own 16-skill pack**, written from scratch in the `SKILL.md`
   standard — proven structural devices (ASCII decision diagrams, *Common Rationalizations* tables,
   *Red Flags*) but with **every gate an objective `phoenix_sense` check**, fast, self-healing, and
   token-efficient, folding in craft from Karpathy, Mat Pocock, and Emil Kowalski. We build new for the
@@ -169,7 +169,7 @@ No PMI ritual, no Gantt theater, no story-point liturgy. Instead:
   that's hidden is debt.
 - **Steal shamelessly, fork reluctantly — COMPOSE proven parts.** Phoenix *assembles* what already
   works (**TokenMasterX** — the measured token/retrieval layer, agentskills.io patterns, Hermes
-  patterns, ATV pillars) and **builds new for everything that defines it: the 13-skill
+  patterns, ATV pillars) and **builds new for everything that defines it: the 16-skill
   verification-gated pack and the genuinely-novel spine — objective sensing, bounded self-healing, and
   measured self-improvement.** If a capability already ships and is measured (TokenMasterX), we adopt
   it; the skills and spine are original.

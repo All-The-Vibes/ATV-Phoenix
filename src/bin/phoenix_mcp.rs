@@ -8,7 +8,7 @@
 
 use std::path::PathBuf;
 
-use phoenix::sense::{sense, Check};
+use phoenix::sense::{canonical_digest, sense, Check};
 use phoenix::snapshot::snapshot;
 use phoenix::{heal, HealCtx, Strategy, Trace};
 
@@ -75,7 +75,7 @@ impl Phoenix {
     #[tool(description = "Objectively check if a task succeeded. EXAMPLE call: {\"check\":{\"kind\":\"command_exit\",\"target\":[\"pytest\",\"-q\"],\"expect\":0}}. kind is one of command_exit (target=argv array, passes iff exit code==expect), file_sha256 (target=[path], expect=hex), regex_in_file (target=[path], expect=pattern). Returns {ok, signal, evidence}. No self-grading.")]
     async fn phoenix_sense(&self, args: Parameters<SenseArgs>) -> String {
         let r = sense(&args.0.check);
-        let _ = trace().append("sense", &jdigest(&format!("{:?}", args.0.check.target)), r.ok, &r.signal, &r.evidence);
+        let _ = trace().append("sense", &canonical_digest(&args.0.check), r.ok, &r.signal, &r.evidence);
         serde_json::to_string(&r).unwrap_or_else(|e| format!("{{\"error\":\"{e}\"}}"))
     }
 
@@ -130,6 +130,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
     // CLI mode (for hosts without external-MCP support, e.g. Microsoft Scout via its shell tool):
     //   phoenix-mcp sense '<check-json>'        -> prints SenseResult; exit 0 if ok else 1
+    //   phoenix-mcp accept '<check-json>'        -> gate ledger: exit 0 iff trace proves red->green + green now
     //   phoenix-mcp snapshot <path> '<check-json>'
     //   phoenix-mcp heal <rollback|retry> '<ctx-json>'
     //   phoenix-mcp verify-trace
@@ -146,17 +147,36 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn run_cli(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     let ws = workspace();
     let exit = |ok: bool| -> ! { std::process::exit(if ok { 0 } else { 1 }) };
+    // JSON args may be passed inline OR as `@path/to/file.json`. The `@file` form avoids the
+    // PowerShell/cmd → native-exe quote-mangling that corrupts inline JSON ("key must be a string");
+    // the loop driver always uses `@file`.
+    let jarg = |s: &str| -> std::io::Result<String> {
+        if let Some(path) = s.strip_prefix('@') {
+            std::fs::read_to_string(path)
+        } else {
+            Ok(s.to_string())
+        }
+    };
     match args[1].as_str() {
         "sense" => {
-            let check: Check = serde_json::from_str(&args[2])?;
+            let check: Check = serde_json::from_str(&jarg(&args[2])?)?;
             let r = sense(&check);
-            let _ = trace().append("sense", &jdigest(&args[2]), r.ok, &r.signal, &r.evidence);
+            let _ = trace().append("sense", &canonical_digest(&check), r.ok, &r.signal, &r.evidence);
             println!("{}", serde_json::to_string(&r)?);
             exit(r.ok);
         }
+        "accept" => {
+            // Gate ledger: is this check a SATISFIED acceptance gate, proven from the trace?
+            // ok=true only if the trace shows it red→green (failure-first) and it is green now.
+            // The driver — not the agent — calls this to decide completion.
+            let check: Check = serde_json::from_str(&jarg(&args[2])?)?;
+            let g = phoenix::accept::verify_gate(&ws, &check);
+            println!("{}", serde_json::to_string(&g)?);
+            exit(g.ok);
+        }
         "snapshot" => {
             let path = ws.join(&args[2]);
-            let check: Check = serde_json::from_str(&args[3])?;
+            let check: Check = serde_json::from_str(&jarg(&args[3])?)?;
             let s = snapshot(&ws, &path, &check)?;
             let _ = trace().append("snapshot", &jdigest(&args[2]), s.blessed, "snapshot", &format!("blessed={}", s.blessed));
             println!("{}", serde_json::to_string(&s)?);
@@ -164,7 +184,7 @@ fn run_cli(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
         }
         "heal" => {
             let strat: Strategy = serde_json::from_str(&format!("\"{}\"", args[2]))?;
-            let ctx: HealCtx = serde_json::from_str(&args[3])?;
+            let ctx: HealCtx = serde_json::from_str(&jarg(&args[3])?)?;
             let r = heal(&ws, strat, &ctx);
             let _ = trace().append("heal", &jdigest(&r.action), r.healed, "heal", &r.evidence);
             println!("{}", serde_json::to_string(&r)?);
@@ -193,7 +213,7 @@ fn run_cli(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
             Ok(())
         }
         other => {
-            eprintln!("phoenix: unknown subcommand '{other}'. Use: sense|snapshot|heal|verify-trace|doctor|serve");
+            eprintln!("phoenix: unknown subcommand '{other}'. Use: sense|accept|snapshot|heal|verify-trace|doctor|serve");
             std::process::exit(2);
         }
     }

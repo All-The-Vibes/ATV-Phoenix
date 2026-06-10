@@ -614,3 +614,51 @@ null->null->positive playbook). Added -Filter/-OutFile/-Append to run_swe.ps1 so
 re-spending calls.
 Evidence: evals/swe-bench-lite/RESULT.md + results.jsonl (+tier1/tier2) + run_swe.ps1 + tasks/ +
 evals/screenshots/swe-bench-result.png.
+
+== 2026-06-10 (cont.) :: autonomous workflows — ralph / goal / dynamic, gated by proof ==
+WHY: user asked to implement /phoenix-ralph /phoenix-goal /phoenix dynamic workflows — "the same
+capabilities available in claude code" (ralph loop, goal, dynamic workflows).
+RESEARCH: a research subagent compiled a sourced report (research/autonomous-workflows-research.md)
+from PRIMARY sources — Geoffrey Huntley's Ralph (ghuntley.com/ralph: while-loop, fresh context per
+iteration, filesystem as brain via fix_plan.md+AGENT.md, one task per loop, no auto-stop), Anthropic's
+Building Effective Agents (routing/orchestrator-workers/evaluator-optimizer) + SWE-bench scaffold,
+BabyAGI, ReAct. Also read the LIVE OMC ralph/autopilot/ultrawork/ralplan SKILL.md on this box — their
+final gate is an LLM reviewer's OPINION. That's the gap Phoenix closes.
+
+RUBBER-DUCK (before building): caught the core flaw — my first design trusted an agent-authored
+backlog `done:true` + prose "reproduce-first" rules. Fix adopted: completion must be DERIVED by the
+driver from the trace, failure-first, enforced in TOOLING not prose. Also: driver (not agent) owns
+sentinel/tag/budgets; top-level gate must be command_exit; ship dynamic routing as a SEPARATE skill so
+the fixed `phoenix` tree doesn't regress. These shaped the final build.
+
+BUILT:
+- Gate ledger (src/accept.rs, `phoenix-mcp accept`): ok ONLY if trace shows the exact check (by new
+  canonical_digest) went red→green, chain intact, green now. This is the centerpiece — it makes a
+  vacuous check (test -f) provably worthless: a gate never seen red is rejected. tests/gate_ledger.rs
+  proves accept(red→green)=ok, accept(never-red)=reject, accept(tampered)=reject. All green.
+- canonical_digest(&Check): MCP digested only target; CLI digested raw arg string — inconsistent, so a
+  check wasn't identifiable across the trace. Now both record canonical_digest (kind+target+normalized
+  expect), so "this exact check went red then green" is provable.
+- 3 skills (pack 13→16): phoenix-ralph (persistence loop), phoenix-goal (formalize an objective
+  acceptance check FIRST, then decompose+drive), phoenix-auto (dynamic router, opt-in; base phoenix
+  tree unchanged). doctor 16/16; skills_doctor floor bumped to >=16.
+- dist/ralph/phoenix-ralph.ps1 (+ .sh): external loop driver. Driver decides done via `accept`, owns
+  MaxLoops/MaxMinutes/NoProgressStop, verify-trace each iter, writes completed.json + git tag. Agent
+  only proposes.
+FRICTION (honest):
+- PowerShell→exe quote-mangling corrupted inline JSON ("key must be a string") — same class as the
+  earlier --additional-mcp-config pain. Fixed properly with an `@file` arg convention in the CLI; the
+  driver passes @done-check.json. Robust, no escaping hell.
+- Driver crashed on git tag in a commit-less test repo ($ErrorActionPreference=Stop turned git stderr
+  into a terminating error, flipping a PROVEN completion to exit 1). Made tagging best-effort
+  (try/catch, never undoes a proven accept).
+- A registered phoenix-mcp.exe (the real mcp-config server) locked the binary → build "Access denied";
+  stopped PID, rebuilt.
+EVIDENCE (no real Copilot spend — deterministic): gate_ledger 3/3; CLI accept rejects vacuous (exit 1)
+/ accepts red→green (exit 0); driver Case A refuses an already-green done-check (exit 2); driver Case B
+happy path proves completion + writes completed.json + tags (exit 0). Screenshot:
+evals/screenshots/autonomous-workflows.png. A live end-to-end Copilot build under the loop is the next
+evidence step.
+KEY INSIGHT: this is the Intent-to-Outcome loop made operational — ralph is ACT under persistence,
+goal is FORMALIZE→ACT→VERIFY, and the gate ledger is VERIFY turned into machine-enforced proof. Every
+other autonomous loop ends in an opinion; Phoenix ends in evidence.

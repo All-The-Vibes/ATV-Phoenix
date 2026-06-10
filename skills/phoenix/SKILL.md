@@ -36,11 +36,33 @@ A task usually flows **think → plan → build (↔ test/debug) → review → 
 phase matches reality. Skills also activate by their own descriptions — building UI pulls build+test,
 a red check pulls debug, and so on.
 
+## Autonomous mode (opt-in)
+
+The tree above is the **fixed lifecycle** — use it when the path is known. For hands-off, run-to-
+completion work, route to the autonomous family instead:
+
+```
+    ├── Vague goal, run it to a proven outcome end-to-end? ─→ phoenix-goal  (formalize an objective
+    │                                                          acceptance check, then drive it)
+    ├── Have a backlog, grind until objectively done? ──────→ phoenix-ralph (persistence loop;
+    │                                                          the DRIVER proves done, not the agent)
+    └── Next step depends on results, pick as you go? ──────→ phoenix-auto  (dynamic state-sensing router)
+```
+
+These compose: `phoenix-goal` formalizes + decomposes, then hands off to the `phoenix-ralph` loop;
+`phoenix-auto` chooses skills dynamically. All three keep the same law — completion is **proven from
+the tamper-evident trace** (`phoenix-mcp accept`: failure-first red→green), never self-reported.
+See [`docs/autonomous-workflows.md`](../../docs/autonomous-workflows.md).
+
 ## The four tools every Phoenix skill uses
 - `phoenix_sense(check)` — objective pass/fail (a command's exit code, a file hash, a regex). No self-grading.
 - `phoenix_snapshot(path, check)` — save a known-good state, only if the check passes.
 - `phoenix_heal(strategy, ctx)` — bounded recovery (rollback / retry ≤3), confirmed by an external recheck.
 - `phoenix_verify_trace()` — audit the tamper-evident hash-chained log of everything sensed and healed.
+
+For autonomous loops there is also the **gate ledger** (CLI): `phoenix-mcp accept <check>` returns
+green **only if the trace proves the check went red→green (failure-first) and it is green now** — so
+"done" is derived from evidence, never authored. The loop driver, not the agent, calls it.
 
 ## The Phoenix Laws (non-negotiable, apply across every skill)
 

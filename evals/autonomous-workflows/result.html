@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><style>
+  :root{--bg:#0b0e14;--panel:#121724;--ink:#e6edf3;--mut:#8b97a7;--grn:#3fb950;--red:#f85149;--acc:#58a6ff;--amber:#d29922;--line:#222b3a;}
+  *{box-sizing:border-box} body{margin:0;background:radial-gradient(1200px 600px at 70% -10%,#16202e,var(--bg));color:var(--ink);font:14px/1.55 -apple-system,Segoe UI,Roboto,Arial;padding:38px}
+  .wrap{max-width:1080px;margin:0 auto}
+  h1{font-size:27px;margin:0 0 2px;letter-spacing:-.02em}
+  .sub{color:var(--mut);margin:0 0 22px;font-size:13.5px}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:18px}
+  .card.full{grid-column:1 / -1}
+  h3{margin:0 0 12px;font-size:12px;color:var(--mut);font-weight:600;text-transform:uppercase;letter-spacing:.06em}
+  table{width:100%;border-collapse:collapse} td,th{padding:7px 9px;text-align:left;border-bottom:1px solid var(--line);font-size:13px} th{color:var(--mut);font-size:11px;text-transform:uppercase}
+  tr:last-child td{border-bottom:none}
+  .ok{color:var(--grn);font-weight:700}.no{color:var(--red);font-weight:700}
+  code,pre{font-family:"Cascadia Code",Consolas,monospace}
+  pre{background:#0e1320;border:1px solid var(--line);border-radius:9px;padding:12px;margin:0;font-size:12px;overflow:hidden;white-space:pre-wrap;color:#cdd9e5}
+  .g{color:var(--grn)}.r{color:var(--red)}.a{color:var(--acc)}.y{color:var(--amber)}.m{color:var(--mut)}
+  .pill{display:inline-block;font-size:11px;padding:2px 9px;border-radius:999px;border:1px solid var(--line);color:var(--mut);margin-left:6px}
+  .foot{color:var(--mut);font-size:12px;margin-top:18px;line-height:1.7}.hl{color:var(--ink)}
+</style></head><body><div class="wrap">
+  <h1>Autonomous workflows — gate ledger + Ralph driver <span class="pill">/phoenix-ralph · /phoenix-goal · /phoenix-auto</span></h1>
+  <p class="sub">Completion is <span class="hl">derived from the tamper-evident trace by the driver</span> — failure-first (red→green), never self-reported. The differentiator: every other autonomous loop stops on an LLM's opinion; Phoenix stops on evidence.</p>
+
+  <div class="row">
+    <div class="card"><h3>Gate ledger tests · tests/gate_ledger.rs</h3>
+      <table><tr><th>test</th><th>asserts</th><th></th></tr>
+      <tr><td>accepts_failure_first</td><td>red→green, green now, intact</td><td class="ok">PASS</td></tr>
+      <tr><td>rejects_vacuous_never_red</td><td>green now, never red → reject</td><td class="ok">PASS</td></tr>
+      <tr><td>rejects_tampered_trace</td><td>edited JSONL → chain broken</td><td class="ok">PASS</td></tr>
+      </table>
+      <p class="m" style="font-size:12px;margin:10px 0 0">full suite green: gate 3/3 · self-heal 3/3 · mcp 1/1 · doctor 2/2 (16/16 skills)</p>
+    </div>
+    <div class="card"><h3>CLI · phoenix-mcp accept</h3>
+<pre><span class="m"># green now, but trace never saw it red</span>
+$ phoenix-mcp accept @done-check.json
+{"ok":<span class="r">false</span>,"saw_red":<span class="r">false</span>,
+ "reason":"<span class="y">vacuous-check guard</span>: a gate never
+  seen failing proves nothing"}   <span class="m">exit 1</span>
+
+<span class="m"># trace shows red→green, green now</span>
+$ phoenix-mcp accept @done-check.json
+{"ok":<span class="g">true</span>,"saw_red":<span class="g">true</span>,
+ "green_after_red":<span class="g">true</span>,"currently_green":<span class="g">true</span>,
+ "reason":"<span class="g">failure-first satisfied</span>"}   <span class="m">exit 0</span></pre>
+    </div>
+  </div>
+
+  <div class="card full"><h3>Ralph loop driver · dist/ralph/phoenix-ralph.ps1 (no real Copilot calls — stubbed agent)</h3>
+    <div class="row" style="margin-bottom:0">
+<pre><span class="a">CASE A — vacuous top-level gate refused</span>
+[ralph] baseline sense of done-check...
+[ralph] <span class="r">FATAL</span>: done-check is ALREADY GREEN at start --
+        it can't prove failure-first (it'd be a vacuous gate).
+driver exit=<span class="r">2</span>   <span class="m">(refuses to start on a gate that can't fail)</span></pre>
+<pre><span class="a">CASE B — happy path, completion proven</span>
+[ralph] iteration 1/5 -- invoking agent (fresh context)...
+[ralph] <span class="g">done-check ACCEPTED (failure-first, green)</span>.
+[ralph] COMPLETE in 2 iterations. Proof -> completed.json
+[ralph] git tag: phoenix-ralph-20260610-151719
+driver exit=<span class="g">0</span>   <span class="m">(driver writes the proof bundle + tag, not the agent)</span></pre>
+    </div>
+  </div>
+
+  <p class="foot">
+    <span class="hl">Mechanism:</span> a check is identified by a <span class="hl">canonical digest</span> recorded identically in the MCP path, CLI path, and ledger; <code>accept</code> proves that exact check went <span class="g">red</span>→<span class="g">green</span> on an intact hash-chained trace and is green now. The agent <span class="hl">proposes</span> state changes; the <span class="hl">driver decides</span> — and owns the loop/wall-clock/no-progress budgets, the sentinel, and the tag.<br>
+    <span class="hl">Honest limits:</span> <code>accept</code> is only as strong as the check (hence command_exit-only top-level gates + failure-first); the driver bounds cost via budgets, not a hard sandbox; a live end-to-end Copilot build under the loop is the next evidence step. Grounded in Huntley's Ralph, Anthropic's Building Effective Agents + SWE-bench, BabyAGI, ReAct (research/autonomous-workflows-research.md).
+  </p>
+</div></body></html>
