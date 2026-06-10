@@ -4,11 +4,19 @@ Geoffrey Huntley's Ralph loop (`while :; do cat PROMPT.md | agent; done`,
 [ghuntley.com/ralph](https://ghuntley.com/ralph)), **Phoenix-gated**: the driver proves completion
 objectively instead of trusting the agent to say "done."
 
-## Why this is an *external* loop
+## When to use this driver (vs the interactive loop)
 
-GitHub Copilot CLI (`copilot -p`) and Microsoft Scout are **one-shot** — neither has Claude Code's
-"re-inject the prompt until done" hook. So the persistence loop lives *outside* the agent, exactly as
-Huntley's original does. Each iteration is a fresh agent process; **the filesystem is the memory**.
+There are **two ways** to run `phoenix-ralph`:
+
+- **Interactive (inside the Copilot CLI):** just invoke `/phoenix-ralph` in your session — no script.
+  The loop runs in-session as the agent's own tool-use loop, and it proves completion with the
+  **`phoenix_accept` MCP tool**. That's the common case.
+- **This driver (unattended / large jobs):** for overnight runs, CI, or work too big for one context
+  window. `copilot -p` and Scout are **one-shot** — no "re-inject the prompt" hook — so this external
+  script *is* the persistence, giving Huntley's **fresh context every iteration**. It calls
+  `phoenix-mcp accept` (the CLI form of the same gate).
+
+Both share one law: **the gate proves completion** (red→green on an intact trace), never self-report.
 
 ## What makes it Phoenix (not just a `while` loop)
 

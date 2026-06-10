@@ -36,7 +36,7 @@ Full method + raw data per experiment under [`evals/`](evals/).
 
 ---
 
-## What Phoenix gives the agent (4 tools)
+## What Phoenix gives the agent (5 tools)
 
 ![The self-heal loop](assets/loop.jpg)
 
@@ -46,6 +46,7 @@ Full method + raw data per experiment under [`evals/`](evals/).
 | `phoenix_snapshot` | Save a known-good state — but **only if a check passes** (never blesses broken state). |
 | `phoenix_heal` | Bounded recovery (rollback to a snapshot, or retry ≤3×), **confirmed by an external recheck**. |
 | `phoenix_verify_trace` | Audit a tamper-evident, hash-chained trace of everything sensed and healed. |
+| `phoenix_accept` | **The gate ledger** — returns ok only if the trace proves a check went **red→green** (failure-first) and is green now. The objective "done" signal for autonomous loops; also a CLI command for the unattended driver. |
 
 The loop: **baseline-green → snapshot → edit → sense → heal if red → confirm green** — all on
 *objective* signals, all traced.

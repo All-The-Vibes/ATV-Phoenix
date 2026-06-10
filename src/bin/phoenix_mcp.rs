@@ -1,8 +1,8 @@
 //! phoenix-mcp — GitHub Copilot-facing MCP server (stdio) wrapping the proven Phoenix spine.
 //!
-//! Exposes four tools to Copilot via `/mcp`: phoenix_sense, phoenix_snapshot, phoenix_heal,
-//! phoenix_verify_trace. The spine logic lives in the `phoenix` lib (proven by `cargo test`, M1);
-//! this binary is the thin MCP adapter so Copilot can call sense/heal mid-task.
+//! Exposes five tools to Copilot via `/mcp`: phoenix_sense, phoenix_snapshot, phoenix_heal,
+//! phoenix_verify_trace, phoenix_accept. The spine logic lives in the `phoenix` lib (proven by
+//! `cargo test`, M1); this binary is the thin MCP adapter so Copilot can call sense/heal/accept mid-task.
 //!
 //! CRITICAL: stdout is JSON-RPC ONLY. All diagnostics go to stderr.
 
@@ -107,6 +107,13 @@ impl Phoenix {
     async fn phoenix_verify_trace(&self) -> String {
         let v = trace().verify();
         serde_json::to_string(&v).unwrap_or_default()
+    }
+
+    /// Prove a check is a SATISFIED acceptance gate from the trace (failure-first), not self-report.
+    #[tool(description = "Decide DONE by PROOF, not opinion. Returns ok=true ONLY if the tamper-evident trace shows this exact check went red->green (failure-first) AND it is green now. Call this before claiming a task/goal is complete — it is the objective stop signal for an autonomous loop. A check never observed failing (a vacuous gate) returns ok=false. EXAMPLE: {\"check\":{\"kind\":\"command_exit\",\"target\":[\"pytest\",\"-q\"],\"expect\":0}}. Returns {ok, check_digest, trace_intact, saw_red, green_after_red, currently_green, reason}.")]
+    async fn phoenix_accept(&self, args: Parameters<SenseArgs>) -> String {
+        let g = phoenix::accept::verify_gate(&workspace(), &args.0.check);
+        serde_json::to_string(&g).unwrap_or_else(|e| format!("{{\"error\":\"{e}\"}}"))
     }
 }
 
