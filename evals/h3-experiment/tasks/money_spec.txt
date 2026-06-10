@@ -1,0 +1,1 @@
+Implement the function format_money(cents) which takes an integer number of cents and returns a formatted money string for that amount in US dollars.

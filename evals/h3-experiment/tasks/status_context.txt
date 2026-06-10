@@ -1,0 +1,1 @@
+PROJECT CONVENTION (from the codebase memory): status labels in this project are ALWAYS uppercase and end with an exclamation mark. The active label is the word active and the inactive label is the word inactive, both following that convention. So active true gives ACTIVE! and active false gives INACTIVE!.

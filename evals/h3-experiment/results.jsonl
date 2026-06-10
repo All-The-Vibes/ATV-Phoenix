@@ -1,0 +1,8 @@
+{"arm":"A_nocontext","actual_pass":0,"task":"status","id":"status-A-1","rep":1}
+{"arm":"B_context","actual_pass":1,"task":"status","id":"status-B-1","rep":1}
+{"arm":"A_nocontext","actual_pass":0,"task":"status","id":"status-A-2","rep":2}
+{"arm":"B_context","actual_pass":1,"task":"status","id":"status-B-2","rep":2}
+{"arm":"A_nocontext","actual_pass":0,"task":"money","id":"money-A-1","rep":1}
+{"arm":"B_context","actual_pass":1,"task":"money","id":"money-B-1","rep":1}
+{"arm":"A_nocontext","actual_pass":0,"task":"money","id":"money-A-2","rep":2}
+{"arm":"B_context","actual_pass":1,"task":"money","id":"money-B-2","rep":2}

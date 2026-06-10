@@ -1,0 +1,1 @@
+Implement the function status_label(active) which takes a boolean and returns a status label string. If active is true it represents the active status, otherwise the inactive status.

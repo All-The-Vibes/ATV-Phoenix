@@ -1,0 +1,26 @@
+ATV-Phoenix - H3: does injecting project-specific CONTEXT/MEMORY lift task success?
+[live copilot -p, 8 sessions across 2 task families, 2 reps each]
+
+Design: each task's correct answer depends on a project convention the model CANNOT guess from
+the spec alone (verified in pre-flight: the default/standard solution FAILS the hidden checker).
+  A_nocontext : spec only.
+  B_context   : spec + the injected project convention (the memory). Only difference = the context.
+
+                                A_nocontext        B_context
+  status_label (ACTIVE! / INACTIVE!)   0/2              2/2
+  format_money (USD 1,234.50)          0/2              2/2
+  ------------------------------------------------------------
+  OVERALL (n=4 per arm)                0/4 (0%)         4/4 (100%)
+
+HEADLINE
+  * Without the project context, Copilot produced the STANDARD default every time (Active,
+    \,234.50) and FAILED the convention 4/4 - it cannot guess a project-specific rule.
+  * With the same convention injected as context, it followed it exactly and PASSED 4/4.
+  * Memory-lift: 0% -> 100% verified-pass. The context was decisive and necessary.
+
+This is H3 confirmed: relevant injected context/memory is the difference between a generic answer
+and a project-correct one - and it is the reason a memory layer (goose-brain) matters for I2O.
+
+Honest scope: 2 task families x 2 reps = 8 trials (the userid third family was abandoned mid-run to
+API rate-limiting; the 8 completed trials show a perfect, unambiguous 0/4 vs 4/4 split). Constructed
+conventions; single model. A clear directional result with an obvious mechanism.

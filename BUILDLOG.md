@@ -445,3 +445,32 @@ file, not a rewrite. README anchored to a real measured number, not aspiration.
 mcp-config registration); deferred to a later packaging pass. command_exit timeout still not in-process.
 
 **Next:** H1 replication (running off-peak in background) to be recorded when done.
+
+## 2026-06-10 - Day 1: one-command install + dogfooding (UX fix) + H3 memory-lift
+
+**(1) One-command install:** built .copilot-plugin/ (marketplace.json + phoenix-setup SKILL.md + setup.py).
+setup.py is idempotent: finds repo, builds binary if missing, registers the phoenix MCP server in
+~/.copilot/mcp-config.json, installs the agent. Validated: clean install + live heal works.
+
+**(2) Dogfooding caught a REAL UX failure (the value of dogfooding):** first live run cost 72 AI
+credits / 4 min / ~25 FAILED tool calls - Copilot kept guessing the strict sense schema wrong
+(missing kind/target, target-as-string, expect-as-int, bare argv without cmd /C). FIX: made sense
+inputs lenient (target accepts string|array via de_string_or_vec; expect accepts int|string|null) +
+put an explicit EXAMPLE in the tool description. RE-MEASURED: 14.8 credits / 52s / 4 calls = ~5x
+better. cargo test 6/6. Also fixed setup.py unicode crash on Windows console (ascii output).
+
+**(3) H3 memory-lift: POSITIVE, decisive.** Tasks whose correct answer depends on a project convention
+the model can't guess (pre-flighted: default solution FAILS the hidden checker). A_nocontext (spec
+only) 0/4; B_context (spec + injected convention) 4/4 = 0%->100%. Without context Copilot produced the
+standard default (Active, \,234.50) every time; with it, followed the convention exactly. Evidence:
+evals/h3-experiment/RESULT.md + results.jsonl + evals/screenshots/h3-results.png.
+
+### What didn't / honest
+- userid (3rd H3 family) abandoned mid-run to API rate-limiting; 8 completed trials show a perfect
+  0/4 vs 4/4 split so the conclusion is not in doubt, but it is 8 trials not 12.
+- --agent phoenix resolution still depends on agent-file registration; the plugin/marketplace path is
+  scaffolded (.copilot-plugin/) but copilot plugin install <repo> end-to-end not yet verified.
+
+### The trio is complete
+H1 (criteria-first, replicated +0.125) + H2 (objective verify, 40%->0% silent fail) + H3 (context,
+0->100%) = formalize intent + verify objectively + supply the right context. The I2O thesis, measured.

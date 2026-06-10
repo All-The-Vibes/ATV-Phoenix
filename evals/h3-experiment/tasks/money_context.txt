@@ -1,0 +1,1 @@
+PROJECT CONVENTION (from the codebase memory): money is ALWAYS formatted as the prefix USD then a space, then the dollar amount with a comma as the thousands separator and exactly two decimal places. For example 123450 cents gives USD 1,234.50 and 500 cents gives USD 5.00 and 99 cents gives USD 0.99.

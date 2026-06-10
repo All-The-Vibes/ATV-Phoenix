@@ -1,0 +1,1 @@
+PROJECT CONVENTION (from the codebase memory): user ids are ALWAYS the lowercase prefix u then a hyphen, then the number zero padded to exactly 5 digits. For example 42 gives u-00042 and 7 gives u-00007 and 12345 gives u-12345.
