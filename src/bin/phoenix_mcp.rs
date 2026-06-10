@@ -127,8 +127,61 @@ impl ServerHandler for Phoenix {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    eprintln!("phoenix-mcp v0 starting (stdio). workspace={}", workspace().display());
+    let args: Vec<String> = std::env::args().collect();
+    // CLI mode (for hosts without external-MCP support, e.g. Microsoft Scout via its shell tool):
+    //   phoenix-mcp sense '<check-json>'        -> prints SenseResult; exit 0 if ok else 1
+    //   phoenix-mcp snapshot <path> '<check-json>'
+    //   phoenix-mcp heal <rollback|retry> '<ctx-json>'
+    //   phoenix-mcp verify-trace
+    // MCP server mode (for GitHub Copilot via /mcp): no subcommand (or `serve`).
+    if args.len() > 1 && args[1] != "serve" {
+        return run_cli(&args);
+    }
+    eprintln!("phoenix-mcp v0 starting (stdio MCP). workspace={}", workspace().display());
     let service = Phoenix::new().serve(rmcp::transport::stdio()).await?;
     service.waiting().await?;
     Ok(())
+}
+
+fn run_cli(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    let ws = workspace();
+    let exit = |ok: bool| -> ! { std::process::exit(if ok { 0 } else { 1 }) };
+    match args[1].as_str() {
+        "sense" => {
+            let check: Check = serde_json::from_str(&args[2])?;
+            let r = sense(&check);
+            let _ = trace().append("sense", &jdigest(&args[2]), r.ok, &r.signal, &r.evidence);
+            println!("{}", serde_json::to_string(&r)?);
+            exit(r.ok);
+        }
+        "snapshot" => {
+            let path = ws.join(&args[2]);
+            let check: Check = serde_json::from_str(&args[3])?;
+            let s = snapshot(&ws, &path, &check)?;
+            let _ = trace().append("snapshot", &jdigest(&args[2]), s.blessed, "snapshot", &format!("blessed={}", s.blessed));
+            println!("{}", serde_json::to_string(&s)?);
+            exit(s.blessed);
+        }
+        "heal" => {
+            let strat: Strategy = serde_json::from_str(&format!("\"{}\"", args[2]))?;
+            let ctx: HealCtx = serde_json::from_str(&args[3])?;
+            let r = heal(&ws, strat, &ctx);
+            let _ = trace().append("heal", &jdigest(&r.action), r.healed, "heal", &r.evidence);
+            println!("{}", serde_json::to_string(&r)?);
+            exit(r.healed);
+        }
+        "verify-trace" => {
+            let v = trace().verify();
+            println!("{}", serde_json::to_string(&v)?);
+            exit(v.ok);
+        }
+        "--version" | "-V" => {
+            println!("phoenix {}", env!("CARGO_PKG_VERSION"));
+            Ok(())
+        }
+        other => {
+            eprintln!("phoenix: unknown subcommand '{other}'. Use: sense|snapshot|heal|verify-trace|serve");
+            std::process::exit(2);
+        }
+    }
 }
