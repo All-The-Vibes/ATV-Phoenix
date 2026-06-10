@@ -560,3 +560,26 @@ and credits the source. Meta-router updated to route to them. Pack now 13 skills
 
 Self-maintaining holds: doctor 13/13 OK; cargo test asserts >=13 + catches drift; full suite green;
 one-command install ships 13 + self-checks. README + setup.py updated.
+
+## 2026-06-10 - Day 1 (cont. 5): END-TO-END sandbox test (fresh clone -> install -> real game build)
+
+User: don't just test a broken file, do an E2E build of a real project like a space invaders html game.
+
+Did exactly that in an ISOLATED sandbox (code/phoenix-e2e-sandbox):
+1. Fresh git clone from the remote -> 13 skills + vendored TokenMasterX present.
+2. Cold cargo build --release (110s) + cargo test -> 6/6 suites PASS (shipped repo is green).
+3. setup.py into a FAKE HOME (real ~/.copilot untouched) -> MCP + agent + 13 skills + doctor 13/13 OK.
+4. REAL BUILD: live Copilot built a complete Space Invaders game.html (254 lines/8164 bytes) under the
+   Phoenix loop, gated by an objective node check.js (9 mechanics + size). phoenix_sense ok:true,
+   phoenix_verify_trace ok:true, independent recheck exit 0. 23.6 credits / 1m10s.
+5. Screenshot proves it RENDERS + runs (5 rows invaders, player ship, score, arcade aesthetic).
+
+Evidence: evals/e2e-sandbox/RESULT.md + space-invaders-game.html + game-check.js +
+evals/screenshots/e2e-space-invaders.png.
+
+Friction (honest): --additional-mcp-config takes inline JSON not a file path, and the PowerShell->cmd
+shim mangles inline JSON -> used the proper mcp-config registration path (what a real user does) instead.
+Restored real mcp-config afterward. The isolated-HOME install proves the path is clean + portable.
+
+This is the strongest evidence yet: a stranger could clone, one-command install, and have Copilot build
++ objectively verify a real game. The whole product works end to end.
