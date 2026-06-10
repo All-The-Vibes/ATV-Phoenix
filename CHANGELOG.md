@@ -2,6 +2,35 @@
 
 All notable changes to ATV-Phoenix are documented here.
 
+## [0.2.0] — 2026-06-10
+
+The "everything composes" release: a comprehensive bundled skill pack, vendored TokenMasterX, a
+real end-to-end build, and a SWE-bench-style benchmark.
+
+### Added
+- **13-skill verification-gated pack** (`skills/`): a `phoenix` meta-router (6 Phoenix Laws) + the full
+  lifecycle (`think → plan → build → test → debug → context → review → ship`) + `phoenix-self-heal` +
+  three craft skills distilling the masters — `phoenix-craft` (Karpathy), `phoenix-typescript`
+  (Mat Pocock, `tsc --noEmit` as the gate), `phoenix-design` (Emil Kowalski). `phoenix-think` is a deep
+  interview + deep-research skill that produces the Intent Contract before any code.
+- **Self-maintenance**: `phoenix-mcp doctor` validates every bundled skill with Phoenix's own spine;
+  `cargo test` (`tests/skills_doctor.rs`) fails if any skill drifts.
+- **Bundled TokenMasterX** (vendored MIT © 2026 Shyam Sridhar, `vendor/token-master`) — installed
+  automatically by `setup.py`.
+- **End-to-end build evidence** (`evals/e2e-sandbox/`): live Copilot built a working Space Invaders game
+  under the Phoenix loop, gated by an objective check + a hardened Playwright interaction gate
+  (`evals/benchmark/play_check.js`).
+- **SWE-bench-style lite benchmark** (`evals/swe-bench-lite/`): the SWE-bench resolved contract
+  (FAIL_TO_PASS + PASS_TO_PASS) on 9 self-contained tasks, two arms. Underspecified tier **50%→100%**,
+  overall **78%→100%**, 0 regressions; both vanilla misses were silent failures.
+
+### Changed
+- `setup.py` now installs the whole stack in one command (binary, MCP registration, 13 skills, doctor
+  self-check, bundled TokenMasterX).
+- README consolidated: full evidence table, the Intent-to-Outcome ("radio before the TV") framing,
+  honest bundled-vs-companion stack, hero + loop imagery.
+- `dist/install.ps1` now registers the MCP server (was agent-only).
+
 ## [0.1.0] — 2026-06-09
 
 First shippable release. A self-healing harness for AI coding agents, multi-host (GitHub Copilot + Microsoft Scout).
