@@ -13,6 +13,9 @@ self-healing tools become available.
 2. Registers the `phoenix` MCP server in `~/.copilot/mcp-config.json` (so the tools auto-load).
 3. Installs the `phoenix` agent definition to `~/.copilot/agents/phoenix.agent.md` (so
    `copilot --agent phoenix` works after a restart).
+4. Installs the **13 bundled skills** into `~/.copilot/skills`, then **self-checks them with
+   `phoenix-mcp doctor`** (the harness validates its own skills).
+5. Installs the **bundled TokenMasterX** for token-efficient retrieval (best-effort; needs `graphify`).
 
 ## How to run it
 The setup script ships in this skill's directory. Locate it, then run it with the repo root:

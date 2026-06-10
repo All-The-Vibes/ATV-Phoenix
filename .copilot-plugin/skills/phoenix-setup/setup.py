@@ -9,7 +9,7 @@ from pathlib import Path
 AGENT_TEMPLATE = """---
 name: phoenix
 description: Self-healing harness for GitHub Copilot. Use phoenix tools to OBJECTIVELY verify whether a task actually succeeded (not self-judgment), to snapshot a known-good state, and to recover (bounded rollback/retry) when an objective check fails. Prefer sensing over assuming success.
-tools: ['phoenix/*', 'read', 'search', 'execute']
+tools: ['phoenix/*', 'read', 'edit', 'execute']
 mcp-servers:
   phoenix:
     type: stdio
