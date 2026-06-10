@@ -347,3 +347,40 @@ THROUGH the protocol.
 ### Next (M3)
 Package as an installable Copilot plugin (agent def + mcp-servers block + npx/marketplace, ATV-StarterKit
 style) and drive a real fault->heal from inside an interactive copilot session. Eval + screenshot.
+
+## 2026-06-09 - Day 0 (cont. 9): MILESTONE M3 - LIVE self-heal inside the real GitHub Copilot CLI
+
+**THE milestone:** Copilot itself (copilot -p, v1.0.61) called Phoenix's MCP tools to sense + heal a
+real fault, file fixed on disk, verified trace. Not a test harness - the actual product runtime.
+
+### Install mechanism
+- dist/phoenix.agent.md (Copilot agent def, token-master pattern) + dist/install.ps1 (ATV-StarterKit style).
+- What worked for LIVE invocation: registering phoenix in ~/.copilot/mcp-config.json (the user MCP
+  registry). Copilot auto-discovered phoenix_sense/snapshot/heal/verify_trace.
+
+### Live proof
+- Prompt: "use phoenix tools to verify+recover logic.txt". Copilot's calls:
+  phoenix_sense -> ok:false (RED) ; phoenix_heal -> healed:true (rollback) ; phoenix_sense -> ok:true (GREEN).
+  Copilot reported Before:false After:true. File on disk = answer=GOOD_MARKER (fixed). ~14.9 credits/187.6k tok/36s.
+- Trace written DURING the live session (evals/m3-live-copilot/live-trace.jsonl): 3 hash-chained rows,
+  GENESIS->0f2254c6->a67e1126->6ec26de8.
+- Evidence: evals/m3-live-copilot/RESULT.md + live-trace.jsonl + evals/screenshots/m3-live-copilot.png.
+
+### Bug caught ONLY by the live LLM (and fixed)
+- Copilot passes expect:0 as an INTEGER; schema wanted string -> first sense call errored -32602.
+  Copilot self-corrected but wasted a turn. FIXED: expect now accepts string|number|null via custom
+  deserializer de_string_or_number + unit test. RE-VERIFIED LIVE: integer expect now accepted cleanly.
+  This is the class of bug no lib/protocol test finds - only a real model calling the tool.
+
+### Friction (honest)
+- Loose ~/.copilot/agents/phoenix.agent.md NOT picked up by --agent phoenix (Copilot resolves --agent
+  against registered/installed-plugin agents). Used mcp-config registry for the live proof. Proper
+  marketplace/npx plugin registration (so --agent phoenix works) is the remaining packaging step.
+- copilot -p headless is slow (30s-min+); inline --additional-mcp-config JSON gets mangled by the
+  PowerShell->cmd shim -> use the config-file path.
+
+### Tests: cargo test 5/5 (expect-flex + 3 spine + 1 MCP-session), 0 regressions.
+
+### Next (M4+)
+- Proper plugin packaging so copilot --agent phoenix works (one-command install).
+- Harder live scenario: Copilot edits real code, breaks a real test, self-heals - measured.

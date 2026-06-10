@@ -1,0 +1,26 @@
+ATV-Phoenix - M3: self-heal driven by the REAL GitHub Copilot CLI (copilot -p, v1.0.61)
+phoenix registered in ~/.copilot/mcp-config.json ; tools auto-discovered by Copilot.
+
+Prompt: "use the phoenix MCP tools to verify+recover logic.txt (healthy iff contains GOOD_MARKER)"
+
+--- Copilot's actual tool calls (from its session output) ---
+* phoenix_sense  -> (1st try) schema error: Copilot sent expect:0 as INTEGER; tool wants string
+* phoenix_sense  -> {"ok":false}   RED  - failure detected via external findstr command
+* phoenix_heal   -> {"healed":true,"attempts":1,"action":"rollback logic.txt <- snapshot ..."}
+* phoenix_sense  -> {"ok":true}    GREEN - recovered, confirmed by the external recheck
+Copilot's report:  Before: false   After: true
+File on disk:      answer=GOOD_MARKER   (actually fixed)
+Cost:              ~14.9 AI credits, 187.6k tokens, 36s
+
+--- the tamper-evident trace Phoenix wrote DURING the live Copilot session ---
+[0] sense ok=false  (RED)   hash=0f2254c6...
+[1] heal  ok=true   (healed) hash=a67e1126...  prev=0f2254c6...
+[2] sense ok=true   (GREEN)  hash=6ec26de8...  prev=a67e1126...
+chain: GENESIS -> 0f2254c6 -> a67e1126 -> 6ec26de8  (verifiable)
+
+VERDICT: GitHub Copilot autonomously SENSED an objective failure and HEALED it through
+Phoenix's MCP tools, in a real session, with a verified trace and the file fixed on disk.
+The harness gave Copilot the missing organ - and it used it, unprompted-by-code.
+
+KNOWN BUG (honest): Copilot passed expect:0 as an integer; the schema wants a string.
+Copilot recovered, but the xpect field must accept integer-or-string. Fixing next.
