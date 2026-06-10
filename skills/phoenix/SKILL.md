@@ -54,15 +54,15 @@ These compose: `phoenix-goal` formalizes + decomposes, then hands off to the `ph
 the tamper-evident trace** (`phoenix-mcp accept`: failure-first red→green), never self-reported.
 See [`docs/autonomous-workflows.md`](../../docs/autonomous-workflows.md).
 
-## The four tools every Phoenix skill uses
+## The five tools every Phoenix skill uses
 - `phoenix_sense(check)` — objective pass/fail (a command's exit code, a file hash, a regex). No self-grading.
 - `phoenix_snapshot(path, check)` — save a known-good state, only if the check passes.
 - `phoenix_heal(strategy, ctx)` — bounded recovery (rollback / retry ≤3), confirmed by an external recheck.
 - `phoenix_verify_trace()` — audit the tamper-evident hash-chained log of everything sensed and healed.
-
-For autonomous loops there is also the **gate ledger** (CLI): `phoenix-mcp accept <check>` returns
-green **only if the trace proves the check went red→green (failure-first) and it is green now** — so
-"done" is derived from evidence, never authored. The loop driver, not the agent, calls it.
+- `phoenix_accept(check)` — **the gate ledger**: returns ok=true only if the trace proves the check went
+  **red→green** (failure-first) and is green now. The objective "done" signal for autonomous loops —
+  call it before claiming a goal complete. (Also a CLI command, `phoenix-mcp accept`, for the unattended
+  loop driver.)
 
 ## The Phoenix Laws (non-negotiable, apply across every skill)
 

@@ -33,8 +33,9 @@ proves nothing and is rejected.
 
 ## The gate ledger (`phoenix-mcp accept`)
 
-The new spine primitive that the whole feature rests on. Given a check, it derives completion from the
-trace:
+The new spine primitive that the whole feature rests on. Available **both** as an MCP tool
+(`phoenix_accept`, for the interactive in-session loop) and a CLI command (`phoenix-mcp accept`, for the
+unattended driver). Given a check, it derives completion from the trace:
 
 ```
 accept(check) = trace_intact            (hash chain verifies)
@@ -65,10 +66,22 @@ tampered trace.)
 ## 1. The Ralph loop — `phoenix-ralph`
 
 Huntley's loop is `while :; do cat PROMPT.md | agent; done`: fresh context every iteration, the
-filesystem is the brain, one task per loop. Phoenix ships exactly this as an **external driver**
-([`dist/ralph/phoenix-ralph.ps1`](../dist/ralph/phoenix-ralph.ps1) + a bash twin) — external because
-`copilot -p` and Scout are one-shot and have no Claude-Code-style "re-inject the prompt" hook, so the
-loop *is* the persistence.
+filesystem is the brain, one task per loop. Phoenix runs this in **two modes**:
+
+**A. Interactive (inside the Copilot CLI) — the common case.** You invoke `/phoenix-ralph` in a live
+session. There is **no external script**: the loop runs *in-session* as the agent's own tool-use loop
+(edit → `phoenix_sense` → heal → …), and the agent does not declare done until the **`phoenix_accept`
+MCP tool** proves the done-check failure-first. If work outgrows one context window, the user says
+"continue" and the agent re-reads the state files and resumes.
+
+**B. Unattended / large (`copilot -p`).** For overnight jobs, CI, or work too big for one context, the
+external driver ([`dist/ralph/phoenix-ralph.ps1`](../dist/ralph/phoenix-ralph.ps1) + bash twin)
+re-invokes the agent with a **fresh context every loop** (Huntley's key trick against the ~150k-token
+degradation). It calls `phoenix-mcp accept` (the CLI form of the same gate) and owns the budgets,
+sentinel, and tag.
+
+Both modes share the identical law — completion is **proven** (`phoenix_accept` / `phoenix-mcp accept`:
+red→green on an intact trace, green now), never self-reported. Mode B's loop:
 
 ```
  driver: accept(done-check)?  ── proven green ──▶  DONE  (driver writes completed.json + git tag)

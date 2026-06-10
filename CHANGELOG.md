@@ -9,13 +9,15 @@ tamper-evident proof instead of an LLM's opinion. Grounded in researched primary
 (`research/autonomous-workflows-research.md`).
 
 ### Added
-- **Gate ledger** (`src/accept.rs`, `phoenix-mcp accept`): completion is **derived from the trace, not
-  authored** — a check counts as done only if the tamper-evident trace proves it went **red → green**
-  (failure-first) for the same canonical check and is green now. Rejects vacuous (never-red) checks and
-  tampered traces. New `canonical_digest(&Check)` makes a check identifiable identically across the MCP
-  path, CLI path, and ledger. (`tests/gate_ledger.rs`, 3/3.)
+- **Gate ledger** (`src/accept.rs`) — completion is **derived from the trace, not authored**: a check
+  counts as done only if the tamper-evident trace proves it went **red → green** (failure-first) for the
+  same canonical check and is green now. Rejects vacuous (never-red) checks and tampered traces.
+  Available **both as an MCP tool (`phoenix_accept`)** for the interactive in-session loop **and a CLI
+  command (`phoenix-mcp accept`)** for the unattended driver. New `canonical_digest(&Check)` makes a
+  check identifiable identically across the MCP path, CLI path, and ledger. (`tests/gate_ledger.rs`, 3/3.)
 - **Three autonomous-workflow skills** (pack now 16): `phoenix-ralph` (Huntley's persistence loop —
-  fresh context per iteration, filesystem as memory, driver-proven completion), `phoenix-goal`
+  fresh context per iteration, filesystem as memory; runs **interactively in-session** via the
+  `phoenix_accept` tool, or **unattended** via the external driver), `phoenix-goal`
   (formalize an objective acceptance check, then decompose + drive), `phoenix-auto` (dynamic
   state-sensing router with oscillation + confidence guards). The base `phoenix` router stays a stable
   fixed tree and dispatches to these only in autonomous mode.

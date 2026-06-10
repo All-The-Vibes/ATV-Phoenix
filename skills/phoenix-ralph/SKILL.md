@@ -20,11 +20,26 @@ is intact, and it is **green right now**.
 > Every other persistence loop ends in an opinion ("the reviewer approved", "the model thinks it's
 > done"). phoenix-ralph ends in evidence.
 
-## How it runs
+## Two ways to run it
 
-The loop lives **outside** the agent, in `dist/ralph/phoenix-ralph.ps1` (+ a bash twin), because
-`copilot -p` and Scout are one-shot — there is no in-host re-injection hook. The agent proposes state
-changes each iteration; **the driver decides**.
+**A. Interactive (inside the Copilot CLI) — the common case.** You're in a live `copilot` session and
+invoke `/phoenix-ralph`. There is **no external script**. The loop runs *in-session*: within your
+agentic turn you iterate edit → `phoenix_sense` → heal → `phoenix_sense`, one backlog item at a time,
+and you do not say "done" until **`phoenix_accept`** (the gate ledger, an MCP tool) returns ok=true for
+the done-check. The agent's own tool-use loop *is* the loop; the skill's rules are what keep it honest.
+If the job outgrows one turn, the user just says "continue" and you re-read the state files and resume.
+
+**B. Unattended / large (`copilot -p`) — fresh context per iteration.** For overnight jobs, CI, or work
+too big for one context window, the external driver `dist/ralph/phoenix-ralph.ps1` (+ bash twin)
+re-invokes the agent with a **fresh context every loop** (Huntley's key trick against the ~150k-token
+degradation). Same gate, same state files — the driver calls `phoenix-mcp accept` instead of the
+in-session tool. Use this when nobody's watching or the backlog is long.
+
+Both modes share the identical law: **completion is proven, never self-reported.** In-session you call
+the `phoenix_accept` tool; unattended the driver calls `phoenix-mcp accept`. Either way "done" requires
+the trace to show the done-check went **red → green** on an intact chain, green now.
+
+## The loop (mode B shown; mode A is the same minus the external re-invocation)
 
 ```
  driver: accept(done-check)?  ── proven green ──▶  DONE  (driver writes completed.json + git tag)
@@ -45,7 +60,8 @@ changes each iteration; **the driver decides**.
   and Claude Code's PRD (LLM-reviewed criteria).
 - `progress.md` — append-only learnings; the working memory that survives the fresh context.
 - `done-check.json` — the single top-level acceptance check (a real `command_exit`).
-- `completed.json` — the proof bundle, written by the **driver** on success. Never by you.
+- `completed.json` — the proof bundle, written by the **driver** on success (mode B). In interactive
+  mode you instead report the `phoenix_accept` result as the proof. Never hand-write a fake one.
 
 ## What you (the agent) do each iteration
 
@@ -58,7 +74,11 @@ changes each iteration; **the driver decides**.
 5. **Implement** the smallest full change (no placeholders). `phoenix_snapshot` before risky edits.
 6. **Verify**: `phoenix_sense` again. Red → `phoenix_heal` (≤3) or fix; never proceed on red.
 7. **Record**: set `done:true` only after red→green; append what you did + learnings to `progress.md`.
-8. **Check the goal**: `phoenix_sense` the done-check. The driver independently proves it and stops.
+8. **Prove the goal**: call **`phoenix_accept`** on the done-check.
+   - *Interactive (mode A):* this is your objective stop signal — when it returns ok=true, the goal is
+     proven done; report success with the evidence. Until then, loop back to step 2.
+   - *Unattended (mode B):* the external driver runs `accept` and owns `completed.json` + the git tag,
+     so just append a final note to `progress.md`; don't write those yourself.
 
 ## Common Rationalizations
 
