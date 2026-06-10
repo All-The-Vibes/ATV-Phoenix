@@ -474,3 +474,30 @@ evals/h3-experiment/RESULT.md + results.jsonl + evals/screenshots/h3-results.png
 ### The trio is complete
 H1 (criteria-first, replicated +0.125) + H2 (objective verify, 40%->0% silent fail) + H3 (context,
 0->100%) = formalize intent + verify objectively + supply the right context. The I2O thesis, measured.
+
+## 2026-06-10 - Day 1 (cont.): BUNDLED self-maintaining skill pack (user: "it has to be bundled and self-maintaining")
+
+**User push (correct):** a self-healing harness can't depend on you manually installing other plugins.
+It must be SELF-CONTAINED (bundled) and SELF-MAINTAINING. Chose: rebuild a lifecycle pack GROUND-UP,
+Phoenix-native, rather than copy Addy's verbatim - because Phoenix's differentiator (objective
+verification gate) doesn't exist in generic workflow skills.
+
+**Built (bundled, ships in repo skills/):**
+- 6 agentskills.io skills: phoenix-spec, phoenix-plan, phoenix-build, phoenix-review, phoenix-ship,
+  phoenix-self-heal. EVERY lifecycle stage is gated by an objective phoenix_sense check (spec's
+  deliverable is a runnable check; build advances only on green; ship refuses to declare done without
+  a green sense + verified trace). This is the thing Addy's pack doesn't have.
+
+**Self-maintaining mechanism (the real meaning of self-healing):**
+- src/doctor.rs + phoenix-mcp doctor: Phoenix validates its OWN bundled skills (frontmatter present,
+  name matches dir, description non-trivial) using its own evidence discipline. 6/6 OK live.
+- tests/skills_doctor.rs: cargo test FAILS if any bundled skill drifts -> the harness catches its own
+  rot objectively, in CI. cargo test now 8 tests (added 2).
+- setup.py now INSTALLS all bundled skills to ~/.copilot/skills AND runs doctor as a post-install
+  self-check. Verified end-to-end: 6 skills installed, doctor OK.
+
+**README:** honest stack table - lifecycle pack is BUNDLED (auto-installed, self-maintaining);
+TokenMasterX is a detected recommended companion; Addy's pack optional.
+
+**What this fixes:** the repo previously shipped ZERO bundled skills while the README claimed to compose
+them. Now it ships its own verification-gated lifecycle pack that it can verify and heal itself.

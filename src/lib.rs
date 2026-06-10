@@ -8,7 +8,9 @@ pub mod sense;
 pub mod snapshot;
 pub mod heal;
 pub mod trace;
+pub mod doctor;
 
+pub use doctor::{doctor, DoctorReport};
 pub use heal::{heal, HealCtx, HealResult, Strategy};
 pub use sense::{sense, Check, CheckKind, SenseResult};
 pub use snapshot::{snapshot, SnapshotResult};

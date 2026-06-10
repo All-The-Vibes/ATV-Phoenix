@@ -118,6 +118,32 @@ def check_companions():
     print("      copilot plugin install agent-skills@addy-agent-skills")
 
 
+def install_skills(repo: Path, binpath: Path):
+    """Copy Phoenix's bundled skills into the Copilot skills dir, then self-check them with `doctor`."""
+    src = repo / "skills"
+    if not src.exists():
+        print("[phoenix] (no bundled skills dir found, skipping)")
+        return
+    dst = copilot_home() / "skills"
+    dst.mkdir(parents=True, exist_ok=True)
+    count = 0
+    for skill in sorted(src.iterdir()):
+        if skill.is_dir() and (skill / "SKILL.md").exists():
+            target = dst / skill.name
+            if target.exists():
+                shutil.rmtree(target)
+            shutil.copytree(skill, target)
+            count += 1
+    print(f"[phoenix] installed {count} bundled skills -> {dst}")
+    # self-maintenance: Phoenix validates its own installed skills with its own doctor.
+    try:
+        r = subprocess.run([str(binpath), "doctor", str(dst)], capture_output=True, text=True, timeout=30)
+        ok = r.returncode == 0
+        print(f"[phoenix] skill self-check (doctor): {'OK' if ok else 'PROBLEMS — ' + r.stderr.strip()}")
+    except Exception as e:
+        print(f"[phoenix] skill self-check skipped: {e}")
+
+
 def main():
     ap = argparse.ArgumentParser(description="Install ATV-Phoenix into GitHub Copilot CLI.")
     ap.add_argument("--repo", help="path to the ATV-Phoenix repo root")
@@ -128,8 +154,10 @@ def main():
     binpath = ensure_binary(repo)
     register_mcp(binpath)
     install_agent(binpath)
+    install_skills(repo, binpath)
     print("\n[phoenix] OK installed. Restart Copilot (or run `copilot --agent phoenix`).")
     print("[phoenix] Tools: phoenix_sense, phoenix_snapshot, phoenix_heal, phoenix_verify_trace")
+    print("[phoenix] Bundled skills: phoenix-spec/plan/build/review/ship + phoenix-self-heal")
     if not args.no_companions:
         check_companions()
 

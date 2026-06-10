@@ -175,12 +175,25 @@ fn run_cli(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
             println!("{}", serde_json::to_string(&v)?);
             exit(v.ok);
         }
+        "doctor" => {
+            // Self-maintenance: validate Phoenix's own bundled skills. `--skills <dir>` or default ./skills.
+            let dir = args.get(2).map(std::path::PathBuf::from).unwrap_or_else(|| ws.join("skills"));
+            let r = phoenix::doctor(&dir);
+            println!("{}", serde_json::to_string(&r)?);
+            for s in &r.skills {
+                if !s.ok {
+                    eprintln!("  [FAIL] {}: {}", s.name, s.problems.join("; "));
+                }
+            }
+            eprintln!("phoenix doctor: {}/{} skills OK", r.skills.iter().filter(|s| s.ok).count(), r.skills_checked);
+            exit(r.ok);
+        }
         "--version" | "-V" => {
             println!("phoenix {}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
         other => {
-            eprintln!("phoenix: unknown subcommand '{other}'. Use: sense|snapshot|heal|verify-trace|serve");
+            eprintln!("phoenix: unknown subcommand '{other}'. Use: sense|snapshot|heal|verify-trace|doctor|serve");
             std::process::exit(2);
         }
     }
