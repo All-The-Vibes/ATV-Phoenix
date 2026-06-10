@@ -89,18 +89,20 @@ the rest.
 
 | Layer | Component | Ships with Phoenix? |
 |---|---|---|
-| **Self-heal + full lifecycle** (the core) | A comprehensive 10-skill pack: `phoenix` (router) + `phoenix-think/plan/build/test/debug/context/review/ship` + `phoenix-self-heal` — every stage gated by an objective `phoenix_sense` check + the `phoenix` MCP server / CLI | **Bundled** (`skills/`, installed automatically) |
+| **Self-heal + full lifecycle + craft** (the core) | A comprehensive 13-skill pack: `phoenix` (router) + lifecycle (`think/plan/build/test/debug/context/review/ship`) + craft from the masters (`phoenix-craft` · Karpathy, `phoenix-typescript` · Mat Pocock, `phoenix-design` · Emil Kowalski) + `phoenix-self-heal` — every stage gated by an objective `phoenix_sense` check | **Bundled** (`skills/`, installed automatically) |
 | **Token-efficient retrieval** | [TokenMasterX](https://github.com/shyamsridhar123/TokenMasterX) — graph-routed code navigation (−73% tokens) | **Bundled** (`vendor/token-master`, installed automatically; needs `graphify`) |
 | **Extra lifecycle skills** | [Addy Osmani's agent-skills](https://github.com/addyosmani/agent-skills) — MIT general workflow pack | Optional companion (`agent-skills@addy-agent-skills`) |
 
-`setup.py` installs the whole stack in one command: the **10-skill verification-gated lifecycle pack**
-(a meta-router + think → plan → build → test → debug → context → review → ship + self-heal), the self-heal
-MCP server, **and the bundled TokenMasterX** (vendored MIT, `graphify`-backed). Every lifecycle stage is
-gated by an objective `phoenix_sense` check, every skill carries a *Common Rationalizations* table and
-*Red Flags* section (the discipline that stops the model talking itself out of verification), and the
-whole pack is **token-efficient by design** — structural questions route to the code graph, detail loads
-only on activation. The pack is **self-maintaining**: `phoenix-mcp doctor` validates every bundled skill
-with Phoenix's own spine, and `cargo test` fails if any skill drifts — the harness verifies itself.
+`setup.py` installs the whole stack in one command: the **13-skill verification-gated pack** — a
+meta-router, the full lifecycle (think → plan → build → test → debug → context → review → ship), and
+craft skills distilling three masters' philosophies into objective gates (**Karpathy** code guardrails,
+**Mat Pocock**'s TypeScript where `tsc --noEmit` is the gate, **Emil Kowalski**'s design-engineering with
+its animation framework + Before/After review table) — plus the self-heal MCP server and the **bundled
+TokenMasterX** (vendored MIT, `graphify`-backed). Every stage gates on an objective `phoenix_sense` check,
+every skill carries a *Common Rationalizations* table and *Red Flags* section, and the pack is
+**token-efficient by design** (structural questions route to the code graph; detail loads only on
+activation). It is **self-maintaining**: `phoenix-mcp doctor` validates every bundled skill with Phoenix's
+own spine, and `cargo test` fails if any skill drifts — the harness verifies itself.
 
 ---
 

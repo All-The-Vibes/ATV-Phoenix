@@ -164,11 +164,12 @@ def main():
     install_skills(repo, binpath)
     print("\n[phoenix] OK installed. Restart Copilot (or run `copilot --agent phoenix`).")
     print("[phoenix] Tools: phoenix_sense, phoenix_snapshot, phoenix_heal, phoenix_verify_trace")
-    print("[phoenix] Bundled skills: phoenix (router) + think/plan/build/test/debug/context/review/ship + self-heal (10 skills)")
+    print("[phoenix] Bundled skills: phoenix (router) + think/plan/build/test/debug/context/review/ship + craft/typescript/design + self-heal (13 skills)")
     if not args.no_companions:
         check_companions(repo)
 
 
 if __name__ == "__main__":
     main()
+
 
