@@ -92,9 +92,36 @@ def install_agent(binpath: Path):
     print(f"[phoenix] installed agent: {dest}")
 
 
+def check_companions():
+    """Phoenix composes with two companion plugins. Detect what's present and recommend the rest."""
+    home = Path.home() / ".copilot"
+    installed = set()
+    cfg = home / "config.json"
+    if cfg.exists():
+        try:
+            for p in json.loads(cfg.read_text(encoding="utf-8")).get("installedPlugins", []):
+                installed.add(p.get("name", ""))
+        except Exception:
+            pass
+    agents = home / "agents"
+    has_tokenmaster = "token-master" in installed or (agents / "token-master.agent.md").exists()
+
+    print("\n[phoenix] recommended companions (Phoenix composes, it doesn't reinvent):")
+    if has_tokenmaster:
+        print("  - TokenMasterX (token-efficient code retrieval): [installed]")
+    else:
+        print("  - TokenMasterX (token-efficient code retrieval) — NOT found. Install:")
+        print("      copilot plugin marketplace add shyamsridhar123/TokenMasterX")
+        print("      copilot plugin install token-master@token-master")
+    print("  - Addy Osmani's agent-skills (MIT lifecycle: spec/plan/build/test/review/ship). Install:")
+    print("      copilot plugin marketplace add addyosmani/agent-skills")
+    print("      copilot plugin install agent-skills@addy-agent-skills")
+
+
 def main():
     ap = argparse.ArgumentParser(description="Install ATV-Phoenix into GitHub Copilot CLI.")
     ap.add_argument("--repo", help="path to the ATV-Phoenix repo root")
+    ap.add_argument("--no-companions", action="store_true", help="skip the companion-plugin recommendations")
     args = ap.parse_args()
     repo = find_repo(args)
     print(f"[phoenix] repo: {repo}")
@@ -103,6 +130,8 @@ def main():
     install_agent(binpath)
     print("\n[phoenix] OK installed. Restart Copilot (or run `copilot --agent phoenix`).")
     print("[phoenix] Tools: phoenix_sense, phoenix_snapshot, phoenix_heal, phoenix_verify_trace")
+    if not args.no_companions:
+        check_companions()
 
 
 if __name__ == "__main__":

@@ -78,9 +78,23 @@ the missing layer. Two design principles it proves:
 - **Evidence over self-grading.** `phoenix_sense` only reports objective signals; "I'm not sure it
   passed" is allowed, a fabricated "done!" is the failure mode Phoenix exists to prevent.
 
-Phoenix composes proven parts ([TokenMasterX](https://github.com/shyamsridhar123/TokenMasterX) for
-token-efficient retrieval; [agentskills.io](https://agentskills.io) skills) and builds only the novel
-spine: **objective sensing, bounded healing, measured improvement.**
+Phoenix builds only the novel spine — **objective sensing, bounded healing, measured improvement** —
+and composes with proven companions rather than reinventing them (see the stack below).
+
+## The recommended stack (Phoenix composes, it doesn't reinvent)
+
+Phoenix is standards-native ([agentskills.io](https://agentskills.io) skills + MCP), so it stacks with
+best-in-class companion plugins. `setup.py` detects what's installed and prints the install commands for
+the rest.
+
+| Layer | Component | Ships with Phoenix? |
+|---|---|---|
+| **Self-heal** (the novel core) | `phoenix-self-heal` skill + the `phoenix` MCP server / CLI | **Bundled** (`skills/phoenix-self-heal`) |
+| **Token-efficient retrieval** | [TokenMasterX](https://github.com/shyamsridhar123/TokenMasterX) — graph-routed code navigation (−73% tokens) | Recommended companion (`token-master@token-master`) |
+| **Lifecycle discipline** | [Addy Osmani's agent-skills](https://github.com/addyosmani/agent-skills) — MIT spec/plan/build/test/review/ship | Recommended companion (`agent-skills@addy-agent-skills`) |
+
+Install all three and Copilot gets: cheap structural retrieval → disciplined lifecycle → objective
+verify-and-heal. Each is a separate, standards-native plugin; Phoenix wires them as a stack, not a fork.
 
 ---
 
@@ -105,4 +119,6 @@ install via `setup.py` today. See [`BUILDLOG.md`](BUILDLOG.md) for the full hone
 every bug, reversal, and dead end (including a dogfooding fix that cut a real run from 72 credits to 15).
 
 ## License
-MIT — see [LICENSE](LICENSE). Composes MIT/open components (TokenMasterX, agentskills.io packs) with attribution.
+MIT — see [LICENSE](LICENSE). Phoenix bundles its own `phoenix-self-heal` skill (MIT) and composes
+with separately-installed MIT/open companions ([TokenMasterX](https://github.com/shyamsridhar123/TokenMasterX),
+[Addy Osmani's agent-skills](https://github.com/addyosmani/agent-skills)) by recommendation, not by vendoring.
