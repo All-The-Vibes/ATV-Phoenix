@@ -19,9 +19,12 @@ Three hypotheses, all tested on **live GitHub Copilot sessions**, scored by hidd
 | **Does objective verification beat self-judgment?** (H2) | Silent-failure rate **40% → 0%** across 20 sessions — vanilla Copilot shipped broken code with false confidence on tasks with hidden acceptance criteria; Phoenix caught and healed every one. **Zero regressions.** |
 | **Does formalizing intent into a check first help?** (H1) | **+0.125** mean verified-outcome lift, **replicated 3/3 runs** (criteria-first perfect every run). |
 | **Does injecting the right context/memory help?** (H3) | **0% → 100%** — without a project's convention, Copilot produced a plausible-but-wrong default every time; with it injected, correct every time. |
+| **Does it hold up on a SWE-bench-style contract?** | Underspecified resolved-rate **50% → 100%** (overall **78% → 100%**, **0 regressions**) — both vanilla misses were *silent failures* the enforced test-gate caught. |
 
-Together: **formalize intent + verify objectively + supply the right context.** Full method + raw data
-per experiment under [`evals/`](evals/).
+Together: **formalize intent + verify objectively + supply the right context.** And it isn't just
+fault-recovery on broken files — under the loop, live Copilot **built a real project end-to-end**
+(a working Space Invaders game) gated by an objective check + a hardened Playwright interaction gate.
+Full method + raw data per experiment under [`evals/`](evals/).
 
 ---
 
@@ -81,6 +84,43 @@ the missing layer. Two design principles it proves:
 Phoenix builds only the novel spine — **objective sensing, bounded healing, measured improvement** —
 and composes with proven companions rather than reinventing them (see the stack below).
 
+---
+
+## Intent-to-Outcome: this harness is the radio before the TV
+
+Phoenix isn't the destination — it's the **first working organ** of a larger system: an
+**Intent-to-Outcome (I2O)** loop whose purpose is to reliably turn a human's *intent* into a
+*verified outcome* across all of digital life — work, career, learning, and project delivery.
+
+The I2O machine is a 7-stage loop — **SENSE → MODEL → FORMALIZE → PLAN/ACT → VERIFY → REFLECT →
+DISTILL.** Phoenix productizes the three hardest middle stages — **FORMALIZE an intent into an
+objective check, ACT, and VERIFY against that check (then heal)** — for one narrow domain: coding
+agents, where the grader can be perfectly objective because code either runs or it doesn't.
+
+**That narrowness is the strategy, not a limitation.** Radio proved the core primitive — broadcast a
+signal over the air, a receiver reconstructs it — before television inherited that exact
+infrastructure and added the picture. **Phoenix is the radio.** It proves, on live Copilot sessions
+with hidden graders, that a *frozen* model plus a thin enforcement harness converts "looks done" into
+"is done" (silent failures **40%→0%**, underspecified resolved-rate **50%→100%**). **The full I2O
+system is the television** — the same closed-loop verification, generalized across the four pillars,
+running *proactively* and *persistently*: sensing your Teams / mail / calendar, proposing Intent
+Contracts, executing and verifying them, and compounding what it learns. Same signal, same loop,
+bigger screen.
+
+What carries over unchanged from the radio to the TV:
+
+| Principle | In Phoenix today | In the full I2O system |
+|---|---|---|
+| **The Intent Contract** (`intent → verifiable success_criteria → evidence → outcome → delta`) | a `phoenix_sense` check *is* the success-criteria + evidence made executable | proposed automatically from sensed context, promoted by a human |
+| **Evidence over self-grading** | `phoenix_sense` reports only objective signals; a fabricated "done!" is the failure mode it exists to kill | the non-negotiable that keeps a *proactive* system trustworthy |
+| **Enforce, don't offer** | value comes from the loop being *run*, not merely available (unprompted self-verify: 0/10) | the heartbeat runs SENSE→FORMALIZE→VERIFY without being asked |
+| **Frozen weights, human direction** | improvement is scaffolding-level (skills, checks, memory), evidence-gated | the human still sets goals; the system compounds the means |
+
+The experiments in this repo — H1 (intent-fidelity), H2 (verifier-pass), H3 (memory-lift), and the
+SWE-bench-style benchmark — *are* the early I2O hypotheses, tested first in the one domain with a
+perfect grader. They're the radio broadcasts that prove the signal before the picture arrives — see
+[`evals/`](evals/) for the raw data behind each.
+
 ## The recommended stack (Phoenix composes, it doesn't reinvent)
 
 Phoenix is standards-native ([agentskills.io](https://agentskills.io) skills + MCP), so it stacks with
@@ -106,7 +146,7 @@ own spine, and `cargo test` fails if any skill drifts — the harness verifies i
 
 ---
 
-## Status (v0.1.0)
+## Status (v0.2.0)
 
 Every milestone has a measured eval + a screenshot.
 
@@ -116,6 +156,7 @@ Every milestone has a measured eval + a screenshot.
 | M1 | self-healing spine in Rust (`cargo test`) | [result](evals/m1-self-heal/RESULT.md) · [shot](evals/screenshots/m1-self-heal.png) |
 | M2 | works over real MCP protocol | [result](evals/m2-mcp/RESULT.md) · [shot](evals/screenshots/m2-mcp-session.png) |
 | M3 | heals a fault **live inside Copilot** | [result](evals/m3-live-copilot/RESULT.md) · [shot](evals/screenshots/m3-live-copilot.png) |
+| E2E | builds a **real project end-to-end** live in Copilot — Space Invaders, gated by an objective check + a **hardened Playwright interaction gate** (renders, animates, responds to keys) | [result](evals/e2e-sandbox/RESULT.md) · [shot](evals/screenshots/e2e-space-invaders.png) |
 | H1 | criteria-first lift +0.125, replicated 3/3 | (goose I2O scorecard) |
 | H2 | silent failures **40%→0%** | [result](evals/h2-experiment/RESULT.md) · [shot](evals/screenshots/h2-results.png) |
 | H3 | context/memory lift **0%→100%** | [result](evals/h3-experiment/RESULT.md) · [shot](evals/screenshots/h3-results.png) |
@@ -128,6 +169,7 @@ install via `setup.py` today. See [`BUILDLOG.md`](BUILDLOG.md) for the full hone
 every bug, reversal, and dead end (including a dogfooding fix that cut a real run from 72 credits to 15).
 
 ## License
-MIT — see [LICENSE](LICENSE). Phoenix bundles its own `phoenix-self-heal` skill (MIT) and composes
-with separately-installed MIT/open companions ([TokenMasterX](https://github.com/shyamsridhar123/TokenMasterX),
-[Addy Osmani's agent-skills](https://github.com/addyosmani/agent-skills)) by recommendation, not by vendoring.
+MIT — see [LICENSE](LICENSE). Phoenix bundles its **13-skill verification-gated pack** (MIT) and
+**vendors TokenMasterX** (MIT © 2026 Shyam Sridhar) under [`vendor/token-master`](vendor/token-master),
+both installed automatically. It composes with separately-installed open companions — e.g.
+[Addy Osmani's agent-skills](https://github.com/addyosmani/agent-skills) — by recommendation.
