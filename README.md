@@ -126,6 +126,50 @@ format yet — read the full loop, the Intent Contract, and the H1–H6 backlog 
 **[`docs/intent-to-outcome.md`](docs/intent-to-outcome.md)**,
 and see [`evals/`](evals/) for the raw data behind each.
 
+## The bundled skill pack — 13 skills, built from the ground up
+
+These are **not** wrappers around someone else's pack. Every skill was written from scratch in the
+[agentskills.io](https://agentskills.io) `SKILL.md` standard — each with an ASCII decision diagram, a
+*Common Rationalizations* table, and a *Red Flags* section — and **every stage gates on an objective
+`phoenix_sense` check**, so "simpler", "done", and "type-safe" are *proven*, not asserted. They install
+automatically, and the harness validates them itself (`phoenix-mcp doctor`; `cargo test` fails on drift).
+
+**Meta-router**
+
+| Skill | What it does |
+|---|---|
+| `phoenix` | Routes a task to the right lifecycle skill and enforces the non-negotiable Phoenix Laws. |
+
+**The lifecycle — `think → ship`**
+
+| Skill | What it does |
+|---|---|
+| `phoenix-think` | Deep **Socratic interview + evidence-grounded research** → a crystal-clear Intent Contract whose deliverable is a *runnable* acceptance check. |
+| `phoenix-plan` | Decompose the intent into small, individually-verifiable steps that keep the build green between them. |
+| `phoenix-build` | Implement one step at a time under the verify-heal loop; never advance on a red check. |
+| `phoenix-test` | TDD where the **test *is* the `phoenix_sense` gate** — failing test before code, bug repro before fix. |
+| `phoenix-debug` | Systematic triage: reproduce objectively, isolate via the code graph, fix the *root*, confirm green. |
+| `phoenix-context` | Assemble the cheapest sufficient context — route structural questions to the code graph instead of re-reading files. |
+| `phoenix-review` | Re-run every check against the Intent Contract, confirm no regressions, inspect the tamper-evident trace. |
+| `phoenix-ship` | The final gate — run the acceptance check once more, verify the trace, report success only on green evidence. |
+
+**Craft — three masters distilled into objective gates**
+
+| Skill | Lineage | The objective gate |
+|---|---|---|
+| `phoenix-craft` | **Andrej Karpathy** — LLM coding pitfalls | think-first · simplicity · surgical changes — each *proven* by a `phoenix_sense` check, not asserted |
+| `phoenix-typescript` | **Mat Pocock** — Total TypeScript | **`tsc --noEmit` *is* the check** — strict, derive don't duplicate, eliminate `any` |
+| `phoenix-design` | **Emil Kowalski** — design-engineering | the **animation-decision framework** + a required **Before/After review table**, gated by lint/build/interaction checks |
+
+**The spine — self-heal + token efficiency**
+
+| Component | What it does |
+|---|---|
+| `phoenix-self-heal` | The core **sense → snapshot → heal** loop on its own — for any change with a runnable test/build/lint. |
+| **TokenMasterX** (bundled, your own MIT plugin) | Graph-routed code navigation, **−73% tokens**; `phoenix-context` routes structural questions ("who calls X", "what breaks if I change Y") here instead of grepping whole directories. |
+
+---
+
 ## The recommended stack (Phoenix composes, it doesn't reinvent)
 
 Phoenix is standards-native ([agentskills.io](https://agentskills.io) skills + MCP), so it stacks with
@@ -134,20 +178,14 @@ the rest.
 
 | Layer | Component | Ships with Phoenix? |
 |---|---|---|
-| **Self-heal + full lifecycle + craft** (the core) | A comprehensive 13-skill pack: `phoenix` (router) + lifecycle (`think/plan/build/test/debug/context/review/ship`) + craft from the masters (`phoenix-craft` · Karpathy, `phoenix-typescript` · Mat Pocock, `phoenix-design` · Emil Kowalski) + `phoenix-self-heal` — every stage gated by an objective `phoenix_sense` check | **Bundled** (`skills/`, installed automatically) |
+| **Self-heal + full lifecycle + craft** (the core) | The **13-skill verification-gated pack** enumerated above (router + `think/plan/build/test/debug/context/review/ship` + Karpathy/Pocock/Emil craft + self-heal) | **Bundled** (`skills/`, installed automatically) |
 | **Token-efficient retrieval** | [TokenMasterX](https://github.com/shyamsridhar123/TokenMasterX) — graph-routed code navigation (−73% tokens) | **Bundled** (`vendor/token-master`, installed automatically; needs `graphify`) |
 | **Extra lifecycle skills** | [Addy Osmani's agent-skills](https://github.com/addyosmani/agent-skills) — MIT general workflow pack | Optional companion (`agent-skills@addy-agent-skills`) |
 
-`setup.py` installs the whole stack in one command: the **13-skill verification-gated pack** — a
-meta-router, the full lifecycle (think → plan → build → test → debug → context → review → ship), and
-craft skills distilling three masters' philosophies into objective gates (**Karpathy** code guardrails,
-**Mat Pocock**'s TypeScript where `tsc --noEmit` is the gate, **Emil Kowalski**'s design-engineering with
-its animation framework + Before/After review table) — plus the self-heal MCP server and the **bundled
-TokenMasterX** (vendored MIT, `graphify`-backed). Every stage gates on an objective `phoenix_sense` check,
-every skill carries a *Common Rationalizations* table and *Red Flags* section, and the pack is
-**token-efficient by design** (structural questions route to the code graph; detail loads only on
-activation). It is **self-maintaining**: `phoenix-mcp doctor` validates every bundled skill with Phoenix's
-own spine, and `cargo test` fails if any skill drifts — the harness verifies itself.
+`setup.py` installs the whole stack in one command. The pack is **token-efficient by design** (structural
+questions route to the code graph; skill detail loads only on activation) and **self-maintaining**:
+`phoenix-mcp doctor` validates every bundled skill with Phoenix's own spine, and `cargo test` fails if any
+skill drifts — the harness verifies itself.
 
 ---
 
