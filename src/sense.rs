@@ -7,6 +7,29 @@ use std::time::Instant;
 
 const MAX_EVIDENCE: usize = 2048;
 
+/// Accept `expect` as a JSON string, number, or null — LLM callers often pass an exit code as `0`
+/// rather than `"0"`. Normalizes everything to `Option<String>`.
+fn de_string_or_number<'de, D>(d: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::Deserialize;
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum StrOrNum {
+        S(String),
+        I(i64),
+        F(f64),
+        Null,
+    }
+    Ok(match Option::<StrOrNum>::deserialize(d)? {
+        None | Some(StrOrNum::Null) => None,
+        Some(StrOrNum::S(s)) => Some(s),
+        Some(StrOrNum::I(i)) => Some(i.to_string()),
+        Some(StrOrNum::F(f)) => Some(f.to_string()),
+    })
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum CheckKind {
@@ -23,9 +46,10 @@ pub struct Check {
     pub kind: CheckKind,
     /// For CommandExit: argv (first element is the program). For file checks: a single path.
     pub target: Vec<String>,
-    /// CommandExit: expected exit code as string (default "0"). FileSha256: expected hex digest.
-    /// RegexInFile: the regex pattern.
-    #[serde(default)]
+    /// CommandExit: expected exit code (default "0"). FileSha256: expected hex digest.
+    /// RegexInFile: the regex pattern. Accepts a string OR a number (e.g. `0` or `"0"`),
+    /// because LLM callers naturally pass exit codes as integers.
+    #[serde(default, deserialize_with = "de_string_or_number")]
     pub expect: Option<String>,
     /// Optional working directory / timeout for CommandExit.
     #[serde(default)]
@@ -140,5 +164,22 @@ fn sense_regex(check: &Check) -> SenseResult {
             evidence: format!("path={} pattern={}", path.display(), pat),
         },
         Err(e) => SenseResult { ok: false, signal: "regex_in_file".into(), evidence: format!("read failed: {e}") },
+    }
+}
+
+#[cfg(test)]
+mod expect_flex {
+    use super::*;
+    #[test]
+    fn expect_accepts_int_or_string_or_null() {
+        // integer (LLM-style)
+        let c: Check = serde_json::from_str(r#"{"kind":"command_exit","target":["x"],"expect":0}"#).unwrap();
+        assert_eq!(c.expect.as_deref(), Some("0"));
+        // string
+        let c: Check = serde_json::from_str(r#"{"kind":"command_exit","target":["x"],"expect":"0"}"#).unwrap();
+        assert_eq!(c.expect.as_deref(), Some("0"));
+        // absent
+        let c: Check = serde_json::from_str(r#"{"kind":"command_exit","target":["x"]}"#).unwrap();
+        assert_eq!(c.expect, None);
     }
 }
