@@ -89,16 +89,18 @@ the rest.
 
 | Layer | Component | Ships with Phoenix? |
 |---|---|---|
-| **Self-heal + full lifecycle** (the core) | `phoenix-self-heal` + a verification-gated lifecycle pack (`phoenix-spec/plan/build/review/ship`) + the `phoenix` MCP server / CLI | **Bundled** (`skills/`, installed automatically) |
+| **Self-heal + full lifecycle** (the core) | A comprehensive 10-skill pack: `phoenix` (router) + `phoenix-think/plan/build/test/debug/context/review/ship` + `phoenix-self-heal` — every stage gated by an objective `phoenix_sense` check + the `phoenix` MCP server / CLI | **Bundled** (`skills/`, installed automatically) |
 | **Token-efficient retrieval** | [TokenMasterX](https://github.com/shyamsridhar123/TokenMasterX) — graph-routed code navigation (−73% tokens) | **Bundled** (`vendor/token-master`, installed automatically; needs `graphify`) |
 | **Extra lifecycle skills** | [Addy Osmani's agent-skills](https://github.com/addyosmani/agent-skills) — MIT general workflow pack | Optional companion (`agent-skills@addy-agent-skills`) |
 
-`setup.py` installs the whole stack in one command: the verification-gated lifecycle pack, the self-heal
+`setup.py` installs the whole stack in one command: the **10-skill verification-gated lifecycle pack**
+(a meta-router + think → plan → build → test → debug → context → review → ship + self-heal), the self-heal
 MCP server, **and the bundled TokenMasterX** (vendored MIT, `graphify`-backed). Every lifecycle stage is
-gated by an objective `phoenix_sense` check — the differentiator vs. generic workflow skills. The pack is
-**self-maintaining**: `phoenix-mcp doctor` validates every bundled skill with Phoenix's own spine, and
-`cargo test` fails if any skill drifts — the harness verifies itself. Only Addy's general pack stays an
-optional add-on.
+gated by an objective `phoenix_sense` check, every skill carries a *Common Rationalizations* table and
+*Red Flags* section (the discipline that stops the model talking itself out of verification), and the
+whole pack is **token-efficient by design** — structural questions route to the code graph, detail loads
+only on activation. The pack is **self-maintaining**: `phoenix-mcp doctor` validates every bundled skill
+with Phoenix's own spine, and `cargo test` fails if any skill drifts — the harness verifies itself.
 
 ---
 

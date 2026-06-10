@@ -11,7 +11,7 @@ fn skills_dir() -> PathBuf {
 #[test]
 fn all_bundled_skills_are_valid() {
     let r = phoenix::doctor(&skills_dir());
-    assert!(r.skills_checked >= 6, "expected >=6 bundled skills, found {}", r.skills_checked);
+    assert!(r.skills_checked >= 10, "expected >=10 bundled skills, found {}", r.skills_checked);
     for s in &r.skills {
         assert!(s.ok, "bundled skill '{}' is invalid: {}", s.name, s.problems.join("; "));
     }

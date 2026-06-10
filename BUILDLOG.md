@@ -514,3 +514,27 @@ them. Now it ships its own verification-gated lifecycle pack that it can verify 
 - .gitignore: vendor pycache excluded; .token-master/ graph already ignored.
 
 Net: Phoenix is self-contained (skills + token retrieval bundled) AND self-maintaining (doctor + cargo test).
+
+## 2026-06-10 - Day 1 (cont. 3): COMPREHENSIVE skill pack (user: "dont half-ass it, as rich as Addy's")
+
+Studied addyosmani/agent-skills in depth (cloned: 22 skills, 124-363 lines each, signature devices =
+ASCII flow diagrams + concrete examples + 'Common Rationalizations' tables + 'Red Flags' sections +
+routing decision tree in a meta-skill). My first pass (25-130 line stubs) was half-assed; rebuilt.
+
+**Rebuilt as 10 comprehensive skills** (each: overview, when-to-use/not, ASCII diagram, worked examples,
+rules, Common Rationalizations table, Red Flags, Next):
+- phoenix (META ROUTER): routing decision tree + 6 non-negotiable Phoenix Laws + untrusted-error-data rule.
+- phoenix-think: deep interview + deep research -> Intent Contract w/ acceptance check (renamed from spec
+  per user; first stage is THINK not spec).
+- phoenix-plan, phoenix-build, phoenix-test (TDD w/ sense as gate), phoenix-debug (triage+heal),
+  phoenix-context (TokenMasterX graph routing = the token-efficiency skill), phoenix-review, phoenix-ship,
+  phoenix-self-heal.
+
+**The differentiators woven through EVERY skill** (this is what makes it Phoenix, not a copy of Addy):
+- every gate is an objective phoenix_sense check (Addy's are workflow prose, no objective gate)
+- self-healing: snapshot before risk, bounded heal on red, external recheck confirms
+- token-efficient: route structural Qs to the graph not grep; pull subgraphs not directories; progressive
+  disclosure; "area under the context curve" framing in phoenix-context.
+
+**Self-maintaining:** phoenix-mcp doctor validates all 10 (name==dir, frontmatter, desc); cargo test
+asserts >=10 valid + catches drift. Verified: 10/10 OK, full suite green, install ships 10 + self-checks.
