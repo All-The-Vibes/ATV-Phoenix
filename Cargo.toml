@@ -1,6 +1,6 @@
 [package]
 name = "phoenix"
-version = "0.0.1"
+version = "0.1.0"
 edition = "2021"
 description = "ATV-Phoenix - self-healing spine for GitHub Copilot (sense/heal/snapshot/trace)"
 license = "MIT"
