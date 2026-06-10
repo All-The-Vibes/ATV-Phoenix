@@ -14,7 +14,8 @@
       "source": "./",
       "strict": false,
       "skills": [
-        "./skills/phoenix-setup"
+        "./skills/phoenix-setup",
+        "../skills/phoenix-self-heal"
       ]
     }
   ]
