@@ -538,3 +538,25 @@ rules, Common Rationalizations table, Red Flags, Next):
 
 **Self-maintaining:** phoenix-mcp doctor validates all 10 (name==dir, frontmatter, desc); cargo test
 asserts >=10 valid + catches drift. Verified: 10/10 OK, full suite green, install ships 10 + self-checks.
+
+## 2026-06-10 - Day 1 (cont. 4): incorporate Karpathy + Mat Pocock + Emil Kowalski craft skills
+
+User: incorporate the lifecycle pack WITH karpathy, mat pocock, and emil kowalski design skills.
+Grounded each in the real source (karpathy-guidelines + emil-design-eng skills read locally; Mat
+Pocock / Total TypeScript fetched from totaltypescript.com), then built Phoenix-native versions where
+each master's discipline becomes an OBJECTIVE GATE:
+
+- phoenix-craft (Andrej Karpathy): think-before-coding, simplicity-first, surgical changes, verifiable
+  success - but "simpler"/"done" must re-pass phoenix_sense (craft proven, not asserted). Attributed + linked.
+- phoenix-typescript (Mat Pocock / Total TypeScript): 	sc --noEmit IS a phoenix_sense check; strict
+  mode, kill any/unsafe casts, derive don't duplicate types, no @ts-ignore-to-pass (= editing the test).
+  The Pocock move: change the type first, let tsc show you the blast radius.
+- phoenix-design (Emil Kowalski): the Animation Decision Framework (should it animate / purpose / curve),
+  the REQUIRED Before/After review table, ease-out + :active + reduced-motion - gated by build/lint/visual
+  sense so polish ships without regressing. Links animations.dev.
+
+Each is comprehensive (overview, framework/tables, examples, Common Rationalizations, Red Flags, Next)
+and credits the source. Meta-router updated to route to them. Pack now 13 skills.
+
+Self-maintaining holds: doctor 13/13 OK; cargo test asserts >=13 + catches drift; full suite green;
+one-command install ships 13 + self-checks. README + setup.py updated.
