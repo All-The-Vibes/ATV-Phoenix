@@ -1,5 +1,7 @@
 # ATV-Phoenix
 
+![ATV-Phoenix](assets/hero.jpg)
+
 **A self-healing harness for AI coding agents.** Phoenix gives GitHub Copilot (and Microsoft Scout)
 the one organ they're missing: the ability to **objectively sense when a task actually failed, and
 heal it** — instead of declaring "done" on silently-broken work.
@@ -24,6 +26,8 @@ per experiment under [`evals/`](evals/).
 ---
 
 ## What Phoenix gives the agent (4 tools)
+
+![The self-heal loop](assets/loop.jpg)
 
 | Tool | What it does |
 |---|---|
