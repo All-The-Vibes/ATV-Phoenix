@@ -108,6 +108,21 @@ phoenix-mcp verify-trace
 ```
 See [`dist/scout/`](dist/scout/). Same Rust binary, both hosts.
 
+### Using it (after install)
+Phoenix is a **harness, not a background daemon** — it doesn't watch your repo or act on its own. It
+shapes how Copilot works *while you work*, and you stay in the driver's seat.
+
+- **Automatic:** just work normally. Ask Copilot to build, fix, or ship something and the matching
+  Phoenix skill engages by itself — running an objective check, healing failures, and refusing to call a
+  task "done" until a check actually goes **red → green**.
+- **To be sure it's engaged:** start a task with **`/phoenix`** (loads the router + the laws), or select
+  the installed **`phoenix` agent**.
+- **Hands-off / autonomous:** say **"go"** or **`/phoenix-goal "<your goal>"`** — it FORMALIZES an
+  objective done-check first, then runs the whole lifecycle to completion (see
+  [autonomous workflows](docs/autonomous-workflows.md)).
+
+Quick smoke test: ask it to fix a failing test and watch it **sense → heal → confirm green**.
+
 ---
 
 ## Open knowledge (OKF)
