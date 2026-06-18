@@ -749,3 +749,52 @@ EVIDENCE (deterministic, no Copilot spend): both bundles CONFORMANT; freshness F
 proven; phoenix-mcp sense/accept/verify-trace chain green with red->green; evals/m4-okf/RESULT.md +
 results.jsonl. KEY INSIGHT: a knowledge bundle that drifts or corrupts now emits an objective RED a
 run can heal — knowledge becomes a first-class sensed, self-healing artifact, not a static dump.
+
+
+## 2026-06-17 (later still) — M5: OKF consumed, interop-proven, tested, CI-gated + a community demo
+
+**Goal:** finish the OKF arc — prove Phoenix *consumes* OKF in a live phoenix-context run (#3),
+*interops* with a foreign bundle (#4), and lock it all behind *tests + CI* (#5), then package a
+demo the community can run.
+
+### What worked
+- **#3 Live consumption** (`evals/m5-okf-live/`): a real phoenix-context turn loop answers a genuine
+  structural question ("what cross-file edges does `src/heal.rs` have?") by invoking `okf_ingest` as
+  a subprocess on the committed bundle — index-first outline -> `--query` -> open exactly one
+  concept. Honest result: single isolated turn, grep-and-read is 1.3x cheaper on a 50-file bundle;
+  the session/multi-turn view (outline paid once) flips it to OKF. Reported, not hidden. Wired
+  `okf_ingest` into `skills/phoenix-context/SKILL.md` as the OKF consumption path.
+- **#4 Interop** (`examples/okf-external-demo/`): a hand-authored bundle from a fictional
+  `acme-knowledge-catalog` with a NON-Phoenix vocabulary (Runbook/Dataset/Decision/Glossary) is
+  CONFORMANT even under `--strict-links` (0 broken links) and ingests index-first. Proves the gate
+  and consumer are vendor-neutral — no Phoenix-specific assumptions baked in.
+- **#5 Tests + CI**: `tests/okf/test_okf.py` (12 pytest cases: export->validate->freshness->ingest
+  round-trip on a synthetic graph, validator catches missing-`type` and index-with-frontmatter,
+  both committed bundles conformant, interop). `tests/okf_sense.rs` (3 cases): the **spine itself**
+  senses both committed bundles GREEN and a broken bundle RED via `command_exit` — same self-
+  maintenance discipline as `skills_doctor.rs`, now for knowledge. First CI for the repo:
+  `.github/workflows/okf.yml` (python gate + `cargo test --test okf_sense`).
+- **Community demo** (`demo/okf/run-demo.ps1`): one non-destructive, narrated, runnable script that
+  walks PRODUCE -> VALIDATE -> SENSE+HEAL (through the real `phoenix-mcp.exe`: green->RED->heal->
+  green, `accept ok=true`, trace rows=5 verified) -> CONSUME -> INTEROP. Plus `demo/okf/README.md`
+  with a per-beat talking track. Verified end-to-end.
+
+### What didn't work / friction
+- PowerShell 5.1 wrote `check.json`/`healctx.json` with a UTF-8 **BOM**, which serde rejected
+  ("expected value, line 1 column 1"). Switched to `[IO.File]::WriteAllText` (no BOM). Also dropped
+  all non-ASCII (em-dashes) from the script after PS 5.1 ANSI-decoded the file and broke parsing.
+- A pytest asserted `okf_version == "0.1"` but PyYAML reads `0.1` as a float; normalized with
+  `str(...)`. Lesson: unquoted YAML scalars are typed.
+
+### Decisions
+- **Spine stays code-free for OKF** (again): `tests/okf_sense.rs` exercises the bundles through
+  `command_exit`, no new Rust CheckKind — consistent with M4.
+- **Keep the honest negative** (single-turn grep competitive) in the live run too; same credibility
+  stance as M4 / TokenMasterX.
+
+EVIDENCE (deterministic, no Copilot spend): 12/12 pytest green; 3/3 spine-sense Rust tests green;
+both committed bundles + the foreign bundle CONFORMANT (strict); `evals/m5-okf-live/` transcript +
+live-result.json; `demo/okf/run-demo.ps1` runs all 5 beats green incl. real red->green via
+phoenix-mcp. KEY INSIGHT: the OKF arc is closed — Phoenix now produces, gates, senses, heals,
+consumes, AND interops with open knowledge, enforced in CI. Knowledge is a first-class, self-
+healing, vendor-neutral artifact, and there's a 3-minute demo to show it.

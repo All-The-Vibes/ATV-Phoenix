@@ -1,0 +1,97 @@
+==============================================================================
+phoenix-context LIVE RUN - structural question answered from an OKF bundle
+==============================================================================
+Bundle  : examples/okf-code-graph
+Question: What cross-file (candidate) edges does src/heal.rs have, and what symbols does it define?
+
+phoenix-context routing decision: this is a 'what does X relate to' structural
+question -> route to the prebuilt knowledge artifact, do NOT grep-and-read.
+
+------------------------------------------------------------------------------
+TURN 1 - orient: okf_ingest index-first outline (paid once for the whole session)
+------------------------------------------------------------------------------
+# OKF bundle: C:\Users\shyamsridhar\code\ATV-Phoenix\examples\okf-code-graph
+okf_version: 0.1  |  concepts: 50
+
+## Types
+  Markdown Document: 21
+  Python Source: 12
+  Rust Source: 11
+  PowerShell Script: 4
+  JSON Config: 2
+
+## Top tags
+  code(29), document(21), community-0(6), rationale(3), community-17(1), community-8(1), community-28(1), community-21(1), community-22(1), community-23(1), community-24(1), community-25(1)
+... [outline truncated for display] ...  (outline = 2,470 tokens)
+
+------------------------------------------------------------------------------
+TURN 2 - locate: okf_ingest --query Rust  (find the concept, no file reads)
+------------------------------------------------------------------------------
+# 11 concept(s) matching 'Rust' (by type or tag)
+[Rust Source] concepts/examples/demo_self_heal.rs.md
+    Code-graph knowledge extracted from `examples/demo_self_heal.rs` (3 symbol(s), 3 cross-file edge(s)).
+[Rust Source] concepts/src/heal.rs.md
+    Code-graph knowledge extracted from `src/heal.rs` (7 symbol(s), 3 cross-file edge(s)).
+[Rust Source] concepts/tests/m1_self_heal.rs.md
+    Code-graph knowledge extracted from `tests/m1_self_heal.rs` (5 symbol(s), 4 cross-file edge(s)).
+... (query result = 541 tokens; agent now opens exactly concepts/src/heal.rs.md)
+
+------------------------------------------------------------------------------
+TURN 3 - open exactly one concept: okf_ingest --full concepts/src/heal.rs.md
+------------------------------------------------------------------------------
+---
+type: Rust Source
+title: heal.rs
+description: Code-graph knowledge extracted from `src/heal.rs` (7 symbol(s), 3 cross-file edge(s)).
+resource: src/heal.rs
+tags: [community-0, code]
+timestamp: 2026-06-18T02:40:30Z
+okf_source: phoenix-code-graph
+built_at_commit: d08041dc7fbd3f65b267c39d1a37e01af136f9f5
+---
+
+# Symbols
+
+| Symbol | Location | Kind |
+|--------|----------|------|
+| `heal.rs` | L1 | code |
+| `strategy` | L14 | code |
+| `healctx` | L20 | code |
+| `healresult` | L36 | code |
+| `heal()` | L44 | code |
+| `heal_rollback()` | L51 | code |
+| `heal_retry()` | L78 | code |
+
+# Relationships
+
+_Directed edges to concepts in other files. `candidate` marks INFERRED edges — name-matched, ~0.8 confidence; verify at the cited location before relying on them for a risky change._
+
+- `heal_rollback()` **calls** [`sense()`](/concepts/src/sense.rs.md) (L53) — `candidate`
+- `heal_retry()` **calls** [`sense()`](/concepts/src/sense.rs.md) (L81) — `candidate`
+- `heal_rollback()` **calls** [`restore()`](/concepts/src/snapshot.rs.md) (L63) — `candidate`
+
+# In-file calls
+
+2 intra-file call/method edge(s):
+
+- `heal()` calls `heal_rollback()` (L46)
+- `heal()` calls `heal_retry()` (L47)
+
+# Citations
+
+[1] Source file `src/heal.rs` in repository `ATV-Phoenix`.
+
+==============================================================================
+ANSWER (read straight off the concept's frontmatter + Relationships section).
+==============================================================================
+
+------------------------------------------------------------------------------
+COST - same answer, two ways (tiktoken o200k_base)
+------------------------------------------------------------------------------
+  OKF via phoenix-context : 3,414 tok  (outline 2,470 + query 541 + 1 concept 403)
+  grep-and-read baseline  : 2,667 tok  (grep lines + 4 matched file(s) read in full)
+  -> grep is 1.3x cheaper on this single isolated turn.
+
+Session reality: the outline is paid ONCE and reused for every later structural
+question this session; grep-and-read re-pays its full cost on every new question.
+Across N such questions: OKF ~= 2,470 + N*(small concept); grep ~= N*2,667.

@@ -62,6 +62,24 @@ results as a **candidate list** and confirm a hit at its cited `file:line` befor
 risky change. For precision-critical impact analysis, escalate to the AST backend (`codegraph`). State
 this uncertainty when it matters.
 
+## Consuming OKF knowledge bundles
+When the knowledge is shaped as an **OKF bundle** (a directory of markdown concepts — Phoenix's own
+exported code graph, or any external catalog of runbooks / datasets / decisions), route to
+`okf_ingest`, not grep. It is the same "pay once to orient" move: load the **index-first outline**
+once, then open *exactly* the concept(s) you need.
+
+```
+python skills/phoenix-okf/scripts/okf_ingest.py <bundle>                 # outline (cheap, once)
+python skills/phoenix-okf/scripts/okf_ingest.py <bundle> --query <type>  # locate, no file reads
+python skills/phoenix-okf/scripts/okf_ingest.py <bundle> --full <path>   # open one concept
+```
+
+This is proven end-to-end on a real structural question in `evals/m5-okf-live/` (a live three-turn
+disclosure answering "what cross-file edges does `src/heal.rs` have?"). As with the graph, the
+outline is paid once and reused; whole-bundle dumps are the silent token killer. INFERRED edges in
+an exported bundle are flagged `candidate` — same ~0.8-confidence honesty rule as above. See
+`/phoenix-okf` to produce, validate, and sense bundles.
+
 ## Pull subgraphs, not directories
 When you do need source, pull the **specific** functions/files the graph pointed to — not the whole
 folder "for context". Whole-directory dumps are the silent token killer; the relevant subgraph is
