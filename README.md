@@ -2,17 +2,29 @@
 
 ![ATV-Phoenix](assets/hero.jpg)
 
-**A self-healing harness for AI coding agents.** Phoenix gives GitHub Copilot (and Microsoft Scout)
-the one organ they're missing: the ability to **objectively sense when a task actually failed, and
-heal it** — instead of declaring "done" on silently-broken work.
+**The self-healing, self-learning harness for intent engineering.** A million harnesses scaffold
+code generation. Phoenix is built for a different unit of work — **intent → outcome**: you formalize
+what you actually want into an objective, runnable check, and Phoenix drives the agent to a *verified*
+outcome against it — sensing failure, healing itself, and carrying forward what it learns.
 
-> _Rises from its own ashes. Senses when it's broken, heals itself, gets better with use._
+Fast and lightweight by design — a tiny **Rust spine**, no heavyweight runtime — wrapping GitHub
+Copilot and Microsoft Scout. Three moves, all on *objective* signals, never the model's self-grade:
 
-> ### 🪿 Built entirely by Goose
-> Every line of this repo — the Rust spine, all 16 skills, the tests, the live experiments, and this
-> documentation — was written by **Goose**, an autonomous AI agent running on Microsoft Scout. No human
-> wrote code here, and no human-run process was followed. The thesis: **the harness — not the model,
-> and not the process — is what makes an agent reliable.** The evidence below is the argument.
+- **Formalize** intent into a runnable acceptance check *before* writing code.
+- **Self-heal** — sense when the work actually failed and recover (rollback / bounded retry), confirmed
+  by an external recheck.
+- **Self-learn** — durable knowledge lives in **[Open Knowledge Format](https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf)**
+  bundles: markdown + frontmatter, graph-shaped, **git-diffable**, and **sense-gated for conformance**
+  (learned knowledge passes an objective check before it's trusted). The agent **produces, validates,
+  and re-consumes** them **index-first as token-cheap context** — so what's learned is carried across
+  runs, not just within one. Completion itself is *proven* from a tamper-evident trace (a check went
+  red → green), never self-reported.
+
+The measured payoff on live GitHub Copilot sessions: silent failures **40% → 0%**, zero regressions.
+
+> 🪿 **Built entirely by Goose** — an autonomous AI agent on Microsoft Scout. No human wrote code in
+> this repo. The thesis it sets out to prove: **the harness, not the model, is what makes an agent
+> reliable.** Everything below is the evidence.
 
 ---
 
