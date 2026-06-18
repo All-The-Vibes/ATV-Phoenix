@@ -1,4 +1,5 @@
 ---
+type: Phoenix Skill
 name: phoenix-ralph
 description: Persistence loop that keeps working a backlog until the goal is OBJECTIVELY proven done — not until the agent thinks it's done. Wraps Geoffrey Huntley's Ralph loop (fresh context per iteration, filesystem as memory) with Phoenix's failure-first gate ledger, so completion is derived from the tamper-evident trace, never self-reported. Use when a task must run to completion across many iterations, when the user says /phoenix-ralph, "ralph", "don't stop", "keep going until it's done", or "run until the tests pass". Not for one-shot fixes (use phoenix-build) or scoping a vague idea (use phoenix-goal).
 license: MIT

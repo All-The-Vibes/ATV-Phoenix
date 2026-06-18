@@ -1,4 +1,5 @@
 ---
+type: Phoenix Skill
 name: phoenix-plan
 description: Decompose a clear intent into small, individually-verifiable steps before writing code — each step a slice you can prove pass/fail with phoenix_sense, ordered so the build stays green between them. Use after phoenix-think, when you have an Intent Contract and need an executable plan, or when the user says /phoenix-plan, "break this down", or "make a plan".
 license: MIT

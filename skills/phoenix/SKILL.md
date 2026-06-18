@@ -1,4 +1,5 @@
 ---
+type: Phoenix Skill
 name: phoenix
 description: The meta-skill that routes a task to the right Phoenix lifecycle skill and enforces the non-negotiable operating laws. Use at the start of any session or task to decide which Phoenix skill applies. Phoenix is a self-healing, token-efficient engineering harness — every stage verifies its work with an objective check instead of self-judging. Invoke when starting work, when unsure which skill fits, or when the user says /phoenix.
 license: MIT

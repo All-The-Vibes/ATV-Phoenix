@@ -1,4 +1,5 @@
 ---
+type: Phoenix Skill
 name: phoenix-typescript
 description: TypeScript craft where the type-checker IS the objective gate — treat `tsc --noEmit` as a phoenix_sense check, work strict, derive types instead of duplicating them, and eliminate `any`/unsafe casts. Grounded in Mat Pocock's (Total TypeScript) philosophy that types exist to power a fast feedback loop. Use on any TypeScript/JavaScript change, when configuring a TS project, or when the user says /phoenix-typescript, "fix the types", or "make it type-safe".
 license: MIT

@@ -1,4 +1,5 @@
 ---
+type: Phoenix Skill
 name: phoenix-self-heal
 description: The core verify-then-heal loop usable on its own for any change with a checkable outcome — sense success objectively, snapshot known-good state, and recover (bounded rollback or retry) when a check goes red, confirmed by an external recheck. Use whenever you make a change that has a runnable test/build/lint, or when the user says /phoenix-self-heal, "verify and fix", or "make sure it works".
 license: MIT

@@ -1,4 +1,5 @@
 ---
+type: Phoenix Skill
 name: phoenix-design
 description: Design-engineering craft for interfaces that feel right — the animation decision framework (should it animate at all, what's the purpose, what curve), the invisible details that compound, and a required Before/After review table. Gated where possible by objective checks (lint, build, visual/interaction verification). Grounded in Emil Kowalski's design-engineering philosophy. Use when building or reviewing UI, animations, or interactions, or when the user says /phoenix-design, "make it feel better", or "review this UI".
 license: MIT
