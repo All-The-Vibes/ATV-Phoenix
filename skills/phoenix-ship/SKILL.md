@@ -1,4 +1,5 @@
 ---
+type: Phoenix Skill
 name: phoenix-ship
 description: The final gate before declaring a task done — run the acceptance check one last time, verify the tamper-evident trace is intact, and report success only on green evidence with the proof attached. Use as the last step of any task, before merging or telling the user it's complete, or when the user says /phoenix-ship, "ship it", or "is it done".
 license: MIT

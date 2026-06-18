@@ -32,3 +32,7 @@ evals/h3-experiment/run_h3.log
 
 vendor/**/__pycache__/
 vendor/**/*.pyc
+
+# python bytecode (phoenix-okf scripts etc.)
+__pycache__/
+*.pyc

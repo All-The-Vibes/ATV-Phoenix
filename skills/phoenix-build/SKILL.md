@@ -1,4 +1,5 @@
 ---
+type: Phoenix Skill
 name: phoenix-build
 description: Implement one planned step at a time under the verify-heal loop — snapshot before risky edits, make the smallest change, sense the objective check, and heal (rollback or retry) if it goes red. Never advance to the next step on a red check, never claim a step done without a green sense. Use during implementation, or when the user says /phoenix-build, "implement this", or "write the code".
 license: MIT

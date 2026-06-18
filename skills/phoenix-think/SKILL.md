@@ -1,4 +1,5 @@
 ---
+type: Phoenix Skill
 name: phoenix-think
 description: The thinking-first stage of the Phoenix lifecycle. Before any code, deeply understand what is actually wanted through Socratic deep interview and evidence-grounded deep research, surface and resolve hidden assumptions, and converge on a crystal-clear intent whose deliverable is a runnable objective acceptance check. Use at the start of any non-trivial task, when an ask is vague or ambiguous, or when the user says /phoenix-think, "think first", "interview me", "don't assume", or "research this before building".
 license: MIT

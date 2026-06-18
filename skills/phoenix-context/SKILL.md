@@ -1,4 +1,5 @@
 ---
+type: Phoenix Skill
 name: phoenix-context
 description: Assemble the cheapest sufficient context for a task — route structural questions (who calls X, what breaks if I change Y, what inherits from Z) to the prebuilt code graph instead of grepping and re-reading files, and pull the relevant subgraph/snippet rather than whole directories. Use on any non-trivial codebase, before a change with unclear blast radius, or when the user says /phoenix-context or "what uses this".
 license: MIT

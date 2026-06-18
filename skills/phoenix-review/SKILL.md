@@ -1,4 +1,5 @@
 ---
+type: Phoenix Skill
 name: phoenix-review
 description: Review completed work against the Intent Contract's acceptance criteria using objective evidence, not opinion — re-run every check, confirm no regressions, inspect the tamper-evident trace, and surface only real issues (bugs, unmet criteria, regressions). Use before shipping, after a feature is built, or when the user says /phoenix-review or "review this".
 license: MIT

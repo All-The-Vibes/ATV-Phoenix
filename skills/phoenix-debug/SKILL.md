@@ -1,4 +1,5 @@
 ---
+type: Phoenix Skill
 name: phoenix-debug
 description: Systematic triage and self-healing when something breaks — reproduce with an objective check first, isolate the cause with the code graph, fix the root not the symptom, and confirm with phoenix_sense before claiming it resolved. Use when a test/build is red, a regression appears, or the user says /phoenix-debug, "it broke", or "fix this error".
 license: MIT

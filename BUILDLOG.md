@@ -662,3 +662,48 @@ evidence step.
 KEY INSIGHT: this is the Intent-to-Outcome loop made operational — ralph is ACT under persistence,
 goal is FORMALIZE→ACT→VERIFY, and the gate ledger is VERIFY turned into machine-enforced proof. Every
 other autonomous loop ends in an opinion; Phoenix ends in evidence.
+
+---
+
+## 2026-06-17 — OKF: knowledge as portable, inspectable bundles (phoenix-okf skill)
+
+**Goal:** implement the Open Knowledge Format (OKF v0.1, GoogleCloudPlatform/knowledge-catalog)
+for Phoenix — produce, validate, and consume vendor-neutral markdown+frontmatter knowledge
+bundles. Three slices in one skill: `skills/phoenix-okf`.
+
+### What worked
+- **Slice 1 — code-graph exporter** (`scripts/okf_export.py`): `.token-master/graph.json` → OKF
+  bundle, one concept doc per source file, cross-file edges as bundle-relative markdown links.
+  INFERRED edges flagged `candidate` (honors phoenix-context's ~0.8-confidence honesty rule).
+  Auto-writes per-dir `index.md`, a root `index.md` (declares `okf_version`), and `log.md`.
+  Ran on Phoenix's own graph → 50 conformant concepts from 445 nodes / 508 edges.
+- **Validator as the phoenix_sense gate** (`scripts/okf_validate.py`): enforces §9 (parseable
+  frontmatter + non-empty `type`; reserved-file rules). Exit 0 = conformant. Both bundles pass,
+  0 broken links.
+- **Slice 2 — skills as an OKF bundle** (`scripts/okf_skillsync.py`): surgical idempotent insert
+  of `type: Phoenix Skill` into all 16 `SKILL.md` (non-breaking; agentskills ignores unknown
+  keys) + generated `skills/index.md`. `skills/` now validates CONFORMANT (17 Skill + 1 Reference).
+- **Slice 3 — consumer** (`scripts/okf_ingest.py`): index-first progressive disclosure (types,
+  tags, concept list) so a run pays once for orientation; `--query` by type/tag, `--full` for one
+  body. Permissive per §9 (tolerates unknown types / broken links).
+
+### What didn't work / friction
+- First `skills/` validation FAILED: the bundled spec mirror `OKF-SPEC-0.1.md` had no frontmatter
+  (→ §9.1 error) and its example snippets produced 11 broken-link warnings. Fixes: (a) prepended
+  `type: Reference` frontmatter to the mirror; (b) taught the validator to strip fenced code
+  blocks before scanning links (illustrative links in examples are not real edges). Re-validated clean.
+- Console `Get-Content` piping visually merged the closing `---` with the next line; the `view`
+  tool confirmed the files were correctly delimited. Lesson: trust the parser/view, not the pager.
+
+### Decisions
+- **Granularity = one concept per source file** (diffable, human-meaningful) — node-level detail
+  lives in the body; the graph lives in cross-file links. 50 docs, not 445 noise docs.
+- **Committed `examples/okf-code-graph/`** as a living reference bundle (OKF philosophy: bundles
+  live in git, reviewable), even though `.token-master/graph.json` itself is gitignored.
+
+EVIDENCE (deterministic, no Copilot spend): `okf_validate examples/okf-code-graph` → CONFORMANT
+(50 concepts, 0 broken links); `okf_validate skills` → CONFORMANT (18 concepts); `okf_ingest`
+round-trips both bundles (outline + type/tag query + --full retrieval).
+KEY INSIGHT: Phoenix's strongest measured pillar (TokenMasterX graph) stops hiding in JSON — its
+knowledge becomes a git-reviewable, any-tool-readable artifact, and producing + consuming OKF is
+the concrete step from "code harness" to "knowledge platform."

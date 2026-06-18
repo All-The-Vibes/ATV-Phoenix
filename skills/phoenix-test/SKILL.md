@@ -1,4 +1,5 @@
 ---
+type: Phoenix Skill
 name: phoenix-test
 description: Drive development and bug-fixing with tests where the test IS the objective phoenix_sense gate. Write a failing test before the code, reproduce a bug with a test before fixing it, and let phoenix_sense decide pass/fail — never "looks right". Use when implementing logic, fixing a bug, changing behavior, or when the user says /phoenix-test, "write tests", or "TDD".
 license: MIT

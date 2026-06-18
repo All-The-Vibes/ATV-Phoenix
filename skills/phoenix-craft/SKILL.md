@@ -1,4 +1,5 @@
 ---
+type: Phoenix Skill
 name: phoenix-craft
 description: Code-craft guardrails that reduce the most common LLM coding mistakes — think before coding, simplicity first, surgical changes, and verifiable success — gated by objective phoenix_sense checks so "simpler" and "done" are proven, not asserted. Grounded in Andrej Karpathy's observations on LLM coding pitfalls. Use when writing, refactoring, or reviewing any code, or when the user says /phoenix-craft, "keep it simple", or "don't over-engineer".
 license: MIT
