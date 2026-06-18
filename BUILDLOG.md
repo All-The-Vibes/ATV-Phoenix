@@ -707,3 +707,45 @@ round-trips both bundles (outline + type/tag query + --full retrieval).
 KEY INSIGHT: Phoenix's strongest measured pillar (TokenMasterX graph) stops hiding in JSON — its
 knowledge becomes a git-reviewable, any-tool-readable artifact, and producing + consuming OKF is
 the concrete step from "code harness" to "knowledge platform."
+
+---
+
+## 2026-06-17 (later) — M4: OKF self-sensing + measured (sense/freshness in the spine, token eval)
+
+**Goal:** make OKF (1) self-sensing via the Phoenix spine and (2) backed by real token numbers.
+
+### What worked
+- **No Rust change needed.** The spine's existing `command_exit` sense kind runs the Python OKF
+  gates — OKF domain logic stays in portable skill scripts, spine stays minimal. Right call.
+- **Freshness sense** (`scripts/okf_freshness.py`): compares `built_at_commit` anchored in the
+  bundle root `index.md` vs the live `graph.json`. Proven FRESH (exit 0) and STALE (exit 1, vs a
+  fabricated commit). Export now writes the commit anchor + `generated_at` into the root index.
+- **Full red->green through the REAL `phoenix-mcp.exe`:** sense conformance GREEN -> inject fault
+  (strip a concept's `type`) -> sense RED -> heal (re-export) -> sense GREEN -> `accept` proves
+  failure-first red->green in an intact trace (rows=4, chain verified). Same M1/M2 self-heal
+  pattern, now applied to knowledge artifacts.
+- **Committed sense recipes** (`skills/phoenix-okf/checks/*.json`) so any host can pass them
+  straight to `phoenix_sense`/`phoenix_accept`.
+- **Token eval** (`evals/m4-okf/`, tiktoken o200k_base, deterministic): index-first vs raw
+  graph.json = **31.3x** fewer tokens single-shot; vs whole-bundle 4.4x; session view (outline
+  paid once) index-first 4,113 tok beats raw 90,067 (21.9x) / whole 17,911 (4.4x) / grep 8,778 (2.1x).
+
+### What didn't work / friction
+- First pass charged the 2,470-tok outline to EVERY question, making single-shot grep look
+  cheaper (8,778 vs 11,523). Honest finding kept AND fixed with a session-amortized view (outline
+  once) where index-first wins 2.1x over grep. Reported the grep nuance rather than hiding it.
+- Adding `checks/README.md` briefly broke `skills/` conformance (non-reserved .md needs `type`);
+  fixed with `type: Reference` frontmatter. Lesson: every .md added under a bundle is a concept.
+- Validator stdout used `x`/`S`-unsafe unicode (`×`, `§`) that mojibake'd in the trace evidence;
+  switched to ASCII so the trace reads clean.
+
+### Decisions
+- **Spine stays minimal** — no OKF-specific Rust CheckKind; `command_exit` + Python gates is the
+  composition-over-bloat choice consistent with the mission.
+- **Report the honest negative** (small-bundle single-shot grep is competitive) — credibility over
+  spin, matching the TokenMasterX precedent.
+
+EVIDENCE (deterministic, no Copilot spend): both bundles CONFORMANT; freshness FRESH/STALE both
+proven; phoenix-mcp sense/accept/verify-trace chain green with red->green; evals/m4-okf/RESULT.md +
+results.jsonl. KEY INSIGHT: a knowledge bundle that drifts or corrupts now emits an objective RED a
+run can heal — knowledge becomes a first-class sensed, self-healing artifact, not a static dump.

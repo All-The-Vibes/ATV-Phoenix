@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""okf_validate.py — check a directory for OKF v0.1 conformance (SPEC.md §9).
+"""okf_validate.py — check a directory for OKF v0.1 conformance (SPEC.md S9).
 
 A bundle is conformant if:
   1. Every non-reserved `.md` file contains a parseable YAML frontmatter block.
@@ -9,7 +9,7 @@ A bundle is conformant if:
        `okf_version`.
      - `log.md` date headings use ISO 8601 `YYYY-MM-DD`.
 
-Per §9 the consumption model is permissive: missing optional fields, unknown `type` values,
+Per S9 the consumption model is permissive: missing optional fields, unknown `type` values,
 extra frontmatter keys, and broken cross-links are NOT errors (some are reported as warnings).
 
 Exit code 0 = conformant (this is the phoenix_sense gate); 1 = one or more errors.
@@ -51,9 +51,10 @@ def validate(root: Path, strict_links: bool = False) -> tuple[list[str], list[st
             meta, body = read_concept(path)
             if path.name == "index.md":
                 if is_root_index(path):
-                    # Root index MAY carry frontmatter, but only okf_version is meaningful there.
-                    if meta is not None and meta and set(meta) - {"okf_version", "title"}:
-                        warnings.append(f"{relp}: root index.md frontmatter should be limited to okf_version/title")
+                    # Root index MAY carry frontmatter; allow OKF + freshness-anchor keys.
+                    allowed = {"okf_version", "title", "okf_source", "generated_at", "built_at_commit"}
+                    if meta is not None and meta and set(meta) - allowed:
+                        warnings.append(f"{relp}: unexpected root index.md frontmatter keys: {sorted(set(meta) - allowed)}")
                 elif meta is not None and meta:
                     errors.append(f"{relp}: index.md must not carry frontmatter (only the bundle-root index may)")
             elif path.name == "log.md":
@@ -69,11 +70,11 @@ def validate(root: Path, strict_links: bool = False) -> tuple[list[str], list[st
         concept_paths.add(relp)
         meta, _ = read_concept(path)
         if meta is None:
-            errors.append(f"{relp}: no parseable YAML frontmatter block (§9.1)")
+            errors.append(f"{relp}: no parseable YAML frontmatter block (S9.1)")
             continue
         t = meta.get("type")
         if t is None or str(t).strip() == "":
-            errors.append(f"{relp}: missing or empty required `type` field (§9.2)")
+            errors.append(f"{relp}: missing or empty required `type` field (S9.2)")
         else:
             types[str(t)] = types.get(str(t), 0) + 1
 
@@ -119,8 +120,8 @@ def main() -> None:
 
     print(f"OKF conformance report for {args.bundle}/")
     print(f"  concept documents : {stats['concepts']}")
-    print(f"  type values       : {', '.join(f'{k}×{v}' for k, v in sorted(stats['types'].items())) or '(none)'}")
-    print(f"  broken links      : {stats['broken_links']} (tolerated per §9 unless --strict-links)")
+    print(f"  type values       : {', '.join(f'{k}x{v}' for k, v in sorted(stats['types'].items())) or '(none)'}")
+    print(f"  broken links      : {stats['broken_links']} (tolerated per S9 unless --strict-links)")
     for w in warnings:
         print(f"  WARN  {w}")
     for e in errors:
@@ -135,3 +136,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
