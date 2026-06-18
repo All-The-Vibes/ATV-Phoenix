@@ -1,0 +1,60 @@
+name: OKF
+
+# Enforce Open Knowledge Format conformance on every push/PR. The committed bundles
+# (examples/okf-code-graph, examples/okf-external-demo) must stay OKF v0.1 conformant, the
+# lifecycle test suite must pass, and the Phoenix spine must sense both bundles GREEN through
+# its own command_exit mechanism. The live graph.json is a local artifact (gitignored), so
+# freshness-vs-live-graph is exercised in the test suite with synthetic graphs, not here.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "skills/phoenix-okf/**"
+      - "examples/okf-code-graph/**"
+      - "examples/okf-external-demo/**"
+      - "tests/okf/**"
+      - "tests/okf_sense.rs"
+      - ".github/workflows/okf.yml"
+  pull_request:
+    paths:
+      - "skills/phoenix-okf/**"
+      - "examples/okf-code-graph/**"
+      - "examples/okf-external-demo/**"
+      - "tests/okf/**"
+      - "tests/okf_sense.rs"
+      - ".github/workflows/okf.yml"
+  workflow_dispatch:
+
+jobs:
+  okf-gate:
+    name: OKF gate (Python)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install deps
+        run: python -m pip install --quiet pyyaml tiktoken pytest
+      - name: Lifecycle test suite
+        run: python -m pytest tests/okf -q
+      - name: Validate committed code bundle
+        run: python skills/phoenix-okf/scripts/okf_validate.py examples/okf-code-graph
+      - name: Validate committed external bundle (strict links)
+        run: python skills/phoenix-okf/scripts/okf_validate.py examples/okf-external-demo --strict-links
+
+  okf-spine:
+    name: OKF sensed through the spine (Rust)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install OKF Python deps (the spine shells out to them)
+        run: python -m pip install --quiet pyyaml
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Spine senses the committed bundles (conformant) and a broken bundle (red)
+        run: cargo test --test okf_sense -- --nocapture

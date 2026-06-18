@@ -1,0 +1,11 @@
+{
+  "question": "What cross-file (candidate) edges does src/heal.rs have, and what symbols does it define?",
+  "concept_opened": "concepts/src/heal.rs.md",
+  "okf_outline_tok": 2470,
+  "okf_query_tok": 541,
+  "okf_full_tok": 403,
+  "okf_total_tok": 3414,
+  "grep_total_tok": 2667,
+  "grep_hit_files": 4,
+  "single_turn_ratio_grep_over_okf": 0.781
+}
