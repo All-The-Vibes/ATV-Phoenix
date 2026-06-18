@@ -34,16 +34,21 @@ The measured payoff on live GitHub Copilot sessions: silent failures **40% → 0
 
 Point Phoenix at a one-line idea and walk away. It **interviews** you into a crystal intent, **formalizes**
 it into a runnable acceptance check, then runs the full **think → plan → build → test → review → ship**
-lifecycle on autopilot — **healing every failure** and **re-checking its own work** at every step. The
-engine that drives it ([`phoenix-ralph`](skills/phoenix-ralph/SKILL.md)) doesn't stop when the model
-*says* it's done. **It stops when a tamper-evident trace *proves* it** — a real check went red → green,
-or it doesn't ship.
+lifecycle on autopilot — **healing every failure** and **re-checking its own work** at every step.
 
-Every other autonomous loop ends in an opinion — a human babysitting the stream, or one LLM grading
-another. **Phoenix ends in evidence.** That's the whole difference: silent failures **40% → 0%**, zero
-regressions, completion you can audit.
+For **long-horizon work** — multi-hour, many-step jobs — Phoenix's autonomous trio takes over:
+[`phoenix-goal`](skills/phoenix-goal/SKILL.md) sets a persistent definition of done,
+[`phoenix-ralph`](skills/phoenix-ralph/SKILL.md) grinds the backlog across fresh-context iterations
+(filesystem as memory), and [`phoenix-auto`](skills/phoenix-auto/SKILL.md) routes dynamically. It's the
+same long-running-agent design **OpenAI Codex** (`/goal` mode) and **Anthropic** (a goal condition
+re-checked every turn) converge on — but their loops still end in an *opinion* (an LLM grading output, a
+diff for you to review). **Phoenix ends in evidence:** it doesn't stop when the model *says* it's done —
+it stops when a **tamper-evident trace *proves*** the acceptance check went red → green, or it doesn't
+ship. That's the property you actually need before you walk away from an unattended loop.
 
-**→ See the full greenfield walkthrough: [`docs/developer-journey.md`](docs/developer-journey.md)**
+The difference, measured: silent failures **40% → 0%**, zero regressions, completion you can audit.
+
+**→ Full greenfield walkthrough: [`docs/developer-journey.md`](docs/developer-journey.md) · long-horizon design + lab alignment: [`docs/autonomous-workflows.md`](docs/autonomous-workflows.md)**
 
 ---
 
@@ -130,9 +135,12 @@ real red→green heal. Token receipts in [`evals/m4-okf/`](evals/m4-okf/RESULT.m
 - **TokenMasterX** (bundled, MIT) — graph-routed code navigation, **−73% tokens**; `phoenix-context`
   routes structural questions here instead of grepping whole directories.
 - **One-command install** — `setup.py` installs the whole stack; nothing else to fetch.
-- **The autonomous engine** — [`phoenix-ralph`](skills/phoenix-ralph/SKILL.md) runs the whole lifecycle
-  to completion unattended, stopping only on a trace-proven outcome. See the
-  [developer journey](docs/developer-journey.md) and [autonomous workflows](docs/autonomous-workflows.md).
+- **The long-horizon engine** — for multi-hour, many-step jobs, the autonomous trio
+  [`phoenix-goal`](skills/phoenix-goal/SKILL.md) + [`phoenix-ralph`](skills/phoenix-ralph/SKILL.md) +
+  [`phoenix-auto`](skills/phoenix-auto/SKILL.md) runs the whole lifecycle to completion unattended,
+  stopping only on a trace-proven outcome. The same long-running-agent design as OpenAI Codex / Anthropic
+  — but completion is *proven*, not judged. See the [developer journey](docs/developer-journey.md) and
+  [autonomous workflows](docs/autonomous-workflows.md).
 
 **Why it works:** the orchestration layer — not the model — determines agent success. Most "the model
 failed" problems are *harness* failures: no objective completion signal, no recovery, no evidence.
