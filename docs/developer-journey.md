@@ -103,18 +103,47 @@ and so on. The skills activate themselves.
 
 ---
 
-## Autonomous mode — the part that lets you walk away
+## Autonomous mode — built for long-horizon tasks
 
-The lifecycle above assumes you're driving. For **hands-off, run-to-completion** greenfield work
-("go build the whole thing, don't stop until it works"), the router hands off to the autonomous
-engine — which *reuses the same lifecycle skills underneath*.
+The lifecycle above assumes you're driving. For **long-running, multi-hour, many-step** greenfield work
+("go build the whole thing, don't stop until it works"), the router hands off to Phoenix's autonomous
+system — **`phoenix-goal` + `phoenix-ralph` + `phoenix-auto`** — which *reuses the same lifecycle skills
+underneath*. This is the same shape both major labs converge on for long-horizon reliability — OpenAI
+Codex ships a **`/goal` mode** (*"the goal text acts as both the starting prompt and the completion
+criteria"*) and Anthropic recommends a **goal condition that a separate evaluator re-checks every turn**
+— and Phoenix's contribution is making the completion signal a **tamper-evident proof** instead of a
+judgment.
 
-**[`phoenix-ralph`](../skills/phoenix-ralph/SKILL.md) is the keystone.** It wraps Geoffrey Huntley's
-Ralph loop — *fresh context every iteration, the filesystem as memory, one task per loop* — and adds
-the one thing every other autonomous loop lacks: an **objective, tamper-evident completion proof.**
+The three skills are one pipeline:
 
-> Every other persistence loop ends in an opinion — a human watching the stream, or an LLM approving an
-> LLM. **phoenix-ralph ends in evidence.**
+```
+phoenix-auto  (dynamic router: senses state, picks the next skill at runtime)
+    ├── vague goal ─────────▶ phoenix-goal  (FORMALIZE a persistent done-check + DECOMPOSE a backlog)
+    │                              └── hands off to ▶ phoenix-ralph
+    └── have a backlog ─────▶ phoenix-ralph (the persistence engine)
+                                   └── drives ▶ phoenix-build / phoenix-test / phoenix-debug
+                                   └── completion proven by ▶ phoenix-mcp accept (gate ledger)
+```
+
+- **[`phoenix-goal`](../skills/phoenix-goal/SKILL.md)** — the on-ramp. Turns one fuzzy goal into a
+  *persistent definition of done* (`done-check.json`, a real `command_exit`) written **before any code**,
+  then decomposes it into a backlog where each item carries its own objective check. The goal is the
+  agent's north star for the whole run — the equivalent of Codex's `/goal`, but the criterion is a
+  runnable check that must start **red**.
+- **[`phoenix-ralph`](../skills/phoenix-ralph/SKILL.md)** — the engine. It wraps Geoffrey Huntley's Ralph
+  loop — *fresh context every iteration, the filesystem as memory, one task per loop* — so a multi-hour
+  job survives context-window degradation (the same fresh-context / compaction discipline Anthropic and
+  Codex both use for long tasks). It adds the one thing every other autonomous loop lacks: an
+  **objective, tamper-evident completion proof.**
+- **[`phoenix-auto`](../skills/phoenix-auto/SKILL.md)** — the dynamic router. When the next step depends
+  on results (Anthropic's orchestrator-workers case: *"you can't predict the subtasks needed"*), it
+  senses current state (green/red, stage, backlog left?) and picks the next skill at runtime, with
+  oscillation + confidence guards.
+
+> Every other autonomous loop ends in an opinion — a human watching the stream, or an LLM approving an
+> LLM. **Phoenix ends in evidence.**
+
+The Ralph loop (mode B — unattended):
 
 ```
  driver: accept(done-check)?  ── proven green ──▶  DONE  (writes completed.json + git tag)
@@ -128,9 +157,9 @@ the one thing every other autonomous loop lacks: an **objective, tamper-evident 
         └──────────────────── loop ◀────────────
 ```
 
-**The brain on disk (`.phoenix-ralph/`):** `backlog.json` (each item carries an *objective check*, not a
-prose bullet), `progress.md` (append-only memory that survives the amnesiac context resets),
-`done-check.json` (the top-level acceptance check), `completed.json` (the proof bundle).
+**The brain on disk (`.phoenix-ralph/`):** `backlog.json` (each item an *objective check*, not a prose
+bullet), `progress.md` (append-only memory that survives the amnesiac context resets), `done-check.json`
+(the top-level acceptance check), `completed.json` (the proof bundle).
 
 **The crucial design choice: the driver — not the agent — owns "done."** The agent only *proposes*
 state changes (edits files, sets `done:true`); the **driver derives completion from the trace**. An
@@ -140,21 +169,11 @@ Two ways to run it:
 - **Interactive** — `/phoenix-ralph` in a live Copilot session; the agent's own tool-use loop *is* the
   loop, and it can't declare done until the `phoenix_accept` MCP tool returns ok.
 - **Unattended** — [`dist/ralph/phoenix-ralph.ps1`](../dist/ralph/phoenix-ralph.ps1) re-invokes the
-  agent with fresh context every loop (Huntley's trick against ~150k-token degradation) for overnight /
-  CI jobs, calling `phoenix-mcp accept`.
+  agent with fresh context every loop for overnight / CI jobs, calling `phoenix-mcp accept`.
 
-The three autonomous skills compose:
-
-```
-phoenix-auto  (dynamic router: senses state, picks the next skill at runtime)
-    ├── vague goal ─────────▶ phoenix-goal  (FORMALIZE the acceptance check + decompose)
-    │                              └── hands off to ▶ phoenix-ralph
-    └── have a backlog ─────▶ phoenix-ralph (persistence engine)
-                                   └── drives ▶ phoenix-build / phoenix-test / phoenix-debug
-                                   └── completion proven by ▶ phoenix-mcp accept (gate ledger)
-```
-
-Full detail + the gate-ledger semantics: [`autonomous-workflows.md`](autonomous-workflows.md).
+Full detail, the gate-ledger semantics, and the technique-by-technique alignment with Anthropic and
+OpenAI Codex (with citations): [`autonomous-workflows.md`](autonomous-workflows.md) and
+[`../research/long-horizon-agent-design.md`](../research/long-horizon-agent-design.md).
 
 ---
 

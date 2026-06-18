@@ -160,6 +160,45 @@ opinion.
 
 ---
 
+## Designed for long-horizon tasks (and how it aligns with Anthropic & OpenAI Codex)
+
+`phoenix-goal + phoenix-ralph + phoenix-auto` is not three loosely-related skills — it's **one system
+purpose-built for long-running, multi-hour, many-step work**. When you give it a goal, `phoenix-goal`
+formalizes a persistent definition of done, `phoenix-ralph` grinds the backlog across fresh-context
+iterations with the filesystem as memory, and `phoenix-auto` picks the next move dynamically. This is
+the same shape both major labs have converged on for long-horizon reliability — Phoenix's contribution
+is making the *completion signal* an objective, tamper-evident proof instead of a judgment.
+
+The recurring long-horizon patterns, and where each Phoenix skill realizes them:
+
+| Long-horizon pattern | Anthropic | OpenAI Codex | Phoenix |
+|---|---|---|---|
+| **A persistent "definition of done" the agent re-checks every step** | *"Explore → Plan → Implement → Commit"*; a `/goal` condition where *"a separate evaluator re-checks after every turn"* ([best-practices](https://code.claude.com/docs/en/best-practices)) | **`/goal` mode**: *"the goal text acts as both the starting prompt and the completion criteria. Codex uses it to decide what to do next and whether the task is complete"* ([prompting](https://developers.openai.com/codex/prompting)) | **`phoenix-goal`** writes a frozen `done-check.json` (a real `command_exit`) *before any code*; the loop must satisfy it, never weaken it |
+| **Decompose into small verifiable subtasks** | *"decomposes a task into a sequence of steps… programmatic checks ('gate') on any intermediate steps"* ([building-effective-agents](https://www.anthropic.com/engineering/building-effective-agents)) | *"break it into smaller, focused steps. Smaller tasks are easier for Codex to test and for you to review"* ([prompting](https://developers.openai.com/codex/prompting)) | **`phoenix-plan`** → `backlog.json`, **each item carrying its own objective `check`** |
+| **Ground completion in objective signals, not self-judgment** | *"Give Claude a check it can run: tests, a build… the loop closes on its own"*; *"show evidence rather than asserting success"* ([best-practices](https://code.claude.com/docs/en/best-practices)) | *"Codex produces higher-quality outputs when it can verify its work… run linting and pre-commit checks"* ([prompting](https://developers.openai.com/codex/prompting)) | **`phoenix_sense` + the gate ledger** — completion is *derived from the trace* (`accept`: red→green, intact chain, green now), never self-reported |
+| **Externalize state to the filesystem so a fresh context can resume** | *"Two mechanisms carry knowledge across sessions: CLAUDE.md files… Auto memory: notes Claude writes itself"* ([memory](https://code.claude.com/docs/en/memory)) | *"Put longer task specs and repo-local instructions in workspace files such as `repo/task.md` or `AGENTS.md`"* ([sandboxes](https://developers.openai.com/api/docs/guides/agents/sandboxes)) | **`.phoenix-ralph/`** on disk: `backlog.json`, `progress.md` (append-only memory), `done-check.json` — re-read every iteration |
+| **Fresh context per iteration / context compaction** | *"the SDK automatically compacts the conversation… CLAUDE.md content is re-injected on every request"* ([agent-loop](https://code.claude.com/docs/en/agent-sdk/agent-loop)) | *"With repeated compaction, Codex can continue working on complex tasks over many steps"* ([prompting](https://developers.openai.com/codex/prompting)) | **`phoenix-ralph` (mode B)** re-invokes `copilot -p` with a **fresh context every loop** (Huntley's trick against ~150k-token degradation) |
+| **Dynamic orchestration when subtasks aren't predictable** | *"a central LLM dynamically breaks down tasks, delegates… and synthesizes their results… you can't predict the subtasks needed"* (orchestrator-workers, [building-effective-agents](https://www.anthropic.com/engineering/building-effective-agents)) | local `/plan` → cloud delegation; subagents to *"parallelize complex tasks"* ([workflows](https://developers.openai.com/codex/workflows)) | **`phoenix-auto`** senses state (green/red, stage, backlog) and picks the next skill at runtime, with oscillation + confidence guards |
+| **Sandbox + bounded iteration** | *"extensive testing in sandboxed environments… stopping conditions (maximum iterations)"*; `maxTurns` / `maxBudgetUsd` ([building-effective-agents](https://www.anthropic.com/engineering/building-effective-agents)) | *"Codex creates a container… Agent internet access is off by default"* ([environments](https://developers.openai.com/codex/cloud/environments)) | The Ralph **driver owns budgets** (`-MaxLoops`, `-MaxMinutes`, `-NoProgressStop`) + a no-progress stop |
+| **A persistent instruction/guidance file** | **CLAUDE.md** — *"re-injected on every request"*, survives compaction ([memory](https://code.claude.com/docs/en/memory)) | **AGENTS.md** — *"the agent uses it to find project-specific lint and test commands"* ([environments](https://developers.openai.com/codex/cloud/environments)) | Phoenix installs a **`phoenix.agent.md`** agent definition + the skill pack; **`PROMPT.md`** is the fixed per-loop instruction re-read every iteration |
+
+**The one place Phoenix diverges — and why it matters for long horizons.** Every loop above still ends
+in a *subjective* stop on its own: Anthropic's evaluator and OpenAI's goal-completion check are both an
+LLM judging output; Codex hands you a diff to review. That's fine when a human is watching. Over a
+multi-hour unattended run it's exactly where silent failures accumulate. Phoenix replaces the stop
+signal with **`phoenix-mcp accept`**: done is true only if the *tamper-evident, hash-chained trace*
+shows the acceptance check went **red → green** for the same check and is green now. A check never seen
+failing is rejected (vacuous-gate guard); a dishonest edit breaks the chain. **Opinion at the finish
+line becomes evidence** — which is the property you actually need before you walk away from a loop.
+
+> Both labs give the agent a goal and a verifier and let it run. Phoenix adds the missing piece for
+> *unattended* long-horizon work: a completion proof the agent cannot fake.
+
+Full citations and the technique-by-technique source breakdown live in
+[`../research/long-horizon-agent-design.md`](../research/long-horizon-agent-design.md).
+
+---
+
 ## Honest limits
 - The driver is the authority, but it runs the agent via `copilot -p`; cost/runaway control is the
   driver's budgets (`-MaxLoops`, `-MaxMinutes`, `-NoProgressStop`), not a hard sandbox.
