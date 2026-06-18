@@ -169,7 +169,7 @@ def build(graph_path: Path, out_dir: Path, name: str) -> dict:
         write_concept(out_dir / rel, meta, "\n".join(body_parts))
         created.append(rel)
 
-    _write_indexes(out_dir, created, name, ts)
+    _write_indexes(out_dir, created, name, ts, built_at)
     _write_log(out_dir, name, len(created), len(nodes), len(links), ts)
     return {"concepts": len(created), "nodes": len(nodes), "links": len(links)}
 
@@ -182,7 +182,7 @@ def _descr_of(out_dir: Path, rel: str) -> str:
     return ""
 
 
-def _write_indexes(out_dir: Path, created: list[str], name: str, ts: str) -> None:
+def _write_indexes(out_dir: Path, created: list[str], name: str, ts: str, built_at: str | None) -> None:
     # Collect every directory that needs an index, mapping dir -> (subdirs, concept files).
     dirs: dict[str, set] = defaultdict(set)
     files_in: dict[str, list] = defaultdict(list)
@@ -201,7 +201,12 @@ def _write_indexes(out_dir: Path, created: list[str], name: str, ts: str) -> Non
         is_root = d == ""
         if is_root:
             # Root index.md is the ONLY place frontmatter is permitted in an index file.
-            lines.append(dump_frontmatter({"okf_version": "0.1", "title": f"{name} code-graph bundle"}))
+            # built_at_commit anchors freshness checks (see okf_freshness.py).
+            root_meta = {"okf_version": "0.1", "title": f"{name} code-graph bundle",
+                         "okf_source": "phoenix-code-graph", "generated_at": ts}
+            if built_at:
+                root_meta["built_at_commit"] = built_at
+            lines.append(dump_frontmatter(root_meta))
             lines.append("")
             lines.append(f"# {name} — code-graph knowledge bundle\n")
             lines.append(

@@ -4,7 +4,7 @@ title: sense.rs
 description: Code-graph knowledge extracted from `src/sense.rs` (15 symbol(s), 0 cross-file edge(s)).
 resource: src/sense.rs
 tags: [community-0, community-6, code]
-timestamp: 2026-06-18T01:47:16Z
+timestamp: 2026-06-18T02:40:30Z
 okf_source: phoenix-code-graph
 built_at_commit: d08041dc7fbd3f65b267c39d1a37e01af136f9f5
 ---

@@ -4,7 +4,7 @@ title: m2_mcp_session.rs
 description: Code-graph knowledge extracted from `tests/m2_mcp_session.rs` (8 symbol(s), 0 cross-file edge(s)).
 resource: tests/m2_mcp_session.rs
 tags: [community-18, code]
-timestamp: 2026-06-18T01:47:16Z
+timestamp: 2026-06-18T02:40:30Z
 okf_source: phoenix-code-graph
 built_at_commit: d08041dc7fbd3f65b267c39d1a37e01af136f9f5
 ---

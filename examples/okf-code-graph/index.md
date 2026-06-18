@@ -1,6 +1,9 @@
 ---
 okf_version: 0.1
 title: ATV-Phoenix code-graph bundle
+okf_source: phoenix-code-graph
+generated_at: 2026-06-18T02:40:30Z
+built_at_commit: d08041dc7fbd3f65b267c39d1a37e01af136f9f5
 ---
 
 # ATV-Phoenix — code-graph knowledge bundle

@@ -4,7 +4,7 @@ title: graphify_mcp.py
 description: Code-graph knowledge extracted from `vendor/token-master/skills/token-master/graphify_mcp.py` (22 symbol(s), 0 cross-file edge(s)).
 resource: vendor/token-master/skills/token-master/graphify_mcp.py
 tags: [community-2, code, rationale]
-timestamp: 2026-06-18T01:47:16Z
+timestamp: 2026-06-18T02:40:30Z
 okf_source: phoenix-code-graph
 built_at_commit: d08041dc7fbd3f65b267c39d1a37e01af136f9f5
 ---
