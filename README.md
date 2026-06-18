@@ -4,7 +4,7 @@
 
 **The self-healing, self-learning harness for intent engineering.** A million harnesses scaffold
 code generation. Phoenix is built for a different unit of work — **intent → outcome**: you formalize
-what you actually want into an objective, runnable check, and Phoenix drives the agent to a *verified*
+what you actually want into an objective, runnable check, and Phoenix drives the agent to a *demonstrated*
 outcome against it — sensing failure, healing itself, and carrying forward what it learns.
 
 Fast and lightweight by design — a tiny **Rust spine**, no heavyweight runtime — wrapping GitHub
@@ -17,7 +17,7 @@ Copilot and Microsoft Scout. Three moves, all on *objective* signals, never the 
   bundles: markdown + frontmatter, graph-shaped, **git-diffable**, and **sense-gated for conformance**
   (learned knowledge passes an objective check before it's trusted). The agent **produces, validates,
   and re-consumes** them **index-first as token-cheap context** — so what's learned is carried across
-  runs, not just within one. Completion itself is *proven* from a tamper-evident trace (a check went
+  runs, not just within one. Completion itself is *demonstrated* from a tamper-evident trace (a check went
   red → green), never self-reported.
 
 The measured payoff on live GitHub Copilot sessions: silent failures **40% → 0%**, zero regressions.
@@ -28,9 +28,9 @@ The measured payoff on live GitHub Copilot sessions: silent failures **40% → 0
 
 ---
 
-## One line in. A proven outcome out.
+## One line in. A demonstrated outcome out.
 
-![Intent in, proven outcome out](assets/journey.jpg)
+![Intent in, demonstrated outcome out](assets/journey.jpg)
 
 Point Phoenix at a one-line idea and walk away. It **interviews** you into a crystal intent, **formalizes**
 it into a runnable acceptance check, then runs the full **think → plan → build → test → review → ship**
@@ -138,8 +138,8 @@ real red→green heal. Token receipts in [`evals/m4-okf/`](evals/m4-okf/RESULT.m
 - **The long-horizon engine** — for multi-hour, many-step jobs, the autonomous trio
   [`phoenix-goal`](skills/phoenix-goal/SKILL.md) + [`phoenix-ralph`](skills/phoenix-ralph/SKILL.md) +
   [`phoenix-auto`](skills/phoenix-auto/SKILL.md) runs the whole lifecycle to completion unattended,
-  stopping only on a trace-proven outcome. The same long-running-agent design as OpenAI Codex / Anthropic
-  — but completion is *proven*, not judged. See the [developer journey](docs/developer-journey.md) and
+  stopping only on a trace-demonstrated outcome. The same long-running-agent design as OpenAI Codex / Anthropic
+  — but completion is *demonstrated*, not judged. See the [developer journey](docs/developer-journey.md) and
   [autonomous workflows](docs/autonomous-workflows.md).
 
 **Why it works:** the orchestration layer — not the model — determines agent success. Most "the model
@@ -154,7 +154,7 @@ The bigger bet — Intent-to-Outcome — is in **[`docs/intent-to-outcome.md`](d
 
 Every milestone has a measured eval + a screenshot.
 
-| Milestone | Proven | Evidence |
+| Milestone | Demonstrated | Evidence |
 |---|---|---|
 | M0 | token/retrieval pillar (TokenMasterX/graphify) validated | [result](evals/m0-install-path/RESULT.md) · [shot](evals/screenshots/m0-graph-viz.png) |
 | M1 | self-healing spine in Rust (`cargo test`) | [result](evals/m1-self-heal/RESULT.md) · [shot](evals/screenshots/m1-self-heal.png) |

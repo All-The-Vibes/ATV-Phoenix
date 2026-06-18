@@ -1,11 +1,11 @@
 # The developer journey — greenfield, end to end
 
 How everything in Phoenix comes together on a real build. This walks a **greenfield** project from a
-one-line idea to a *proven* shipped outcome, naming each skill and component at the moment it fires.
+one-line idea to a *demonstrated* shipped outcome, naming each skill and component at the moment it fires.
 
 If you only remember one thing: **every phase ends in an objective `phoenix_sense` gate, and the
 autonomous engine ([`phoenix-ralph`](../skills/phoenix-ralph/SKILL.md)) only stops when the trace
-*proves* the work is done — never when the model says so.**
+*demonstrates* the work is done — never when the model says so.**
 
 ---
 
@@ -184,7 +184,7 @@ gate** → the **craft skills** (`craft` / `typescript` / `design`) raise qualit
 **`phoenix-context` + TokenMasterX** keep it token-cheap → red checks pull **`debug` / `self-heal`** →
 **`review` / `ship`** prove zero regressions through the **gate ledger** → **`phoenix-okf`** banks the
 knowledge so the *next* greenfield run starts smarter. For hands-off work, **`phoenix-ralph`** runs that
-entire lifecycle to completion unattended, stopping only on a trace-proven outcome. The Rust spine, the
+entire lifecycle to completion unattended, stopping only on a trace-demonstrated outcome. The Rust spine, the
 5 tools, and the tamper-evident trace are the rails all of it runs on.
 
 ---

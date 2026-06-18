@@ -110,7 +110,7 @@ Skill: [`skills/phoenix-ralph`](../skills/phoenix-ralph/SKILL.md). Compare to Hu
 
 ## 2. Goal-oriented execution — `phoenix-goal`
 
-One fuzzy goal → a proven outcome. The critical, non-skippable first step is **FORMALIZE**: derive an
+One fuzzy goal → a demonstrated outcome. The critical, non-skippable first step is **FORMALIZE**: derive an
 *executable acceptance check* before any code — because (per BabyAGI/ReAct) a goal with no objective
 criterion has no honest termination.
 
