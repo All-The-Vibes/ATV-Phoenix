@@ -1,11 +1,11 @@
 ---
 type: Phoenix Skill
 name: phoenix-goal
-description: Turn ONE high-level, possibly-vague goal into a runnable, objective acceptance check and a verifiable backlog, then drive it to completion. The critical step is FORMALIZE — deriving an executable done-check before any code, because a goal with no objective acceptance criterion has no honest termination. Use at the start of an open-ended ask, when the user says /phoenix-goal, "achieve", "build me", "get this working end to end", or gives a goal without a spec. Hands off to phoenix-ralph for the loop. Not for an already-scoped backlog (use phoenix-ralph) or a single known fix (use phoenix-build).
+description: Turn ONE high-level, possibly-vague goal into a runnable, objective acceptance check and a verifiable backlog, then drive it to completion. The critical step is FORMALIZE — deriving an executable done-check before any code, because a goal with no objective acceptance criterion has no honest termination. This is the DEFAULT entry for any hands-off "just go and finish it" request. Use at the start of an open-ended ask, when the user says /phoenix-goal, "achieve", "build me", "get this working end to end", "go", "go autonomous", "lfg", "let's go", "yolo", "just do it", "run it to done", or gives a goal without a spec — including any old/unknown autonomous command (e.g. /lfg, /autopilot) the user expects to "just run it". Hands off to phoenix-ralph for the loop. Not for an already-scoped backlog (use phoenix-ralph) or a single known fix (use phoenix-build).
 license: MIT
 ---
 
-# phoenix-goal — from a fuzzy goal to a proven outcome
+# phoenix-goal — from a fuzzy goal to a demonstrated outcome
 
 Goal-oriented autonomous execution (BabyAGI, ReAct, Anthropic's evaluator-optimizer) all share one
 fatal weakness: **without an executable acceptance criterion there is no reliable "done".** Naive
