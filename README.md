@@ -28,6 +28,25 @@ The measured payoff on live GitHub Copilot sessions: silent failures **40% → 0
 
 ---
 
+## One line in. A proven outcome out.
+
+![Intent in, proven outcome out](assets/journey.jpg)
+
+Point Phoenix at a one-line idea and walk away. It **interviews** you into a crystal intent, **formalizes**
+it into a runnable acceptance check, then runs the full **think → plan → build → test → review → ship**
+lifecycle on autopilot — **healing every failure** and **re-checking its own work** at every step. The
+engine that drives it ([`phoenix-ralph`](skills/phoenix-ralph/SKILL.md)) doesn't stop when the model
+*says* it's done. **It stops when a tamper-evident trace *proves* it** — a real check went red → green,
+or it doesn't ship.
+
+Every other autonomous loop ends in an opinion — a human babysitting the stream, or one LLM grading
+another. **Phoenix ends in evidence.** That's the whole difference: silent failures **40% → 0%**, zero
+regressions, completion you can audit.
+
+**→ See the full greenfield walkthrough: [`docs/developer-journey.md`](docs/developer-journey.md)**
+
+---
+
 ## The results that justify it
 
 Three hypotheses, all tested on **live GitHub Copilot sessions**, scored by hidden checkers (ground truth):
@@ -113,6 +132,9 @@ real red→green heal. Token receipts in [`evals/m4-okf/`](evals/m4-okf/RESULT.m
 - **TokenMasterX** (bundled, MIT) — graph-routed code navigation, **−73% tokens**; `phoenix-context`
   routes structural questions here instead of grepping whole directories.
 - **One-command install** — `setup.py` installs the whole stack; nothing else to fetch.
+- **The autonomous engine** — [`phoenix-ralph`](skills/phoenix-ralph/SKILL.md) runs the whole lifecycle
+  to completion unattended, stopping only on a trace-proven outcome. See the
+  [developer journey](docs/developer-journey.md) and [autonomous workflows](docs/autonomous-workflows.md).
 
 **Why it works:** the orchestration layer — not the model — determines agent success. Most "the model
 failed" problems are *harness* failures: no objective completion signal, no recovery, no evidence.
