@@ -45,8 +45,8 @@ automatically, and the harness validates them itself (`phoenix-mcp doctor`; `car
 
 | Skill | What it does |
 |---|---|
-| `phoenix-goal` | One fuzzy goal → **FORMALIZE** an objective acceptance check (no code until it exists) → decompose → drive to a proven outcome. |
-| `phoenix-ralph` | Geoffrey Huntley's persistence loop (fresh context per iteration, filesystem as memory). Runs **interactively in-session** (the agent proves completion with `phoenix_accept`) or **unattended** via the external driver — either way completion is **proven from the trace**, never self-reported. |
+| `phoenix-goal` | One fuzzy goal → **FORMALIZE** an objective acceptance check (no code until it exists) → decompose → drive to a demonstrated outcome. |
+| `phoenix-ralph` | Geoffrey Huntley's persistence loop (fresh context per iteration, filesystem as memory). Runs **interactively in-session** (the agent demonstrates completion with `phoenix_accept`) or **unattended** via the external driver — either way completion is **demonstrated from the trace**, never self-reported. |
 | `phoenix-auto` | Dynamic state-sensing router — picks the next skill at runtime instead of a fixed pipeline, with oscillation + confidence guards. |
 
 These rest on the **gate ledger** (`phoenix-mcp accept`): a check counts as done only if the
