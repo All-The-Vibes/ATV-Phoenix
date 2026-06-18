@@ -66,8 +66,6 @@ interaction gate. Full method + raw data per experiment under [`evals/`](evals/)
 
 ## What Phoenix gives the agent (5 tools)
 
-![The self-heal loop](assets/loop.jpg)
-
 | Tool | What it does |
 |---|---|
 | `phoenix_sense` | Objectively check success — a command's exit code, a file hash, or a regex. **No self-grading.** |
