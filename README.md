@@ -30,7 +30,7 @@ The measured payoff on live GitHub Copilot sessions: silent failures **40% → 0
 
 ## One line in. A demonstrated outcome out.
 
-![Intent in, demonstrated outcome out](assets/journey.jpg)
+![Intent in, demonstrated outcome out](assets/journey-v2.jpg)
 
 Point Phoenix at a one-line idea and walk away. It **interviews** you into a crystal intent, **formalizes**
 it into a runnable acceptance check, then runs the full **think → plan → build → test → review → ship**
