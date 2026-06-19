@@ -241,7 +241,14 @@ fn run_cli(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
             }
 
             let r = phoenix::doctor::integrity(&home);
-            println!("{}", serde_json::to_string(&r)?);
+            let bf = phoenix::doctor::build_freshness();
+            let stale = bf.state == phoenix::doctor::Freshness::Behind;
+            let overall = r.ok && !stale;
+            // stdout JSON stays back-compatible (`ok` + `checks`) and is enriched with `build`.
+            let mut jv = serde_json::to_value(&r)?;
+            jv["ok"] = serde_json::json!(overall);
+            jv["build"] = serde_json::to_value(&bf)?;
+            println!("{}", serde_json::to_string(&jv)?);
             for c in &r.checks {
                 let mark = if c.ok { "OK " } else { "RED" };
                 eprintln!("  [{mark}] {}: {}", c.check, c.evidence);
@@ -249,14 +256,37 @@ fn run_cli(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
                     eprintln!("         - {p}");
                 }
             }
+            let bmark = match bf.state {
+                phoenix::doctor::Freshness::UpToDate => "OK ",
+                phoenix::doctor::Freshness::Behind => "WARN",
+                phoenix::doctor::Freshness::Unknown => "-- ",
+            };
+            eprintln!("  [{bmark}] build: {}", bf.evidence);
+            for p in &bf.problems {
+                eprintln!("         - {p}");
+            }
+            let remedy = {
+                let mut hints: Vec<&str> = Vec::new();
+                if !r.ok {
+                    hints.push("run `phoenix-mcp doctor --fix` to repair");
+                }
+                if stale {
+                    hints.push("rebuild: `cargo build --release`");
+                }
+                if hints.is_empty() {
+                    String::new()
+                } else {
+                    format!("  — {}", hints.join("; "))
+                }
+            };
             eprintln!(
                 "phoenix doctor ({}): {}/{} checks OK{}",
                 home.display(),
                 r.checks.iter().filter(|c| c.ok).count(),
                 r.checks.len(),
-                if r.ok { "" } else { "  — run `phoenix-mcp doctor --fix` to repair" }
+                remedy
             );
-            exit(r.ok);
+            exit(overall);
         }
         "--version" | "-V" => {
             println!("phoenix {}", env!("CARGO_PKG_VERSION"));

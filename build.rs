@@ -42,5 +42,40 @@ fn main() {
          pub static SKILLS: &[(&str, &str)] = &[\n{skills_src}];\n"
     );
     fs::write(&dest, code).expect("write embedded.rs");
+
+    // --- Build-freshness stamp ------------------------------------------------------------------
+    // Embed the commit + repo path so `doctor` can warn when the RUNNING binary is older than the
+    // source it was built from (the "I edited skills/agent and forgot to rebuild" trap that lets a
+    // stale binary report GREEN against its own stale embedded reference).
+    println!("cargo:rustc-env=PHOENIX_BUILD_MANIFEST={}", manifest.replace('\\', "/"));
+    let commit = std::process::Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(&manifest)
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "unknown".to_string());
+    println!("cargo:rustc-env=PHOENIX_BUILD_COMMIT={commit}");
+    // Re-stamp whenever HEAD or the current branch tip moves, so any rebuild reflects the new commit
+    // (without this, a commit that doesn't touch an embedded path could leave a stale stamp).
+    let git_dir = Path::new(&manifest).join(".git");
+    let head = git_dir.join("HEAD");
+    if head.exists() {
+        println!("cargo:rerun-if-changed={}", head.display().to_string().replace('\\', "/"));
+        if let Ok(h) = fs::read_to_string(&head) {
+            if let Some(rel) = h.trim().strip_prefix("ref: ") {
+                let refp = git_dir.join(rel);
+                if refp.exists() {
+                    println!("cargo:rerun-if-changed={}", refp.display().to_string().replace('\\', "/"));
+                }
+                let packed = git_dir.join("packed-refs");
+                if packed.exists() {
+                    println!("cargo:rerun-if-changed={}", packed.display().to_string().replace('\\', "/"));
+                }
+            }
+        }
+    }
     println!("cargo:rerun-if-changed=build.rs");
 }

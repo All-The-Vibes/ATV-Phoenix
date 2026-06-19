@@ -361,3 +361,106 @@ pub fn fix(home: &Path, binpath: &Path) -> Vec<String> {
 
     actions
 }
+
+// ---------------------------------------------------------------------------
+// Build-freshness layer: is the RUNNING binary as new as the source it was built from?
+// `integrity()` proves install == binary; this proves binary == source. Together they answer the
+// real question "is my install actually current?" — closing the trap where a stale binary reports
+// GREEN against its own stale embedded reference (because doctor compares the install to whatever
+// the *running binary* embeds, it can't, by itself, tell that the binary is behind the repo).
+// ---------------------------------------------------------------------------
+
+/// Whether the running binary is as new as the repo it was built from.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Freshness {
+    /// Binary's build commit == the source repo's current HEAD.
+    UpToDate,
+    /// Binary was built from an older commit than the repo HEAD — rebuild.
+    Behind,
+    /// Can't tell (no embedded commit, or the source repo isn't reachable from the binary).
+    Unknown,
+}
+
+/// Build-freshness report, shaped like the other doctor checks (objective, with evidence).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BuildReport {
+    pub state: Freshness,
+    pub build_commit: String,
+    pub source_commit: Option<String>,
+    pub evidence: String,
+    pub problems: Vec<String>,
+}
+
+/// Pure freshness decision (no IO) so it is deterministically testable. `build_commit` is what the
+/// binary was stamped with at build time; `source_head` is the source repo's current HEAD.
+pub fn decide_freshness(build_commit: &str, source_head: Option<&str>) -> Freshness {
+    if build_commit.is_empty() || build_commit == "unknown" {
+        return Freshness::Unknown;
+    }
+    match source_head {
+        None => Freshness::Unknown,
+        Some(h) if h == build_commit => Freshness::UpToDate,
+        Some(_) => Freshness::Behind,
+    }
+}
+
+/// `git -C <repo> rev-parse HEAD`, or `None` if git/the repo is unavailable.
+fn git_head(repo: &Path) -> Option<String> {
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if s.is_empty() {
+        None
+    } else {
+        Some(s)
+    }
+}
+
+fn short12(s: &str) -> String {
+    s.chars().take(12).collect()
+}
+
+/// Compare the running binary's build commit (stamped by `build.rs`) against the current HEAD of the
+/// source repo it was built from. Best-effort: returns `Unknown` off a source checkout (e.g. a binary
+/// copied to another machine, or built outside git).
+pub fn build_freshness() -> BuildReport {
+    let build_commit = option_env!("PHOENIX_BUILD_COMMIT").unwrap_or("unknown").to_string();
+    let source_repo = option_env!("PHOENIX_BUILD_MANIFEST")
+        .map(std::path::PathBuf::from)
+        .filter(|p| p.join(".git").exists());
+    let source_head = source_repo.as_ref().and_then(|r| git_head(r));
+    let state = decide_freshness(&build_commit, source_head.as_deref());
+
+    let mut problems = Vec::new();
+    let evidence = match (&state, &source_head) {
+        (Freshness::UpToDate, _) => {
+            format!("binary matches source @ {}", short12(&build_commit))
+        }
+        (Freshness::Behind, Some(h)) => {
+            problems.push(format!(
+                "binary was built from {} but the source repo is now at {} — rebuild: `cargo build --release`",
+                short12(&build_commit),
+                short12(h)
+            ));
+            format!("built={} sourceHEAD={}", short12(&build_commit), short12(h))
+        }
+        (Freshness::Behind, None) => format!("built={}", short12(&build_commit)),
+        (Freshness::Unknown, _) => {
+            if build_commit == "unknown" {
+                "no build stamp (built outside a git checkout) — freshness unknown".to_string()
+            } else {
+                "source repo not reachable from the binary — freshness unknown".to_string()
+            }
+        }
+    };
+
+    BuildReport { state, build_commit, source_commit: source_head, evidence, problems }
+}

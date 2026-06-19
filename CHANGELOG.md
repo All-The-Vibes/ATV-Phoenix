@@ -32,6 +32,13 @@ it gives the agent — plus the fix for the agent that silently wouldn't load.
 - **Doctor is self-surfacing.** When the agent won't load or a skill goes missing, the loaded agent, the
   installer's final message, and the README troubleshooting all point to `phoenix-mcp doctor --fix` — so a
   user who has never heard of the doctor still finds the cure (closes the discovery loop on the bug above).
+- **Build-freshness check.** `doctor` now also verifies the running `phoenix-mcp` binary was built from the
+  repo's current `HEAD` — closing the one blind spot the integrity check structurally can't see: integrity
+  compares the install against the *binary's* embedded reference, so a binary that is itself behind the source
+  would report the install "healthy" against a stale truth (the exact trap where a fresh commit lands but the
+  old binary still validates green). `build.rs` stamps the build commit; the doctor compares it to `git HEAD`
+  and prints a `build:` line (`up_to_date` / `behind` / `unknown`). Staleness is fixed by `cargo build
+  --release` (not `--fix`), and both the JSON and the exit code reflect it. (`tests/build_freshness.rs`, 4/4)
 - **Linux CI** (`.github/workflows/rust.yml`): builds `--locked` and runs the full test suite (incl. the
   install-integrity regression gate) on ubuntu, closing the gap the OKF-only workflow left — a
   green-on-Windows change can't silently break the cross-platform path. Actions pinned to current majors
