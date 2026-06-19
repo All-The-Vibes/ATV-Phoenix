@@ -166,7 +166,7 @@ The bigger bet — Intent-to-Outcome — is in **[`docs/intent-to-outcome.md`](d
 
 ---
 
-## Status (v0.3.0)
+## Status (v0.3.1)
 
 Every milestone has a measured eval + a screenshot.
 
