@@ -11,7 +11,7 @@ pub mod trace;
 pub mod doctor;
 pub mod accept;
 
-pub use doctor::{doctor, DoctorReport};
+pub use doctor::{doctor, DoctorReport, integrity, fix as doctor_fix, resolve_home, InstallReport};
 pub use heal::{heal, HealCtx, HealResult, Strategy};
 pub use sense::{sense, Check, CheckKind, SenseResult};
 pub use snapshot::{snapshot, SnapshotResult};

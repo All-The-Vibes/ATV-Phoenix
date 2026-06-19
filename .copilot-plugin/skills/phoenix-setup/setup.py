@@ -6,31 +6,9 @@ Idempotent. Safe to re-run. Prints exactly what it changed.
 import argparse, json, os, shutil, subprocess, sys
 from pathlib import Path
 
-AGENT_TEMPLATE = """---
-name: phoenix
-description: Self-healing harness for GitHub Copilot. Use phoenix tools to OBJECTIVELY verify whether a task actually succeeded (not self-judgment), to snapshot a known-good state, and to recover (bounded rollback/retry) when an objective check fails. Prefer sensing over assuming success.
-tools: ['phoenix/*', 'read', 'edit', 'execute']
-mcp-servers:
-  phoenix:
-    type: stdio
-    command: __PHOENIX_BIN__
-    args: []
-    tools: ['*']
-    env:
-      PHOENIX_WORKSPACE: '.'
----
-
-You are operating with the ATV-Phoenix self-healing spine. Make outcomes VERIFIED, not assumed.
-
-Tools (via the `phoenix` MCP server):
-- phoenix_sense(check): objective check — command_exit / file_sha256 / regex_in_file. Returns {ok, signal, evidence}.
-- phoenix_snapshot(path, check): save last-good ONLY if check passes. Returns {blessed, snap_id}.
-- phoenix_heal(strategy, ctx): bounded rollback/retry, confirmed by an EXTERNAL recheck. Returns {healed, attempts}.
-- phoenix_verify_trace(): audit the tamper-evident hash-chained trace.
-
-Loop: baseline-green (sense) -> snapshot -> edit -> sense -> heal if red -> confirm green. Never
-claim success you did not sense; a fabricated "done" is the failure mode this harness prevents.
-"""
+# The agent definition is the single source of truth at dist/phoenix.agent.md (also embedded into the
+# phoenix-mcp binary at build time, so `doctor` can detect drift and re-sync). We read it here rather
+# than duplicate it, so a fresh install always matches what the binary ships.
 
 
 def find_repo(args) -> Path:
@@ -85,11 +63,13 @@ def register_mcp(binpath: Path):
     print(f"[phoenix] registered MCP server in {cfg_path}")
 
 
-def install_agent(binpath: Path):
+def install_agent(repo: Path, binpath: Path):
     agents = copilot_home() / "agents"
     agents.mkdir(parents=True, exist_ok=True)
+    template_path = repo / "dist" / "phoenix.agent.md"
+    template = template_path.read_text(encoding="utf-8")
     dest = agents / "phoenix.agent.md"
-    dest.write_text(AGENT_TEMPLATE.replace("__PHOENIX_BIN__", str(binpath).replace("\\", "/")), encoding="utf-8")
+    dest.write_text(template.replace("__PHOENIX_BIN__", str(binpath).replace("\\", "/")), encoding="utf-8")
     print(f"[phoenix] installed agent: {dest}")
 
 
@@ -140,13 +120,18 @@ def install_skills(repo: Path, binpath: Path):
             shutil.copytree(skill, target)
             count += 1
     print(f"[phoenix] installed {count} bundled skills -> {dst}")
-    # self-maintenance: Phoenix validates its own installed skills with its own doctor.
+    # self-maintenance: Phoenix validates its OWN install (agent + skills + MCP registration) with its
+    # own doctor — the same objective discipline it gives the agent. --home pins it to where we installed.
     try:
-        r = subprocess.run([str(binpath), "doctor", str(dst)], capture_output=True, text=True, timeout=30)
+        r = subprocess.run([str(binpath), "doctor", "--home", str(copilot_home())],
+                           capture_output=True, text=True, timeout=30)
         ok = r.returncode == 0
-        print(f"[phoenix] skill self-check (doctor): {'OK' if ok else 'PROBLEMS — ' + r.stderr.strip()}")
+        tail = (r.stderr.strip().splitlines() or [""])[-1]
+        print(f"[phoenix] install self-check (doctor): {'OK' if ok else 'PROBLEMS'} — {tail}")
+        if not ok:
+            print("          run `phoenix-mcp doctor --fix` to repair.")
     except Exception as e:
-        print(f"[phoenix] skill self-check skipped: {e}")
+        print(f"[phoenix] install self-check skipped: {e}")
 
 
 def main():
@@ -158,11 +143,11 @@ def main():
     print(f"[phoenix] repo: {repo}")
     binpath = ensure_binary(repo)
     register_mcp(binpath)
-    install_agent(binpath)
+    install_agent(repo, binpath)
     install_skills(repo, binpath)
     print("\n[phoenix] OK installed. Restart Copilot (or run `copilot --agent phoenix`).")
     print("[phoenix] Tools: phoenix_sense, phoenix_snapshot, phoenix_heal, phoenix_verify_trace")
-    print("[phoenix] Bundled skills: phoenix (router) + think/plan/build/test/debug/context/review/ship + craft/typescript/design + self-heal + goal/ralph/auto (16 skills)")
+    print("[phoenix] Bundled skills: phoenix (router) + think/plan/build/test/debug/context/review/ship + craft/typescript/design + self-heal/okf/doctor + goal/ralph/auto (18 skills)")
     if not args.no_companions:
         check_companions(repo)
 
