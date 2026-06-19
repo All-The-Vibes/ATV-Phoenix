@@ -2,6 +2,42 @@
 
 All notable changes to ATV-Phoenix are documented here.
 
+## [0.3.1] — 2026-06-19
+
+Self-maintenance: Phoenix now verifies and repairs its **own install** with the same objective discipline
+it gives the agent — plus the fix for the agent that silently wouldn't load.
+
+### Fixed
+- **`copilot --agent phoenix` → "No such agent: phoenix"** for everyone who installed before this release.
+  The shipped agent's inline MCP-server entry was missing the required `args:` field, so Copilot silently
+  dropped the agent at load time (other agents with `args:` loaded fine — proven 3/3 in an isolated
+  `COPILOT_HOME` sandbox). `dist/phoenix.agent.md` and the installer template now include `args: []`.
+  Already installed before today? Run `phoenix-mcp doctor --fix`. (`e4cebe3`)
+
+### Added
+- **Install-integrity doctor + self-repair** (`phoenix-mcp doctor [--fix] [--home]`, `src/doctor.rs`):
+  compares the *installed* agent, skills, and MCP registration against what THIS build ships (embedded at
+  build time by `build.rs`) and reports drift as objective `{check, ok, evidence, problems}` results.
+  `--fix` re-syncs from the embedded reference, snapshots the prior agent + mcp-config as `*.doctor-bak`
+  first (heal discipline), is idempotent, and is re-verified **red → green**. Detection is **generic**
+  (content-hash comparison, no per-field hardcoding) — so it caught the missing-`args` bug above and will
+  catch the next schema change too.
+- **`phoenix-doctor` skill** (bundled pack now **18**): a thin UX over the engine — diagnose, explain the
+  failures, drive `--fix` with confirmation, and confirm with the authoritative `copilot --agent phoenix`
+  load test as the `--deep` proof.
+- **Regression gate** (`tests/install_doctor.rs`, 4/4): seeds the *exact* pre-fix broken agent and asserts
+  doctor flags it as drift, `--fix` repairs it to match shipped, the fix is idempotent, and a missing skill
+  / unregistered MCP server are caught — plus a meta-assertion that the detection logic names no specific
+  field.
+
+### Changed
+- **Single source of truth for the agent**: `setup.py` now reads `dist/phoenix.agent.md` (so the embedded,
+  installed, and on-disk copies are one source); removed the duplicate inline Python template that had
+  drifted out of sync. The post-install self-check now runs the **full** integrity doctor (agent + skills +
+  MCP registration), not skills-only.
+- Docs updated **16 → 18 skills** (README, `docs/skills.md`, the `phoenix` router decision tree, and the
+  installer's summary line).
+
 ## [0.3.0] — 2026-06-10
 
 Autonomous workflows — the same capabilities as Claude Code's ralph/autopilot, but gated by objective,
