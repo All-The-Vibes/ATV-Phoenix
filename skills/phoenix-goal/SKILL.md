@@ -18,7 +18,9 @@ the *first* deliverable an **objective `done-check`**, not code.
 ## The flow
 
 ```
-fuzzy goal
+fuzzy goal  (or an old /lfg-style command the user expects to "just run")
+   │
+   ▼  FRAME + confirm  ── name the entry, the goal, and the done-check; invite correction before any edit
    │
    ▼  phoenix-think  ── deep interview + research ──▶  Intent Contract
    │                                                  whose DELIVERABLE is one runnable
@@ -35,18 +37,33 @@ The difference from phoenix-ralph: **ralph takes a backlog you already have; goa
 
 ## Steps
 
-1. **FORMALIZE (the hard, non-skippable part).** Run `phoenix-think`: interview the user / research the
+1. **FRAME the run — the handshake (always first, before any `phoenix-think` or edit).** The failure this
+   step exists to prevent is silently "operating in the spirit of" a request and wandering off. So open
+   with a short, explicit frame and **wait for a go**:
+   - **Entry:** if the user arrived via a command Phoenix doesn't have (`/lfg`, `/autopilot`, `/yolo`, an
+     alias from another harness), orient them in one line — *"Phoenix has no `/lfg`; its autonomous entry
+     is `phoenix-goal`, so I'll run it that way"* — no lecture.
+   - **Goal heard:** restate the goal in one sentence, as you understood it.
+   - **Done-check:** name the objective acceptance check you're about to FORMALIZE (a real test/build that
+     exercises the goal, which must start RED). This is *what "done" will mean*.
+   - **Shape + control:** one line on how it runs (formalize → decompose → loop; completion proven from the
+     trace) and how to steer or stop it.
+   - **Invite correction before the first edit**, then proceed to FORMALIZE.
+
+   Keep it to a few lines. The point: the user always knows the goal, the finish line, and how to drive it
+   *before* anything changes on disk.
+2. **FORMALIZE (the hard, non-skippable part).** Run `phoenix-think`: interview the user / research the
    codebase until the goal is unambiguous, then write the **acceptance check** to
    `.phoenix-ralph/done-check.json`. It must be a real `command_exit` — a test or build that actually
    exercises the goal — and it must be RED right now. If you cannot write a check that fails today,
    the goal is still too vague: keep interviewing. *No code until this exists.*
-2. **DECOMPOSE.** Run `phoenix-plan`: break the goal into small, independently-verifiable items in
+3. **DECOMPOSE.** Run `phoenix-plan`: break the goal into small, independently-verifiable items in
    `.phoenix-ralph/backlog.json`. Each item gets its own objective `check`. Order by dependency so the
    build stays green between items.
-3. **SCAFFOLD** the loop state: `PROMPT.md` (from `dist/ralph/PROMPT.template.md`), `progress.md`.
-4. **HAND OFF** to **phoenix-ralph**: run `dist/ralph/phoenix-ralph.ps1`. The driver proves the
+4. **SCAFFOLD** the loop state: `PROMPT.md` (from `dist/ralph/PROMPT.template.md`), `progress.md`.
+5. **HAND OFF** to **phoenix-ralph**: run `dist/ralph/phoenix-ralph.ps1`. The driver proves the
    done-check failure-first on an intact trace before it stops.
-5. **REPORT** with the proof: `.phoenix-ralph/completed.json` + the trace head + the git tag.
+6. **REPORT** with the proof: `.phoenix-ralph/completed.json` + the trace head + the git tag.
 
 ## Who writes the checks (and why it matters)
 The acceptance check is authored during FORMALIZE and **frozen** before implementation. The
@@ -59,6 +76,7 @@ then continue. This separation — author the gate, then satisfy it — is what 
 
 | Rationalization | Reality |
 |---|---|
+| "They said 'lfg' / 'just go' — I'll start building." | First FRAME the run: name the entry, restate the goal and the done-check you'll formalize, and get a go. Editing before the user has seen the finish line is the wander this skill exists to prevent. |
 | "The goal is clear enough, I'll start coding." | If you can't write a check that fails today, it isn't clear enough. Formalize first. |
 | "I'll use `test -f output` as the acceptance check." | That's vacuous — it can't meaningfully fail. The done-check must exercise the actual behavior (a real test/build). |
 | "I'll let the loop figure out what done means." | A loop with no objective termination runs forever or fakes done. Define the check up front. |
@@ -66,6 +84,7 @@ then continue. This separation — author the gate, then satisfy it — is what 
 | "Decomposition is overhead, I'll one-shot it." | For anything multi-step, an un-decomposed goal can't keep the build green between changes. Plan into verifiable slices. |
 
 ## Red Flags — stop
+- You started FORMALIZE or editing without first restating the goal + done-check to the user and getting a go. → Stop; do the FRAME handshake first.
 - You're about to write code and `done-check.json` doesn't exist yet. → Formalize first.
 - Your done-check passes on an untouched repo. → It's vacuous; re-target it at the unmet behavior.
 - The backlog items have prose acceptance ("works well") instead of an objective `check`. → Rewrite each as a runnable check.
