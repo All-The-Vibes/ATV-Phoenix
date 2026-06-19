@@ -1,7 +1,7 @@
 ---
 type: Phoenix Skill
 name: phoenix-auto
-description: Dynamic, state-sensing router for autonomous multi-step work — chooses the next Phoenix skill at runtime from the current objective state (what's green/red, what stage, is there a backlog) instead of following a fixed pipeline. Use for open-ended autonomous execution where the next step depends on results, when the user says /phoenix-auto, "drive this", "orchestrate", or "figure out the steps as you go". For a fixed lifecycle just use the phoenix meta-router; for a persistent backlog loop use phoenix-ralph.
+description: Dynamic, state-sensing router for autonomous multi-step work — chooses the next Phoenix skill at runtime from the current objective state (what's green/red, what stage, is there a backlog) instead of following a fixed pipeline. This is Phoenix's autopilot. Use for open-ended autonomous execution where the next step depends on results, when the user says /phoenix-auto, "autopilot", "drive this", "orchestrate", or "figure out the steps as you go". For a fixed lifecycle just use the phoenix meta-router; for a persistent backlog loop use phoenix-ralph.
 license: MIT
 ---
 

@@ -48,8 +48,8 @@ it gives the agent — plus the fix for the agent that silently wouldn't load.
 ### Changed
 - **Autonomous entry no longer wanders.** `phoenix-goal` now opens every hands-off run with a required
   **FRAME handshake** — restate the goal, name the objective done-check it will formalize (and that it
-  starts RED), say how to steer/stop, and confirm before the first edit. An unrecognized command like
-  `/lfg` gets oriented to the real entry point instead of a silent "I'll operate in its spirit"
+  starts RED), say how to steer/stop, and confirm before the first edit. An autonomous alias from another
+  harness gets oriented to the real entry point instead of a silent "I'll operate in its spirit"
   improvisation (the discipline now lives *in* the skill that runs, not only in the router). The router's
   entry guidance leads with the canonical `/phoenix-goal "<goal>"`.
 - **Single source of truth for the agent**: `setup.py` now reads `dist/phoenix.agent.md` (so the embedded,
