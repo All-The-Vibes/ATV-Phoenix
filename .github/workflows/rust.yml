@@ -1,0 +1,49 @@
+name: Rust
+
+# Build the crate and run the full test suite on Linux for every change to Rust sources, the
+# build-time embedding, the bundled skills / agent template (both embedded by build.rs), or the
+# dependency manifests. This is the gate the OKF workflow does not provide: it compiles build.rs +
+# doctor.rs on Linux and runs tests/install_doctor.rs — the regression gate for the "No such agent:
+# phoenix" (missing `args:`) install bug — so a green-on-Windows change can't silently break here.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "build.rs"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "skills/**"
+      - "dist/phoenix.agent.md"
+      - ".github/workflows/rust.yml"
+  pull_request:
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "build.rs"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "skills/**"
+      - "dist/phoenix.agent.md"
+      - ".github/workflows/rust.yml"
+  workflow_dispatch:
+
+jobs:
+  build-test:
+    name: build + cargo test (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install OKF Python deps (the okf_sense tests shell out to them)
+        run: python -m pip install --quiet pyyaml
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build (release, locked — verifies the profile setup.py uses + Cargo.lock is in sync)
+        run: cargo build --release --locked
+      - name: Test (full suite — incl. the install-integrity regression gate)
+        run: cargo test --locked
