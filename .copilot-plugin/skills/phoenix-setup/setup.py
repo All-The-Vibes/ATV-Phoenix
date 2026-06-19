@@ -14,6 +14,7 @@ mcp-servers:
   phoenix:
     type: stdio
     command: __PHOENIX_BIN__
+    args: []
     tools: ['*']
     env:
       PHOENIX_WORKSPACE: '.'
