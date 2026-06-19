@@ -11,7 +11,9 @@ license: MIT
 Phoenix is a self-healing harness; `phoenix-doctor` points that discipline at **Phoenix's own install**.
 It compares the *installed* agent, skills, and MCP registration against what THIS build ships (embedded
 in the `phoenix-mcp` binary), reports any drift with objective evidence, and `--fix` re-syncs from the
-shipped reference — then re-runs the same check so a repair only counts when it goes **red→green**. This
+shipped reference — then re-runs the same check so a repair only counts when it goes **red→green**. It also
+checks the running binary itself is built from the current source, so it can't be fooled by its own truth
+being out of date. This
 is the antidote to the whole class of "I installed it a while ago and something's off" problems: you never
 guess, you compare to the source of truth.
 
@@ -55,6 +57,7 @@ Use `--home <dir>` to target a non-default Copilot home (default: `$COPILOT_HOME
 | **agent** | `agents/phoenix.agent.md` is present and matches the shipped template (path-independent) | ✅ the missing-`args` agent that wouldn't load — caught generically as drift, not a hardcoded field |
 | **skills** | every shipped `/phoenix-*` skill is installed and byte-matches its shipped copy | ✅ missing/stale skills after an upgrade |
 | **mcp-config** | the `phoenix` MCP server is registered and its binary resolves on disk | ✅ unregistered or moved binary |
+| **build** | the running `phoenix-mcp` was built from the repo's current `HEAD` (the binary *is* the source of truth the other checks compare against — this proves that truth isn't itself stale) | ✅ a binary built before recent commits, which would otherwise pass install as "healthy" against an out-of-date reference |
 
 ## Rules
 - **Compare, don't guess.** Health is "matches what this build ships", measured by hash — not by reading
@@ -64,6 +67,8 @@ Use `--home <dir>` to target a non-default Copilot home (default: `$COPILOT_HOME
 - **A fix is real only when re-verified.** `--fix` re-runs the check after writing; for the agent, finish
   with the `--deep` load test. Red→green, or it isn't fixed.
 - **Reversible.** The prior agent + mcp-config are saved as `*.doctor-bak` before any overwrite.
+- **Staleness needs a rebuild, not `--fix`.** `--fix` re-syncs the install *to* the binary; it cannot help
+  when the binary itself is `behind` the repo. Fix that with `cargo build --release`, then re-run `doctor`.
 
 ## Common Rationalizations
 | Rationalization | Reality |
@@ -78,6 +83,8 @@ Use `--home <dir>` to target a non-default Copilot home (default: `$COPILOT_HOME
 - Editing `~/.copilot/agents/phoenix.agent.md` by hand → prefer `--fix`; hand-edits are the drift this skill detects.
 - A skill behaving unlike its docs after an upgrade → it's probably stale; `doctor` will flag it, `--fix` re-syncs.
 - Reporting "repaired" with no load test → run `copilot --agent phoenix` to confirm green.
+- `build: behind` → your `phoenix-mcp` is older than the repo source; rebuild with `cargo build --release`
+  (`--fix` can't repair this), then re-run `doctor`.
 
 ## Next
 Once the install is green, get to work: `/phoenix` to route a task, or jump straight to
