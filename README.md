@@ -120,6 +120,9 @@ shapes how Copilot works *while you work*, and you stay in the driver's seat.
 - **Hands-off / autonomous:** say **"go"** or **`/phoenix-goal "<your goal>"`** — it FORMALIZES an
   objective done-check first, then runs the whole lifecycle to completion (see
   [autonomous workflows](docs/autonomous-workflows.md)).
+- **If it won't load** — `copilot --agent phoenix` says *"No such agent"*, a skill is missing, or things
+  feel off after a Copilot/Phoenix update — run **`phoenix-mcp doctor --fix`** (or `/phoenix-doctor`): it
+  compares your install against this build and re-syncs any drift. (The installer self-checks with it too.)
 
 Quick smoke test: ask it to fix a failing test and watch it **sense → heal → confirm green**.
 

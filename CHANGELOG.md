@@ -29,6 +29,14 @@ it gives the agent — plus the fix for the agent that silently wouldn't load.
   doctor flags it as drift, `--fix` repairs it to match shipped, the fix is idempotent, and a missing skill
   / unregistered MCP server are caught — plus a meta-assertion that the detection logic names no specific
   field.
+- **Doctor is self-surfacing.** When the agent won't load or a skill goes missing, the loaded agent, the
+  installer's final message, and the README troubleshooting all point to `phoenix-mcp doctor --fix` — so a
+  user who has never heard of the doctor still finds the cure (closes the discovery loop on the bug above).
+- **Linux CI** (`.github/workflows/rust.yml`): builds `--locked` and runs the full test suite (incl. the
+  install-integrity regression gate) on ubuntu, closing the gap the OKF-only workflow left — a
+  green-on-Windows change can't silently break the cross-platform path. Actions pinned to current majors
+  (`actions/checkout@v7`, `actions/setup-python@v6`), off the deprecated Node 20 runner (also bumped on
+  `okf.yml`).
 
 ### Changed
 - **Autonomous entry no longer wanders.** `phoenix-goal` now opens every hands-off run with a required

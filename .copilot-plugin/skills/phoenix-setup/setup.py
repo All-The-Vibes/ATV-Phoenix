@@ -148,6 +148,8 @@ def main():
     print("\n[phoenix] OK installed. Restart Copilot (or run `copilot --agent phoenix`).")
     print("[phoenix] Tools: phoenix_sense, phoenix_snapshot, phoenix_heal, phoenix_verify_trace")
     print("[phoenix] Bundled skills: phoenix (router) + think/plan/build/test/debug/context/review/ship + craft/typescript/design + self-heal/okf/doctor + goal/ralph/auto (18 skills)")
+    print("[phoenix] If the agent ever won't load or a skill goes missing (e.g. after a Copilot update),")
+    print("          run:  phoenix-mcp doctor --fix   (re-syncs the install to this build).")
     if not args.no_companions:
         check_companions(repo)
 
