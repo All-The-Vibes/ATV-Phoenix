@@ -14,7 +14,7 @@ report with citations: [`research/autonomous-workflows-research.md`](../research
 ## How to start one — what to type
 
 There's no special command to memorize. *Any* hands-off "just go and finish it" directive starts an
-autonomous run — `/phoenix-goal "<your goal>"`, or plain English like "go", "go autonomous", "lfg",
+autonomous run — `/phoenix-goal "<your goal>"`, or plain English like "go", "go autonomous",
 "let's go", "run this to done", "don't stop until it works". They all land on the same entry:
 
 - **Default → [`phoenix-goal`](../skills/phoenix-goal/SKILL.md).** It FORMALIZES an objective done-check
@@ -22,8 +22,9 @@ autonomous run — `/phoenix-goal "<your goal>"`, or plain English like "go", "g
 - **Already have a scoped backlog?** Go straight to **`phoenix-ralph`** ("ralph", "keep going until it's done").
 - **Next step depends on results?** Use **`phoenix-auto`** ("drive this", "figure out the steps as you go").
 
-Phoenix has no `/lfg`, `/autopilot`, or `/yolo` command. If you type one (or any alias from another
-harness), Phoenix won't silently wing it — it will point you at `phoenix-goal` and confirm the goal +
+Phoenix's autonomous entries are the three skills above — `phoenix-goal`, `phoenix-auto` (its autopilot),
+and `phoenix-ralph`. There's no bare `/lfg` or `/yolo`; if you type an alias from another harness that maps
+to none of them, Phoenix won't silently wing it — it will point you at `phoenix-goal` and confirm the goal +
 done-check first, because an autonomous run with no agreed finish line is the failure this harness exists
 to prevent.
 

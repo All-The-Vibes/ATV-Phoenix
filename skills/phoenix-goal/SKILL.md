@@ -1,7 +1,7 @@
 ---
 type: Phoenix Skill
 name: phoenix-goal
-description: Turn ONE high-level, possibly-vague goal into a runnable, objective acceptance check and a verifiable backlog, then drive it to completion. The critical step is FORMALIZE — deriving an executable done-check before any code, because a goal with no objective acceptance criterion has no honest termination. This is the DEFAULT entry for any hands-off "just go and finish it" request. Use at the start of an open-ended ask, when the user says /phoenix-goal, "achieve", "build me", "get this working end to end", "go", "go autonomous", "lfg", "let's go", "yolo", "just do it", "run it to done", or gives a goal without a spec — including any old/unknown autonomous command (e.g. /lfg, /autopilot) the user expects to "just run it". Hands off to phoenix-ralph for the loop. Not for an already-scoped backlog (use phoenix-ralph) or a single known fix (use phoenix-build).
+description: Turn ONE high-level, possibly-vague goal into a runnable, objective acceptance check and a verifiable backlog, then drive it to completion. The critical step is FORMALIZE — deriving an executable done-check before any code, because a goal with no objective acceptance criterion has no honest termination. This is the DEFAULT entry for any hands-off "just go and finish it" request. Use at the start of an open-ended ask, when the user says /phoenix-goal, "achieve", "build me", "get this working end to end", "go", "go autonomous", "let's go", "just do it", "run it to done", or gives a goal without a spec. Hands off to phoenix-ralph for the loop. Not for an already-scoped backlog (use phoenix-ralph) or a single known fix (use phoenix-build).
 license: MIT
 ---
 
@@ -18,7 +18,7 @@ the *first* deliverable an **objective `done-check`**, not code.
 ## The flow
 
 ```
-fuzzy goal  (or an old /lfg-style command the user expects to "just run")
+fuzzy goal  ("just go and finish it" — or any goal handed over without a spec yet)
    │
    ▼  FRAME + confirm  ── name the entry, the goal, and the done-check; invite correction before any edit
    │
@@ -40,9 +40,10 @@ The difference from phoenix-ralph: **ralph takes a backlog you already have; goa
 1. **FRAME the run — the handshake (always first, before any `phoenix-think` or edit).** The failure this
    step exists to prevent is silently "operating in the spirit of" a request and wandering off. So open
    with a short, explicit frame and **wait for a go**:
-   - **Entry:** if the user arrived via a command Phoenix doesn't have (`/lfg`, `/autopilot`, `/yolo`, an
-     alias from another harness), orient them in one line — *"Phoenix has no `/lfg`; its autonomous entry
-     is `phoenix-goal`, so I'll run it that way"* — no lecture.
+   - **Entry:** Phoenix's autonomous skills are `phoenix-goal`, `phoenix-auto` (its autopilot), and
+     `phoenix-ralph` (the persistence loop). If the user arrived via an alias from another harness that maps
+     to none of them, orient in one line — *"its autonomous entry is `phoenix-goal`, so I'll run it that
+     way"* — no lecture.
    - **Goal heard:** restate the goal in one sentence, as you understood it.
    - **Done-check:** name the objective acceptance check you're about to FORMALIZE (a real test/build that
      exercises the goal, which must start RED). This is *what "done" will mean*.
@@ -76,7 +77,7 @@ then continue. This separation — author the gate, then satisfy it — is what 
 
 | Rationalization | Reality |
 |---|---|
-| "They said 'lfg' / 'just go' — I'll start building." | First FRAME the run: name the entry, restate the goal and the done-check you'll formalize, and get a go. Editing before the user has seen the finish line is the wander this skill exists to prevent. |
+| "They said 'just go' / 'go autonomous' — I'll start building." | First FRAME the run: name the entry, restate the goal and the done-check you'll formalize, and get a go. Editing before the user has seen the finish line is the wander this skill exists to prevent. |
 | "The goal is clear enough, I'll start coding." | If you can't write a check that fails today, it isn't clear enough. Formalize first. |
 | "I'll use `test -f output` as the acceptance check." | That's vacuous — it can't meaningfully fail. The done-check must exercise the actual behavior (a real test/build). |
 | "I'll let the loop figure out what done means." | A loop with no objective termination runs forever or fakes done. Define the check up front. |
