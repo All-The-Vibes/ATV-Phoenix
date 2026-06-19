@@ -54,8 +54,9 @@ completion work, route to the autonomous family instead:
     └── Next step depends on results, pick as you go? ──────→ phoenix-auto  (dynamic state-sensing router)
 ```
 
-**How to start a hands-off run — what to type.** There is no magic slash word to memorize. *Any* "just
-go and finish it" directive routes here — `/phoenix-goal "<your goal>"`, or plain English: "go", "go
+**How to start a hands-off run — what to type.** The canonical entry is **`/phoenix-goal "<your goal>"`** —
+and you don't have to memorize even that: *any* "just
+go and finish it" phrasing routes here too, in plain English: "go", "go
 autonomous", "lfg", "let's go", "yolo", "run this to done", "don't stop until it works". The **default
 landing is [`phoenix-goal`](../phoenix-goal/SKILL.md)**: it first FORMALIZES an objective done-check (so
 the run has an honest finish line) and then hands the loop to [`phoenix-ralph`](../phoenix-ralph/SKILL.md).
