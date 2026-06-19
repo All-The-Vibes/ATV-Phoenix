@@ -1,4 +1,4 @@
-# The bundled skill pack — 16 skills, built from the ground up
+# The bundled skill pack — 18 skills, built from the ground up
 
 These are **not** wrappers around someone else's pack. Every skill was written from scratch in the
 [agentskills.io](https://agentskills.io) `SKILL.md` standard — each with an ASCII decision diagram, a
@@ -38,6 +38,7 @@ automatically, and the harness validates them itself (`phoenix-mcp doctor`; `car
 | Component | What it does |
 |---|---|
 | `phoenix-self-heal` | The core **sense → snapshot → heal** loop on its own — for any change with a runnable test/build/lint. |
+| `phoenix-doctor` | Self-heal pointed at **Phoenix's own install** — detects when the installed agent, skills, or MCP registration have drifted from the shipped build (generic hash comparison, so it catches the missing-`args` agent that wouldn't load) and re-syncs with `--fix`, re-verified red→green. |
 | `phoenix-okf` | Produce / validate / sense / consume **Open Knowledge Format** bundles — turn the code graph into browsable, git-diffable markdown, and ingest any external bundle as token-cheap context. See the [`demo`](../demo/okf/). |
 | **TokenMasterX** (bundled, your own MIT plugin) | Graph-routed code navigation, **−73% tokens**; `phoenix-context` routes structural questions ("who calls X", "what breaks if I change Y") here instead of grepping whole directories. |
 
@@ -60,9 +61,10 @@ the entire stack — nothing else to fetch:
 
 | Layer | Component | Ships with Phoenix? |
 |---|---|---|
-| **Self-heal + full lifecycle + craft + autonomy** (the core) | The **16-skill verification-gated pack** enumerated above (router + `think/plan/build/test/debug/context/review/ship` + Karpathy/Pocock/Emil craft + self-heal + OKF + the `goal`/`ralph`/`auto` autonomous trio) | **Bundled** (`skills/`, installed automatically) |
+| **Self-heal + full lifecycle + craft + autonomy** (the core) | The **18-skill verification-gated pack** enumerated above (router + `think/plan/build/test/debug/context/review/ship` + Karpathy/Pocock/Emil craft + self-heal + OKF + `doctor` install-integrity + the `goal`/`ralph`/`auto` autonomous trio) | **Bundled** (`skills/`, installed automatically) |
 | **Token-efficient retrieval** | [TokenMasterX](https://github.com/shyamsridhar123/TokenMasterX) — graph-routed code navigation (−73% tokens) | **Bundled** (`vendor/token-master`, installed automatically; needs `graphify`) |
 
 The pack is **token-efficient by design** (structural questions route to the code graph; skill detail
-loads only on activation) and **self-maintaining**: `phoenix-mcp doctor` validates every bundled skill
-with Phoenix's own spine, and `cargo test` fails if any skill drifts — the harness verifies itself.
+loads only on activation) and **self-maintaining**: `phoenix-mcp doctor` validates the whole install —
+agent, every bundled skill, and the MCP registration — against the shipped build and re-syncs drift with
+`--fix`, while `cargo test` fails if any skill drifts. The harness verifies itself.

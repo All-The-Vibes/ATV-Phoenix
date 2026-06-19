@@ -203,16 +203,59 @@ fn run_cli(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
             exit(v.ok);
         }
         "doctor" => {
-            // Self-maintenance: validate Phoenix's own bundled skills. `--skills <dir>` or default ./skills.
-            let dir = args.get(2).map(std::path::PathBuf::from).unwrap_or_else(|| ws.join("skills"));
-            let r = phoenix::doctor(&dir);
-            println!("{}", serde_json::to_string(&r)?);
-            for s in &r.skills {
-                if !s.ok {
-                    eprintln!("  [FAIL] {}: {}", s.name, s.problems.join("; "));
+            // Two modes:
+            //   * legacy: `doctor <skills-dir>` validates one skills dir's frontmatter (back-compat).
+            //   * install integrity: `doctor [--fix] [--home <dir>]` checks the INSTALLED agent +
+            //     skills + MCP registration against what THIS build ships, and `--fix` re-syncs them.
+            let rest = &args[2..];
+            let legacy_dir = rest
+                .iter()
+                .find(|a| !a.starts_with("--"))
+                .filter(|a| std::path::Path::new(a).is_dir() && a.ends_with("skills"));
+            if let Some(dir) = legacy_dir {
+                let r = phoenix::doctor(std::path::Path::new(dir));
+                println!("{}", serde_json::to_string(&r)?);
+                for s in &r.skills {
+                    if !s.ok {
+                        eprintln!("  [FAIL] {}: {}", s.name, s.problems.join("; "));
+                    }
+                }
+                eprintln!("phoenix doctor: {}/{} skills OK", r.skills.iter().filter(|s| s.ok).count(), r.skills_checked);
+                exit(r.ok);
+            }
+
+            let do_fix = rest.iter().any(|a| a == "--fix");
+            let home_arg = rest.iter().position(|a| a == "--home").and_then(|i| rest.get(i + 1));
+            let home = phoenix::doctor::resolve_home(home_arg.map(|a| std::path::Path::new(a.as_str())));
+
+            if do_fix {
+                let binpath = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("phoenix-mcp"));
+                let actions = phoenix::doctor::fix(&home, &binpath);
+                if actions.is_empty() {
+                    eprintln!("[fix] nothing to repair — install already matches shipped");
+                } else {
+                    for a in &actions {
+                        eprintln!("[fix] {a}");
+                    }
                 }
             }
-            eprintln!("phoenix doctor: {}/{} skills OK", r.skills.iter().filter(|s| s.ok).count(), r.skills_checked);
+
+            let r = phoenix::doctor::integrity(&home);
+            println!("{}", serde_json::to_string(&r)?);
+            for c in &r.checks {
+                let mark = if c.ok { "OK " } else { "RED" };
+                eprintln!("  [{mark}] {}: {}", c.check, c.evidence);
+                for p in &c.problems {
+                    eprintln!("         - {p}");
+                }
+            }
+            eprintln!(
+                "phoenix doctor ({}): {}/{} checks OK{}",
+                home.display(),
+                r.checks.iter().filter(|c| c.ok).count(),
+                r.checks.len(),
+                if r.ok { "" } else { "  — run `phoenix-mcp doctor --fix` to repair" }
+            );
             exit(r.ok);
         }
         "--version" | "-V" => {

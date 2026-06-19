@@ -37,6 +37,10 @@ A task usually flows **think → plan → build (↔ test/debug) → review → 
 phase matches reality. Skills also activate by their own descriptions — building UI pulls build+test,
 a red check pulls debug, and so on.
 
+**If Phoenix itself is broken** — `copilot --agent phoenix` says "No such agent", a skill is missing, or
+something's off after an upgrade — route to [`phoenix-doctor`](../phoenix-doctor/SKILL.md): it compares the
+installed agent + skills + MCP registration against the shipped build and re-syncs any drift with `--fix`.
+
 ## Autonomous mode (opt-in)
 
 The tree above is the **fixed lifecycle** — use it when the path is known. For hands-off, run-to-

@@ -144,9 +144,10 @@ real red→green heal. Token receipts in [`evals/m4-okf/`](evals/m4-okf/RESULT.m
 
 ## What's in the box
 
-- **16 verification-gated skills** — a meta-router, the `think → ship` lifecycle, craft skills
-  (Karpathy / Pocock / Emil), the self-heal + OKF spine, and the autonomous `goal`/`ralph`/`auto`
-  trio. Every stage gates on an objective `phoenix_sense` check. Full catalog: **[`docs/skills.md`](docs/skills.md)**.
+- **18 verification-gated skills** — a meta-router, the `think → ship` lifecycle, craft skills
+  (Karpathy / Pocock / Emil), the self-heal + OKF spine, a `doctor` that verifies and repairs the install
+  itself, and the autonomous `goal`/`ralph`/`auto` trio. Every stage gates on an objective `phoenix_sense`
+  check. Full catalog: **[`docs/skills.md`](docs/skills.md)**.
 - **TokenMasterX** (bundled, MIT) — graph-routed code navigation, **−73% tokens**; `phoenix-context`
   routes structural questions here instead of grepping whole directories.
 - **One-command install** — `setup.py` installs the whole stack; nothing else to fetch.
