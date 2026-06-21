@@ -1,0 +1,12 @@
+#!/bin/sh
+# Fast commit-time gate. Compile-checks ONLY when Rust/manifest files are staged, so
+# doc/skill commits stay instant. fmt is intentionally NOT enforced: this crate uses a
+# deliberate hand style and rustfmt would rewrite ~88 files — the gate mirrors rust.yml
+# (build + test), never fmt. Bypass in a pinch with `git commit --no-verify`.
+changed=$(git diff --cached --name-only --diff-filter=ACM)
+if echo "$changed" | grep -Eq '\.rs$|(^|/)Cargo\.(toml|lock)$|(^|/)build\.rs$'; then
+  echo "pre-commit: Rust change staged -> cargo check --locked"
+  cargo check --locked --quiet || { echo "pre-commit BLOCKED: cargo check failed"; exit 1; }
+else
+  echo "pre-commit: no Rust changes staged -> skip compile check"
+fi

@@ -6,28 +6,11 @@ name: Rust
 # doctor.rs on Linux and runs tests/install_doctor.rs — the regression gate for the "No such agent:
 # phoenix" (missing `args:`) install bug — so a green-on-Windows change can't silently break here.
 
+# LOCAL-FIRST CI: push/PR auto-triggers are intentionally removed to conserve GitHub
+# Action credits. The real gate runs locally on every push via
+# .githooks/pre-push -> scripts/ci-local.sh. This workflow remains as a MANUAL Linux
+# cross-check (run on demand / before a release to catch Windows-only green).
 on:
-  push:
-    branches: [main]
-    paths:
-      - "src/**"
-      - "tests/**"
-      - "build.rs"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "skills/**"
-      - "dist/phoenix.agent.md"
-      - ".github/workflows/rust.yml"
-  pull_request:
-    paths:
-      - "src/**"
-      - "tests/**"
-      - "build.rs"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "skills/**"
-      - "dist/phoenix.agent.md"
-      - ".github/workflows/rust.yml"
   workflow_dispatch:
 
 jobs:

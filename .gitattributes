@@ -1,0 +1,4 @@
+# Shell scripts and git hooks must stay LF so they execute under sh on every platform
+# (CRLF would inject a literal \r and break the shebang under Git-for-Windows sh).
+*.sh        text eol=lf
+.githooks/* text eol=lf

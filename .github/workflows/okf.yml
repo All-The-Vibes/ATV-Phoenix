@@ -6,24 +6,10 @@ name: OKF
 # its own command_exit mechanism. The live graph.json is a local artifact (gitignored), so
 # freshness-vs-live-graph is exercised in the test suite with synthetic graphs, not here.
 
+# LOCAL-FIRST CI: push/PR auto-triggers are intentionally removed to conserve GitHub
+# Action credits. The OKF gate runs locally on every push via
+# .githooks/pre-push -> scripts/ci-local.sh. This workflow remains a MANUAL cross-check.
 on:
-  push:
-    branches: [main]
-    paths:
-      - "skills/phoenix-okf/**"
-      - "examples/okf-code-graph/**"
-      - "examples/okf-external-demo/**"
-      - "tests/okf/**"
-      - "tests/okf_sense.rs"
-      - ".github/workflows/okf.yml"
-  pull_request:
-    paths:
-      - "skills/phoenix-okf/**"
-      - "examples/okf-code-graph/**"
-      - "examples/okf-external-demo/**"
-      - "tests/okf/**"
-      - "tests/okf_sense.rs"
-      - ".github/workflows/okf.yml"
   workflow_dispatch:
 
 jobs:
