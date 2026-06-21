@@ -2,6 +2,42 @@
 
 All notable changes to ATV-Phoenix are documented here.
 
+## [0.4.0] — 2026-06-20
+
+**The factory turns on itself.** Phoenix builds its first *connector* — and builds it *with* Phoenix: the
+change was driven failure-first through the shipped `phoenix-mcp` binary and merges only behind a
+tamper-evident **red → green** `phoenix_accept` trace. Plus the governance + **local-first CI** that lets
+the factory run on ~zero GitHub Action credits.
+
+### Added
+- **`phoenix-learn` — the measured-gain adoption gate** (C3, `phoenix_learn/`: `gate.py` + `split.py`),
+  ported from the live continuous-learning loop. A candidate skill/prompt diff is `ADOPT_ELIGIBLE` **only**
+  on a held-out PRIVATE split at **n ≥ 20** with **+10pp** (or **+2** net correct) accuracy, **zero
+  right→wrong** regressions, and strictly better than baseline; an anti-gaming hit short-circuits to
+  `REJECT_GAMING_DETECTED`, thin evidence to `EXPERIMENTAL_SMOKE_TEST`, everything else to `REJECT`. Ships
+  with a deterministic sha256 3-way split (PRIVATE scored once), a leakage firewall, and an anti-gaming
+  lint. The gate **decides eligibility; it never adopts** — adoption stays human-gated. Built failure-first
+  under the Phoenix loop: `tests/test_phoenix_learn.py` (9 deterministic, offline, zero-LLM cases) sensed
+  **red → green** via the real `phoenix-mcp` binary; `phoenix_accept` returned ok=true (failure-first
+  satisfied, trace intact, `check_digest 441a68e4`). This is the **first slice** — the gate core; the
+  optimizer that *proposes* candidates is next. (`evals/c3-phoenix-learn/RESULT.md`)
+- **Build charter — "Phoenix builds Phoenix"** (`AGENTS.md`): the self-hosting law (every connector is
+  built under the verify-heal loop and merges behind a red→green `phoenix_accept` trace), the connector
+  acceptance-check table, and the KERNEL's SRE rules (SLO, halt-on-broken-chain, human-gated controller,
+  blast-radius budgets, no-op bias, last-known-good, release hygiene) folded into how the factory governs
+  itself.
+- **Local-first CI** (`scripts/ci-local.{sh,ps1}` + `.githooks/pre-commit` & `pre-push`): the full gate
+  (cargo test `--locked` + OKF pytest + the `phoenix-learn` gate + OKF-bundle conformance ×2) runs
+  **locally**; the pre-push hook blocks any red push, pre-commit runs a fast `cargo check` when Rust is
+  staged. Managed backlog on the org **"Phoenix Factory"** project (a 12-label state machine, issues, and
+  roadmap/RFC gists).
+
+### Changed
+- **CI workflows now spend ~zero Action credits.** `.github/workflows/rust.yml` + `okf.yml` are trimmed to
+  `workflow_dispatch`-only (no push/PR auto-trigger); the identical checks are enforced by the local gate
+  above. The credit constraint is met without giving up the gate.
+- `scripts/ci-local.{sh,ps1}` broadened to run the C3 `phoenix-learn` test as a first-class gate step.
+
 ## [0.3.1] — 2026-06-19
 
 Self-maintenance: Phoenix now verifies and repairs its **own install** with the same objective discipline
