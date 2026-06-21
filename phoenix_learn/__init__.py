@@ -13,6 +13,8 @@ Public surface:
   split_fixture(rows)    -> deterministic (PUBLIC, DEV, PRIVATE) ~60/20/20 by sha256(input)
   forbidden_strings(...) -> leakage-firewall set (dev/private intents, task_ids, labels, fixture)
   lint_target(target, f) -> anti-gaming lint: forbidden substrings present in a candidate
+  optimize(rows, ...)    -> generational propose->select->measure loop; advisory gate verdict
+  build_meta_prompt/build_feedback_prompt/score -> the PUBLIC-only proposer primitives
 """
 from .gate import (
     ADOPT_MARGIN,
@@ -20,6 +22,12 @@ from .gate import (
     ADOPT_MIN_NET,
     decide,
     transitions,
+)
+from .optimize import (
+    build_feedback_prompt,
+    build_meta_prompt,
+    optimize,
+    score,
 )
 from .split import forbidden_strings, lint_target, split_fixture
 
@@ -29,6 +37,10 @@ __all__ = [
     "split_fixture",
     "forbidden_strings",
     "lint_target",
+    "optimize",
+    "build_meta_prompt",
+    "build_feedback_prompt",
+    "score",
     "ADOPT_MIN_N",
     "ADOPT_MARGIN",
     "ADOPT_MIN_NET",

@@ -1,0 +1,7 @@
+{
+  "_comment": "Issue #1 (C3 phoenix-learn) optimizer slice. MUST start RED (phoenix_learn.optimize absent) so completion is proven failure-first via phoenix_accept (red->green on an intact trace).",
+  "kind": "command_exit",
+  "target": ["python", "-m", "pytest", "tests/test_phoenix_learn_optimize.py", "-q"],
+  "expect": 0,
+  "cwd": "."
+}
