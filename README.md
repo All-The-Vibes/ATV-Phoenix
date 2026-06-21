@@ -153,6 +153,12 @@ real red→green heal. Token receipts in [`evals/m4-okf/`](evals/m4-okf/RESULT.m
   check. Full catalog: **[`docs/skills.md`](docs/skills.md)**.
 - **TokenMasterX** (bundled, MIT) — graph-routed code navigation, **−73% tokens**; `phoenix-context`
   routes structural questions here instead of grepping whole directories.
+- **`phoenix-learn` — the measured-gain adoption gate** (new in 0.4.0): the first connector built *by*
+  Phoenix, under its own red→green trace. A learned skill/prompt diff is adopted only when a **held-out
+  split proves a real, regression-free gain** (n ≥ 20, +10pp, zero right→wrong) — never on a self-graded
+  hunch. The gate **decides eligibility; it never adopts** (adoption stays human-gated). First slice — the
+  gate core — shipped; the optimizer that *proposes* candidates is next.
+  [`evals/c3-phoenix-learn`](evals/c3-phoenix-learn/RESULT.md).
 - **One-command install** — `setup.py` installs the whole stack; nothing else to fetch.
 - **The long-horizon engine** — for multi-hour, many-step jobs, the autonomous trio
   [`phoenix-goal`](skills/phoenix-goal/SKILL.md) + [`phoenix-ralph`](skills/phoenix-ralph/SKILL.md) +
@@ -169,7 +175,7 @@ The bigger bet — Intent-to-Outcome — is in **[`docs/intent-to-outcome.md`](d
 
 ---
 
-## Status (v0.3.1)
+## Status (v0.4.0)
 
 Every milestone has a measured eval + a screenshot.
 
@@ -182,6 +188,7 @@ Every milestone has a measured eval + a screenshot.
 | E2E | builds a **real project end-to-end** live in Copilot — Space Invaders, gated by an objective check + a **hardened Playwright interaction gate** | [result](evals/e2e-sandbox/RESULT.md) · [shot](evals/screenshots/e2e-space-invaders.png) |
 | Autonomy | **gate ledger** (failure-first, trace-derived completion) + Ralph loop driver | [result](evals/autonomous-workflows/RESULT.md) · [shot](evals/screenshots/autonomous-workflows.png) |
 | OKF | produce / validate / sense / consume / interop, 12 pytest + 3 Rust spine tests, CI | [result](evals/m4-okf/RESULT.md) · [live](evals/m5-okf-live/RESULT.md) |
+| C3 | **`phoenix-learn`** measured-gain adoption gate — held-out split (n≥20 / +10pp / zero right→wrong), built failure-first under Phoenix's own **red→green trace**; gate core shipped, optimizer in progress | [result](evals/c3-phoenix-learn/RESULT.md) |
 | H1 | criteria-first lift +0.125 mean, replicated 3/3 | [method + backlog](docs/intent-to-outcome.md#5-the-research-backlog-falsifiable-hypotheses) |
 | H2 | silent failures **40%→0%** | [result](evals/h2-experiment/RESULT.md) · [shot](evals/screenshots/h2-results.png) |
 | H3 | context/memory lift **0%→100%** | [result](evals/h3-experiment/RESULT.md) · [shot](evals/screenshots/h3-results.png) |
