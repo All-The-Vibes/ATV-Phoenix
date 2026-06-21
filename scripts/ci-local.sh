@@ -13,16 +13,19 @@ PY="python"
 command -v "$PY" >/dev/null 2>&1 || PY="py"
 command -v "$PY" >/dev/null 2>&1 || { echo "ci-local: no python interpreter found on PATH"; exit 2; }
 
-echo "== [1/4] cargo test --locked (full suite incl. install-integrity regression) =="
+echo "== [1/5] cargo test --locked (full suite incl. install-integrity regression) =="
 cargo test --locked
 
-echo "== [2/4] pytest tests/okf =="
+echo "== [2/5] pytest tests/okf =="
 "$PY" -m pytest tests/okf -q
 
-echo "== [3/4] okf_validate (committed code bundle) =="
+echo "== [3/5] pytest tests/test_phoenix_learn.py (C3 measured-gain gate) =="
+"$PY" -m pytest tests/test_phoenix_learn.py -q
+
+echo "== [4/5] okf_validate (committed code bundle) =="
 "$PY" skills/phoenix-okf/scripts/okf_validate.py examples/okf-code-graph
 
-echo "== [4/4] okf_validate (committed external bundle, strict links) =="
+echo "== [5/5] okf_validate (committed external bundle, strict links) =="
 "$PY" skills/phoenix-okf/scripts/okf_validate.py examples/okf-external-demo --strict-links
 
 echo "ci-local: ALL GREEN"
