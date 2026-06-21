@@ -19,8 +19,8 @@ cargo test --locked
 echo "== [2/5] pytest tests/okf =="
 "$PY" -m pytest tests/okf -q
 
-echo "== [3/5] pytest tests/test_phoenix_learn.py (C3 measured-gain gate) =="
-"$PY" -m pytest tests/test_phoenix_learn.py -q
+echo "== [3/5] pytest tests/test_phoenix_learn*.py (C3 measured-gain gate + optimizer) =="
+"$PY" -m pytest tests/test_phoenix_learn.py tests/test_phoenix_learn_optimize.py -q
 
 echo "== [4/5] okf_validate (committed code bundle) =="
 "$PY" skills/phoenix-okf/scripts/okf_validate.py examples/okf-code-graph
