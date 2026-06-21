@@ -1,0 +1,6 @@
+{
+  "kind": "command_exit",
+  "target": ["python", "-m", "pytest", "tests/test_verify_context.py", "-v"],
+  "expect": 0,
+  "cwd": "."
+}
