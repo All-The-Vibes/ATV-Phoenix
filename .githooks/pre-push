@@ -1,0 +1,7 @@
+#!/bin/sh
+# Pre-push gate: the full local CI must pass before anything leaves the machine.
+# This is the credit-saving replacement for the cloud push/PR triggers (now manual-only).
+# Bypass in a genuine emergency with `git push --no-verify` (discouraged; it skips the gate).
+ROOT="$(git rev-parse --show-toplevel)"
+echo "pre-push: running scripts/ci-local.sh (local CI gate)"
+exec "$ROOT/scripts/ci-local.sh"
