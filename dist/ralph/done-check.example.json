@@ -1,7 +1,7 @@
 {
-  "_comment": "Top-level acceptance check for the whole goal. MUST be a real command_exit (tests/build), and MUST start RED (fail) so completion can be proven failure-first. The driver proves red->green on an intact trace before it will stop.",
+  "_comment": "Top-level acceptance check for the whole goal. MUST start RED (fail before the feature exists) so completion can be proven failure-first. A bare npm test or pnpm build exits 0 on an empty scaffold -- the driver will reject such vacuous gates. Gate on CONTENT: run a specific test that asserts your real goal is met, or a verify script that checks the built artifact contains the expected output.",
   "kind": "command_exit",
-  "target": ["npm", "test"],
+  "target": ["python", "-m", "pytest", "tests/test_acceptance.py::test_goal_complete", "-v"],
   "expect": 0,
   "cwd": "."
 }
