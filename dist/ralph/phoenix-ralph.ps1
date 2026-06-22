@@ -1,4 +1,4 @@
-#requires -Version 5
+﻿#requires -Version 5
 <#
 .SYNOPSIS
   ATV-Phoenix Ralph loop driver — Geoffrey Huntley's `while :; do cat PROMPT.md | agent; done`
@@ -21,7 +21,30 @@
     progress.md      append-only cross-iteration learnings (survives the fresh context)
     done-check.json  the single top-level acceptance Check that ends the loop when proven
     completed.json   written by the DRIVER on success (proof bundle) -- never by the agent
+
+  Windows / PS5.1 note:
+    This script self-promotes to PowerShell 7 (pwsh) if running under PS < 6.
+    PS 5.1 mangles native-command arguments that contain embedded double-quotes, angle brackets,
+    or shell metacharacters — the exact characters that appear in normal PROMPT.md content.
+    The driver re-execs itself under pwsh so the user never has to think about which shell to use.
+    (Issue #8 root-cause analysis: a 4946-char prompt arrived as 12 split argv tokens under PS5.1;
+    under pwsh it arrived as 1 intact token.)
 #>
+
+# ---- Windows PS5.1 guard: self-promote to pwsh ----
+# Must be before [CmdletBinding()] / param() so the re-exec happens before parameter binding.
+if ($PSVersionTable.PSVersion.Major -lt 6) {
+  if (-not (Get-Command pwsh -ErrorAction SilentlyContinue)) {
+    Write-Host "[ralph] FATAL: phoenix-ralph requires PowerShell 7+ on Windows (PS 5.1 mangles agent prompt args)." -ForegroundColor Red
+    Write-Host "[ralph]        Install PowerShell 7: https://aka.ms/powershell" -ForegroundColor Red
+    exit 2
+  }
+  & pwsh -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath @args
+  exit $LASTEXITCODE
+}
+# Belt-and-suspenders on PS 7+: pin Standard arg passing so native commands receive verbatim argv.
+$PSNativeCommandArgumentPassing = 'Standard'
+
 [CmdletBinding()]
 param(
   [string]$Dir = ".phoenix-ralph",
@@ -60,7 +83,7 @@ if (-not $Copilot) { Die "copilot CLI not found. Install it or pass -Copilot." }
 if (-not (Test-Path $doneCheck)) { Die "missing $doneCheck (the top-level acceptance check)." }
 if (-not (Test-Path $prompt))    { Die "missing $prompt (the fixed per-loop instructions)." }
 $env:PHOENIX_WORKSPACE = $repo
-# Pass the check by @file (not inline JSON) — avoids PowerShell→exe quote-mangling.
+# Pass the check by @file (not inline JSON) — avoids PowerShell->exe quote-mangling.
 $doneArg = "@$doneCheck"
 
 # ---- baseline: the done-check should start RED so completion can be proven failure-first ----
@@ -88,18 +111,38 @@ while ($loop -lt $MaxLoops) {
   & $PhoenixBin accept $doneArg 2>$null | Out-Null
   if ($LASTEXITCODE -eq 0) { Info "done-check ACCEPTED (failure-first, green). Goal proven complete."; break }
 
-  # 2. Fresh-context agent turn (Huntley: one task per loop, brain on disk).
-  Info "iteration $loop/$MaxLoops -- invoking agent (fresh context)..."
-  $flat = (Get-Content $prompt -Raw) -replace "`r?`n", " "
-  & $Copilot -p $flat --allow-all-tools --allow-all-paths --add-dir $repo
-  if ($LASTEXITCODE -ne 0) { Warn "copilot exited $LASTEXITCODE." }
+  # 2. Capture pre-turn trace/backlog signature to detect launch failures.
+  $preTurnSig = (FileSig $traceFile) + "|" + (FileSig $backlog)
 
-  # 3. Trace must stay intact (tamper-evidence). A broken chain means we can't trust completion.
+  # 3. Fresh-context agent turn (Huntley: one task per loop, brain on disk).
+  #    Write the prompt to a temp file and pass it via stdin to avoid PS5.1/cmd metachar mangling.
+  #    (The @file convention already used for phoenix-mcp checks applies here too — see issue #8.)
+  Info "iteration $loop/$MaxLoops -- invoking agent (fresh context)..."
+  $tmpPrompt = [System.IO.Path]::GetTempFileName()
+  try {
+    [System.IO.File]::WriteAllText($tmpPrompt, (Get-Content $prompt -Raw), [System.Text.Encoding]::UTF8)
+    Get-Content $tmpPrompt -Raw | & $Copilot --stdin --allow-all-tools --allow-all-paths --add-dir $repo
+    $agentExit = $LASTEXITCODE
+  } finally {
+    Remove-Item $tmpPrompt -ErrorAction SilentlyContinue
+  }
+
+  # 4. Detect launch failure: agent exited nonzero AND trace/backlog signature is unchanged.
+  #    That pattern means the process never started (or started and immediately crashed) rather than
+  #    ran and chose not to change anything. Fail fast with a clear message instead of burning iterations.
+  $postTurnSig = (FileSig $traceFile) + "|" + (FileSig $backlog)
+  if ($agentExit -ne 0 -and $postTurnSig -eq $preTurnSig) {
+    Die "agent launch failure detected: copilot exited $agentExit and no trace/backlog change was observed. The agent process likely never started. Check your Copilot CLI installation and PROMPT.md for unsupported syntax."
+  } elseif ($agentExit -ne 0) {
+    Warn "copilot exited $agentExit (but trace/backlog changed — agent ran, may have partially succeeded)."
+  }
+
+  # 5. Trace must stay intact (tamper-evidence). A broken chain means we can't trust completion.
   & $PhoenixBin verify-trace 2>$null | Out-Null
   if ($LASTEXITCODE -ne 0) { Die "trace chain BROKEN after iteration $loop -- stopping (possible tampering/corruption)." }
 
-  # 4. No-progress detection: hash trace + backlog. Unchanged N times in a row => stuck.
-  $sig = (FileSig $traceFile) + "|" + (FileSig $backlog)
+  # 6. No-progress detection: hash trace + backlog. Unchanged N times in a row => stuck.
+  $sig = $postTurnSig
   if ($sig -eq $lastSig) { $noProgress++; Warn "no state change ($noProgress/$NoProgressStop)." } else { $noProgress = 0 }
   $lastSig = $sig
   if ($noProgress -ge $NoProgressStop) { Warn "no progress for $NoProgressStop iterations -- stopping (stuck; this is a planning problem)."; break }
@@ -118,8 +161,6 @@ if ($LASTEXITCODE -eq 0) {
   $proof | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $state "completed.json")
   Info "COMPLETE in $loop iterations. Proof -> $Dir\completed.json"
   if (-not $NoTag -and (Test-Path "$repo\.git")) {
-    # Tagging is best-effort: a proven completion must not be undone by a tag failure
-    # (e.g. a repo with no commits yet). Never let this flip the success exit code.
     try {
       $tag = "phoenix-ralph-$((Get-Date).ToString('yyyyMMdd-HHmmss'))"
       & git -C $repo tag -a $tag -m "phoenix-ralph: done-check proven failure-first ($loop iterations)" 2>$null
