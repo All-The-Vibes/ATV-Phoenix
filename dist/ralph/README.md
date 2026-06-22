@@ -1,4 +1,4 @@
-# phoenix-ralph — the loop driver
+﻿# phoenix-ralph — the loop driver
 
 Geoffrey Huntley's Ralph loop (`while :; do cat PROMPT.md | agent; done`,
 [ghuntley.com/ralph](https://ghuntley.com/ralph)), **Phoenix-gated**: the driver proves completion
@@ -64,6 +64,11 @@ MAX_LOOPS=30 bash dist/ralph/phoenix-ralph.sh
   `regex_in_file`/`file_sha256` (those are fine as per-item sub-checks, weak as the final gate).
 - Must start **RED**. The driver refuses an already-green done-check (pass `-AllowPreGreen` only if
   it's legitimately already satisfied) — a gate that can't fail proves nothing.
+- **Avoid vacuous gates.** A bare `npm test`, `pnpm build`, or empty `pytest` on a fresh scaffold
+  exits 0 before any feature exists — the driver will (correctly) reject it as already-green. Gate on
+  **content**: run a specific named test (e.g. `pytest tests/test_acceptance.py::test_goal_complete`),
+  or a verify script that checks the built artifact for expected output. The example in
+  `done-check.example.json` demonstrates this pattern.
 
 ### Guardrails the driver owns
 `-MaxLoops`, `-MaxMinutes` (wall-clock), `-NoProgressStop` (stop after N loops with no trace/backlog
