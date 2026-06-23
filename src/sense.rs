@@ -131,10 +131,23 @@ pub fn canonical_digest(check: &Check) -> String {
         (CheckKind::CommandExit, None) => Some("0".to_string()),
         (_, e) => e.clone(),
     };
+    // Gate-script integrity (issue #14): for command_exit where target[0] is an existing file
+    // (a gate script like "node scripts/verify.mjs" or "python verify.py"), fold the file's
+    // sha256 into the digest. Any edit to the script changes the digest, so old trace events
+    // (red observations) no longer match the new check, and accept correctly rejects it.
+    // Bare binary names on PATH (e.g. "python", "cargo") are not files in cwd — unaffected.
+    let script_hash: Option<String> = match check.kind {
+        CheckKind::CommandExit if !check.target.is_empty() => {
+            let p = std::path::Path::new(&check.target[0]);
+            if p.is_file() { sha256_file(p).ok() } else { None }
+        }
+        _ => None,
+    };
     let canonical = serde_json::json!({
         "kind": check.kind,
         "target": check.target,
         "expect": expect,
+        "script_hash": script_hash,
     });
     let s = serde_json::to_string(&canonical).unwrap_or_default();
     let mut h = Sha256::new();

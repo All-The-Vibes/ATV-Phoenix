@@ -88,3 +88,53 @@ fn rejects_tampered_trace() {
     assert!(!g.trace_intact, "tamper-evidence must catch the edit");
     let _ = std::fs::remove_dir_all(&ws);
 }
+
+#[test]
+fn rejects_gate_script_edit() {
+    // Issue #14: editing the gate script (the file target[0] points to) must invalidate
+    // previously-recorded trace events, so accept correctly rejects the modified gate.
+    // Before this fix, check_digest was derived from the spec only (argv/expect), so
+    // v1 and v2 of a gate script produced IDENTICAL digests — a weakened gate could be
+    // certified as ok=true, trace_intact=true.
+    use phoenix::sense::{canonical_digest, Check};
+
+    let ws = tmp_ws("script_edit");
+    let script = ws.join("gate.py");
+
+    // Write v1 of the gate script (will be the "original" gate)
+    std::fs::write(&script, b"# gate v1: weak assertion\nprint('ok')\n").unwrap();
+
+    // Build check pointing at the script
+    let check_v1: Check = serde_json::from_str(&format!(
+        r#"{{"kind":"command_exit","target":["{}"],"expect":0}}"#,
+        script.display().to_string().replace('\\', "\\\\")
+    )).unwrap();
+    let digest_v1 = canonical_digest(&check_v1);
+
+    // Simulate a completed run: red then green under v1
+    let tr = phoenix::Trace::default_in(&ws);
+    tr.append("sense", &digest_v1, false, "command_exit", "red").unwrap();
+    tr.append("sense", &digest_v1, true,  "command_exit", "green").unwrap();
+
+    // Now "edit" the gate script (v2: agent strengthens or weakens it)
+    std::fs::write(&script, b"# gate v2: different assertions\nprint('ok')\n").unwrap();
+
+    // Re-derive the digest for the same check spec — it MUST differ because the script changed
+    let check_v2: Check = serde_json::from_str(&format!(
+        r#"{{"kind":"command_exit","target":["{}"],"expect":0}}"#,
+        script.display().to_string().replace('\\', "\\\\")
+    )).unwrap();
+    let digest_v2 = canonical_digest(&check_v2);
+
+    assert_ne!(digest_v1, digest_v2,
+        "digest must change when the gate script body changes (issue #14 regression guard)");
+
+    // accept on the MODIFIED check must be rejected — the trace has no red->green for digest_v2
+    let result = phoenix::verify_gate(&ws, &check_v2);
+    assert!(!result.ok,
+        "accept must reject the modified gate: old trace events used digest_v1, not digest_v2");
+    assert!(!result.saw_red,
+        "no RED was ever observed for digest_v2 (the edited script)");
+
+    let _ = std::fs::remove_dir_all(&ws);
+}
