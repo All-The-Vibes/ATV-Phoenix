@@ -1,4 +1,4 @@
-﻿# phoenix-ralph — the loop driver
+# phoenix-ralph — the loop driver
 
 Geoffrey Huntley's Ralph loop (`while :; do cat PROMPT.md | agent; done`,
 [ghuntley.com/ralph](https://ghuntley.com/ralph)), **Phoenix-gated**: the driver proves completion
@@ -77,3 +77,49 @@ never writes `completed.json` or tags — only the driver does, and only on a pr
 
 See [`docs/autonomous-workflows.md`](../../docs/autonomous-workflows.md) for the full design and the
 research it's grounded in ([`research/autonomous-workflows-research.md`](../../research/autonomous-workflows-research.md)).
+
+## Live/serve gate rules (Windows — issue #12)
+
+Two gotchas that produce false results on Windows when the gate spawns a long-lived
+serve process (e.g. `next start`, `pnpm start`):
+
+### Rule 1 — Never `stdio:'inherit'` for serve processes
+
+```js
+// WRONG — hangs sense for ~14 min; leaks server processes each iteration
+spawn('pnpm', ['start'], { stdio: 'inherit' })
+
+// CORRECT — sense always returns; server tree is isolated
+spawn('pnpm', ['start'], { stdio: 'ignore', windowsHide: true })
+```
+
+`stdio:'inherit'` lets the served tree inherit the sense process's stdout/stderr
+pipe. On Windows, detached grandchildren (pnpm → cmd → next) survive
+`taskkill /T /F` of the parent and keep the inherited pipe open.
+`phoenix-mcp sense` reads the child pipe to EOF — it blocks until the driver's
+coarse timeout (~14 min observed, 864838ms), leaking a listening server each
+iteration.
+
+**Also kill by port** in teardown — pid-tree kill alone misses the detached grandchild:
+
+```js
+// After killing serveProc, also:
+// netstat -ano | findstr :3000 → taskkill /PID <pid> /T /F
+```
+
+A template with both fixes is at `dist/ralph/live-gate-template.mjs`.
+
+### Rule 2 — Case-insensitive `innerText` matching
+
+```js
+// WRONG — false-RED when CSS text-transform:uppercase is applied
+document.body.innerText.includes('Next Best Offer')   // → false if rendered as "NEXT BEST OFFER"
+
+// CORRECT — matches regardless of CSS letter-case transform
+bodyText.toLowerCase().includes(marker.toLowerCase())
+```
+
+`innerText` returns text with CSS `text-transform` applied. Any design system that
+uppercases headings/eyebrows produces false-RED on content that IS present. This
+pressures an autonomous agent to remove the uppercase styling to satisfy the gate —
+the mirror image of the anti-pattern Phoenix is built to prevent.
