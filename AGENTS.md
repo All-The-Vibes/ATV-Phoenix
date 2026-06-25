@@ -13,6 +13,20 @@ in `README.md` / `CHANGELOG.md`.
 
 ---
 
+## PII & privacy — never persist third-party people into this repo (non-negotiable, outranks the loop)
+This repo is **PUBLIC**. A continuous-learning beat that scrapes real people into it is a privacy
+breach, not progress — this rule outranks "compound knowledge" and the build loop below.
+- **Never write third-party PII into any file, commit message, PR, issue, or gist.** Third-party PII =
+  a real person's name, handle, email, or a verbatim/attributable quote lifted from a Teams/Discord
+  channel, meeting, email, or DM. Capture the **idea**, never the **identity** — de-identify to
+  "community signal," "a practitioner," "channel consensus"; strip the name and the verbatim wording.
+- **WorkIQ / channel / mail content is private input, not publishable source.** Read it for context;
+  persist only the de-identified substance.
+- **Allowed:** the repo owner's own identity (name, copyright, repos) and legitimate open-source
+  license attribution a dependency requires (e.g. an upstream author's MIT copyright).
+- **Unattended beats self-censor by default:** if you would not paste a line into this public repo with
+  the named person standing next to you, it does not get committed. When in doubt, omit the person.
+
 ## The non-negotiable loop (every change, no exceptions)
 
 1. **FORMALIZE first** (`phoenix-goal`). No connector code until a **runnable `phoenix_sense` acceptance
