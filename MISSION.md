@@ -38,18 +38,18 @@ ships to users.
 
 ## The thesis (grounded in our own ATV POV + today's channel signal)
 **The orchestration layer — not the model — determines agent success.** (All-The-Vibes/Agent-Harness
-white paper; "the harness is the chassis, the model is the engine" — a community member.) Most failures
+white paper; "the harness is the chassis, the model is the engine.") Most failures
 blamed on the model are *harness* failures: infinite loops (no explicit completion signal), context
 exhaustion (no summarization), destructive actions (no policy gate), tool misuse (vague tool contracts),
 no self-correction (the harness never feeds actionable errors back into the loop). Phoenix is a bet on
 the harness being the thing worth building — fast, self-healing, and measured.
 
-## But Phoenix is an INTELLIGENT PLATFORM, not just a harness (your reframe, today)
-Today in-channel you drew the line: *"that's just agent behaviour — now we're talking about an
-**intelligent platform**."* That's the ambition. A harness orchestrates one agent's turn; an intelligent
+## But Phoenix is an INTELLIGENT PLATFORM, not just a harness (the owner's reframe)
+The owner drew the line: this is more than *"just agent behaviour"* — it's an **intelligent platform**.
+That's the ambition. A harness orchestrates one agent's turn; an intelligent
 platform **carries skills, senses its own health, heals, improves, and hosts an extensible ecosystem**
-across many runs. Phoenix is the harness done so well it becomes a platform. (a community member in the
-same thread anchored it to **Hermes**; a community member rightly challenged "isn't this just Agency / a
+across many runs. Phoenix is the harness done so well it becomes a platform. (Community signal in the
+same thread anchored it to **Hermes** and rightly challenged "isn't this just Agency / a
 GHCP plugin marketplace?" — so Phoenix must EARN its existence by doing what those don't: a *fast,
 self-healing, self-improving, token-measured* core, and reuse — not reinvent — the skill/plugin standards.)
 
@@ -124,23 +124,23 @@ Phoenix implements them in Rust and adds the two things the POV repo's TS prompt
 | + | **Self-Improvement** (Phoenix) | skills/prompts get better with use | measured gains on sealed evals (our criteria-first result), human-directed |
 
 ## Token efficiency is a first-class, MEASURED non-negotiable (with one honest caveat)
-The community pain is real and recent: *"a user will burn 45k tokens when he shows up with 50 skills"*
-(a community member). agentskills.io progressive disclosure helps (load names+descriptions at discovery,
+The community pain is real and recent: a large skill set can burn ~45k tokens just at discovery time.
+agentskills.io progressive disclosure helps (load names+descriptions at discovery,
 full instructions only on activation) — but at 50+ skills even descriptions are expensive. **Phoenix's
 answer: a Rust-side skill index with lazy / retrieval-based activation, so the model only ever sees
 skills relevant to the current intent.** We track **tokens-per-verified-outcome** as a primary metric
 alongside verified-outcome rate.
-> **Honest caveat (a community member, today):** *"Do token costs actually matter for us? I thought it's all
-> unlimited."* For internal users on flat-rate plans, raw $ may not bite — but tokens are still a
+> **Honest caveat:** do token costs actually matter on flat-rate / "unlimited" plans? For internal
+> users on flat-rate plans, raw $ may not bite — but tokens are still a
 > *latency* and *context-window* budget: fewer tokens = faster turns + more room for the actual task.
 > So we keep token-efficiency as an engineering metric (speed/quality), not primarily a cost one.
 
 ## Positioning: a context-engineering harness, not a spec/persona generator
-Your own channel question: *"isn't spec kit and persona based harnesses getting obsoleted for modern
-AIs?"* The consensus is yes — *"specs next to featureset… personas → behavioral contracts… all in
-favor of Context Engineering"* (a community member); *"spec-driven burns more tokens for everyday use…
-harness engineering burns way less and feels like riding the agents rather than vibing"* (a community member
-a community member). Phoenix is deliberately on the **harness/context-engineering** side: lean behavioral
+The owner's own channel question: *"isn't spec kit and persona based harnesses getting obsoleted for
+modern AIs?"* The consensus is yes — specs-next-to-featureset and personas-as-behavioral-contracts are
+giving way to context engineering; spec-driven reportedly burns more tokens for everyday use while
+harness engineering burns far less and "feels like riding the agents rather than vibing." Phoenix is
+deliberately on the **harness/context-engineering** side: lean behavioral
 contracts + just-in-time context, NOT monolith spec docs or heavyweight personas. This is the
 technical reason behind "disregard process ceremony" — ceremony burns tokens for no outcome gain.
 

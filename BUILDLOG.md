@@ -55,19 +55,19 @@ Cargo skeleton and the smallest end-to-end path that detects+recovers an injecte
 - Folded the Five Pillars into the mission as Phoenix's spine, and positioned Phoenix's two
   differentiators (self-healing + measured self-improvement) as explicit EXTENSIONS of them.
 - Promoted **token efficiency to a first-class measured non-negotiable** (tokens-per-verified-outcome),
-  driven by real quotes: a community member "a user will burn 45k tokens with 50 skills"; a community member "make
-  every token pay rent." This also gives agentskills.io progressive disclosure a concrete Rust upgrade:
+  driven by recurring community signal that large skill sets burn enormous token budgets and that every
+  token should "pay rent." This also gives agentskills.io progressive disclosure a concrete Rust upgrade:
   a skill index with lazy/retrieval activation so only relevant skills enter context.
 - Sharpened positioning with the channel consensus that spec-kit/personas are being obsoleted in favor
-  of **context engineering** (a community member; a community member "harness engineering ... burns way less and
-  feels like riding the agents"). This is the real technical reason behind "disregard ceremony."
+  of **context engineering** (harness engineering reportedly burns far fewer tokens and "feels like
+  riding the agents"). This is the real technical reason behind "disregard ceremony."
 
-### Verbatim signal (attributed)
-- a community member: "the harness is the chassis to the model which is the engine" + harness efficacy is benchmarkable.
-- a community member: "if your code fails, fix your harness not your code" / "make every token pay rent."
-- a community member: "specs next to featureset... personas -> behavioral contracts... all in favor of Context Engineering."
-- a community member: "a user will burn 45k tokens when he shows up with 50 skills"; "harness engineering burns way less."
-- the owner: posted the Agent-Harness POV; asked "isn't spec kit and persona based harnesses getting obsoleted?"
+### Community signal (de-identified)
+- The harness is the chassis to the model's engine, and harness efficacy is benchmarkable.
+- When code fails, suspect/fix the harness before the code; make every token "pay rent."
+- Specs-next-to-featureset and personas-as-behavioral-contracts are giving way to context engineering.
+- Large skill sets blow up token budgets at discovery time; harness engineering burns far less.
+- The owner's own Agent-Harness POV asked whether spec-kit and persona-based harnesses are being obsoleted.
 
 ### What didn't work / friction
 - "SharkBait" (your earlier poor-man's-claude-code harness) had NO mentions in the last 10 days — it's
@@ -92,29 +92,29 @@ the Cargo project via Claude Code CLI dynamic workflows.
 
 ### What worked (today's signal, attributed)
 - **Phoenix is already a live concept in-channel today** - not just our internal name. Validated externally.
-- **a community member** anchored Phoenix to **Hermes** ("isn't this the idea behind hermes") -
+- A channel participant anchored Phoenix to **Hermes** ("isn't this the idea behind hermes") -
   confirms our grounding choice was right.
-- **a community member** challenged: "isn't this just Agency? or the existing GHCP CLI Plugin Marketplace?"
+- Another challenged whether this is just Agency or the existing GHCP CLI Plugin Marketplace
   -> Phoenix must EARN its existence vs prior art. Added a "reuse standards, don't reinvent" non-negotiable.
-- **the owner** reframed the ambition: "that's just agent behaviour - now we're talking about an
-  **intelligent platform**." -> Elevated the mission: Phoenix is the harness done so well it becomes a
+- The owner reframed the ambition from "just agent behaviour" to an **intelligent platform**
+  -> Elevated the mission: Phoenix is the harness done so well it becomes a
   platform (carries skills, senses, heals, improves, hosts an ecosystem across many runs).
-- **a community member** honest counter-signal: "Do token costs actually matter for us? I thought it's all
-  unlimited." -> Kept token-efficiency but RE-JUSTIFIED it as a latency/context-window budget
+- An honest counter-signal questioned whether token costs matter on flat-rate plans
+  -> Kept token-efficiency but RE-JUSTIFIED it as a latency/context-window budget
   (speed + room for the task), not primarily a $ cost argument. Honesty over hype.
 
 ### What didn't work / correction
-- **User directive: ignore everything a community member said ("its trash").** I had folded two of his quotes
-  into the mission ("make every token pay rent", "if your code fails fix your harness not your code")
-  and his marketplace/add-ins framing was in the research notes. SCRUBBED all a community member fingerprints
-  from MISSION.md (grep-verified zero remaining). Kept the SUBSTANCE that stands on its own / other
-  authors (token-as-budget via a community member; harness>model via a community member + the POV white paper).
-  Lesson: attribute sources as I capture them so a single-source retraction is surgical, not a rewrite.
+- **User directive: drop a specific community member's input entirely.** I had folded two of their
+  quotes into the mission ("make every token pay rent", "if your code fails fix your harness not your
+  code") and their marketplace/add-ins framing was in the research notes. SCRUBBED all of that
+  individual's fingerprints from MISSION.md (grep-verified zero remaining). Kept only the SUBSTANCE
+  that stands on its own (token-as-budget; harness>model from the ATV POV white paper).
+  Lesson: never capture third-party PII (names / verbatim quotes) into durable artifacts in the first place.
 
 ### Net change to the mission
-- Thesis now: harness>model (a community member + ATV POV), elevated to **intelligent platform** (your framing).
-- Must reuse agentskills.io + not reinvent Agency/GHCP-marketplace/Hermes (a community member's challenge answered).
-- Token efficiency reframed as latency/context budget with a community member's caveat recorded honestly.
+- Thesis now: harness>model (ATV POV), elevated to **intelligent platform** (the owner's framing).
+- Must reuse agentskills.io + not reinvent Agency/GHCP-marketplace/Hermes (the prior-art challenge answered).
+- Token efficiency reframed as latency/context budget with the flat-rate caveat recorded honestly.
 
 ### Still deferred (noted, not in v0)
 - Plugin/add-on marketplace + local-first runtime: real future themes raised today, but NOT v0. The
@@ -144,7 +144,7 @@ but the tool itself is built for github copilot."
   /mcp, exposing the capabilities Copilot lacks natively - objective SENSE, bounded HEAL, a
   token-cheap skill INDEX (lazy/retrieval), and an append-only TRACE with per-step token cost. Skills/
   agents/instructions stay portable markdown; the spine is Rust. This resolves the "where does Rust fit"
-  tension cleanly and keeps us standards-native (agentskills.io + MCP), answering a community member's challenge.
+  tension cleanly and keeps us standards-native (agentskills.io + MCP), answering the prior-art challenge.
 - **Distribution mirrors ATV-StarterKit:** copilot plugin marketplace add + 
 px atv-phoenix init
   landing files in .github/ and ~/.copilot/.
@@ -219,7 +219,7 @@ Assembly / token-efficiency pillar, already shipped and measured. Not inspiratio
 ### Strategic implication (big)
 - **TokenMasterX is effectively a PROVEN single-pillar prototype of the Phoenix architecture** - same
   hosts, same marketplace install, same MCP+routing-agent mechanism. One Phoenix pillar already ships
-  with hard numbers. This massively de-risks the platform thesis and answers a community member's "why not just X":
+  with hard numbers. This massively de-risks the platform thesis and answers the "why not just X" challenge:
   we're composing a proven part, not reinventing.
 - **Build strategy crystallized: Phoenix = COMPOSE proven parts (TokenMasterX + Addy MIT skills +
   agentskills.io) + BUILD only the novel spine (sense / heal / self-improve).** Updated the
