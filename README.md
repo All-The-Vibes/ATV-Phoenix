@@ -91,6 +91,11 @@ If an upgrade or host change breaks the install:
 ./target/release/phoenix-mcp doctor --fix
 ```
 
+If `phoenix_sense` is denied with *"could not request permission from user"*, the host registered
+Phoenix but did not approve it for this folder. Run `phoenix-mcp doctor --permissions --fix` once to
+grant the per-folder approvals while preserving other entries and backing up the prior config. As a
+fallback, `phoenix-mcp sense @check.json` uses the same gate ledger without requiring MCP approval.
+
 ## Quick start
 
 Start Copilot with the Phoenix agent:

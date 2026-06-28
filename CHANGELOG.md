@@ -9,6 +9,17 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`phoenix-mcp doctor --permissions [--fix] [--cwd <dir>]` — the MCP-approval facet.** Registration
+  (`mcp-config.json`) makes the phoenix server *available*; *approval* (`~/.copilot/permissions-config.json`)
+  is what lets a host actually **dispatch** its tools. A non-interactive (autopilot) host that finds phoenix
+  registered-but-unapproved for the working folder denies `phoenix_sense` with *"could not request
+  permission from user"* — and the harness silently stalls with no obvious cause. `doctor --permissions`
+  detects that per-folder gap and prints exact remediation; `--fix` grants approval for all five phoenix
+  tools, idempotently, preserving every other location/approval and backing up the prior config as
+  `permissions-config.json.doctor-bak` (heal discipline). New public API `doctor::check_permissions` /
+  `doctor::fix_permissions`; gated failure-first by `tests/permissions_doctor.rs` (4 cases). README now
+  documents the denial + the CLI-mode fallback (`phoenix-mcp sense @check.json` hits the same gate ledger
+  without needing the MCP approval).
 - **Cross-episode memory that a fact has to earn.** `phoenix_learn.memory.Memory` stores a
   claim only when the trials behind it clear `phoenix_learn.accept.verify_gate`, so asserting
   a fact does not store it and there is no argument that skips the gate. Facts are keyed by
