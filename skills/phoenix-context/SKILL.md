@@ -5,7 +5,7 @@ description: Assemble the cheapest sufficient context for a task — route struc
 license: MIT
 ---
 
-# phoenix-context — make every token pay rent
+# phoenix-context — make every token earn its place
 
 ## Overview
 A model has no memory between turns, so the harness re-sends the whole transcript every turn — every
