@@ -56,15 +56,15 @@ Cargo skeleton and the smallest end-to-end path that detects+recovers an injecte
   differentiators (self-healing + measured self-improvement) as explicit EXTENSIONS of them.
 - Promoted **token efficiency to a first-class measured non-negotiable** (tokens-per-verified-outcome),
   driven by recurring community signal that large skill sets burn enormous token budgets and that every
-  token should "pay rent." This also gives agentskills.io progressive disclosure a concrete Rust upgrade:
+  token should earn its place in context. This also gives agentskills.io progressive disclosure a concrete Rust upgrade:
   a skill index with lazy/retrieval activation so only relevant skills enter context.
 - Sharpened positioning with the channel consensus that spec-kit/personas are being obsoleted in favor
-  of **context engineering** (harness engineering reportedly burns far fewer tokens and "feels like
-  riding the agents"). This is the real technical reason behind "disregard ceremony."
+  of **context engineering** (harness engineering reportedly burns far fewer tokens and feels closer to
+  steering the agents). This is the real technical reason behind dropping ceremony.
 
 ### Community signal (de-identified)
 - The harness is the chassis to the model's engine, and harness efficacy is benchmarkable.
-- When code fails, suspect/fix the harness before the code; make every token "pay rent."
+- When code fails, suspect/fix the harness before the code; every token should earn its place.
 - Specs-next-to-featureset and personas-as-behavioral-contracts are giving way to context engineering.
 - Large skill sets blow up token budgets at discovery time; harness engineering burns far less.
 - The owner's own Agent-Harness POV asked whether spec-kit and persona-based harnesses are being obsoleted.
@@ -72,7 +72,7 @@ Cargo skeleton and the smallest end-to-end path that detects+recovers an injecte
 ### What didn't work / friction
 - "SharkBait" (your earlier poor-man's-claude-code harness) had NO mentions in the last 10 days — it's
   older context. Noted as prior art to potentially mine, not current signal.
-- "Parallelism / worktrees" came up in the BROADER history (multi-agent consensus, "15 vibing agents",
+- Parallelism / worktrees came up in the BROADER history (multi-agent consensus, many parallel agents,
   tmux panes) but NOT in the last-10-days channel window. Deferred: parallel/multi-agent orchestration
   is a real future theme but out of v0 scope. Recorded so we don't forget it.
 - One WorkIQ query got interrupted mid-flight (rapid follow-up); re-scoped to 10 days and it returned cleanly.
@@ -92,7 +92,7 @@ the Cargo project via Claude Code CLI dynamic workflows.
 
 ### What worked (today's signal, attributed)
 - **Phoenix is already a live concept in-channel today** - not just our internal name. Validated externally.
-- A channel participant anchored Phoenix to **Hermes** ("isn't this the idea behind hermes") -
+- A channel participant anchored Phoenix to **Hermes** as the same underlying idea -
   confirms our grounding choice was right.
 - Another challenged whether this is just Agency or the existing GHCP CLI Plugin Marketplace
   -> Phoenix must EARN its existence vs prior art. Added a "reuse standards, don't reinvent" non-negotiable.
@@ -105,8 +105,8 @@ the Cargo project via Claude Code CLI dynamic workflows.
 
 ### What didn't work / correction
 - **User directive: drop a specific community member's input entirely.** I had folded two of their
-  quotes into the mission ("make every token pay rent", "if your code fails fix your harness not your
-  code") and their marketplace/add-ins framing was in the research notes. SCRUBBED all of that
+  points into the mission (token-as-budget; fix the harness before the code) and their marketplace/add-ins
+  framing was in the research notes. SCRUBBED all of that
   individual's fingerprints from MISSION.md (grep-verified zero remaining). Kept only the SUBSTANCE
   that stands on its own (token-as-budget; harness>model from the ATV POV white paper).
   Lesson: never capture third-party PII (names / verbatim quotes) into durable artifacts in the first place.
