@@ -139,7 +139,7 @@ alongside verified-outcome rate.
 The owner's own channel question: *"isn't spec kit and persona based harnesses getting obsoleted for
 modern AIs?"* The consensus is yes — specs-next-to-featureset and personas-as-behavioral-contracts are
 giving way to context engineering; spec-driven reportedly burns more tokens for everyday use while
-harness engineering burns far less and "feels like riding the agents rather than vibing." Phoenix is
+harness engineering burns far less and keeps the work feeling steered rather than improvised. Phoenix is
 deliberately on the **harness/context-engineering** side: lean behavioral
 contracts + just-in-time context, NOT monolith spec docs or heavyweight personas. This is the
 technical reason behind "disregard process ceremony" — ceremony burns tokens for no outcome gain.
