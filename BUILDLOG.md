@@ -798,3 +798,32 @@ live-result.json; `demo/okf/run-demo.ps1` runs all 5 beats green incl. real red-
 phoenix-mcp. KEY INSIGHT: the OKF arc is closed — Phoenix now produces, gates, senses, heals,
 consumes, AND interops with open knowledge, enforced in CI. Knowledge is a first-class, self-
 healing, vendor-neutral artifact, and there's a 3-minute demo to show it.
+
+---
+
+## 2026-06-29 — prompt-manifest drift sense ("living prompt document")
+
+**Goal:** give Phoenix an objective check over its OWN prompt surface — the legit, self-owned analog of a
+"living document for the system prompt." Capture the 18 skills + `AGENTS.md` into a content-addressed
+manifest; SENSE drift (RED, naming the file) vs GREEN-when-matched, through the existing sense/trace/accept spine.
+
+### What worked
+- Reused the spine instead of inventing a tool: a fourth `CheckKind::PromptManifest` (target = baseline
+  manifest path) flows through `sense -> trace -> accept` for free. No new MCP tool; 3 source files.
+- Failure-first, dogfooded on the real binary: wrote the test first with `verify_against` stubbed `todo!()`
+  -> `phoenix-mcp sense` RED (exit 101) -> implemented the diff -> GREEN -> `phoenix-mcp accept` ok=true
+  (`check_digest 4fa0e55c`, trace intact). End-to-end on the real surface: sensing the committed manifest is
+  GREEN; tampering `skills/index.md` flips RED naming the file.
+
+### What didn't work / friction
+- The shipped `target/release/phoenix-mcp.exe` was stale (built from main) and rejected the new
+  `prompt_manifest` variant ("unknown variant"). The cargo-test red->green still held (a `command_exit`
+  check whose subprocess ran the new code), but DIRECT sensing needed `cargo build --release`. Lesson: a new
+  CheckKind isn't usable via the server until the binary is rebuilt.
+- `.phoenix/` is gitignored (runtime: trace, snapshots), so a version-controlled living document can't live
+  there. Moved the committed baseline to `docs/prompt-ledger/`; `workspace_of_manifest` falls back to CWD for
+  tracked manifests and uses the `.phoenix` ancestor only for hermetic tests.
+
+### Evidence
+- `scripts/ci-local.ps1`: ALL GREEN (cargo full suite incl. 2 new prompt_ledger tests; pytest okf 12;
+  phoenix_learn 18; OKF conformance x2). Issue #27; RFC gist linked in the PR.

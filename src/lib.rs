@@ -10,6 +10,7 @@ pub mod heal;
 pub mod trace;
 pub mod doctor;
 pub mod accept;
+pub mod prompt_ledger;
 
 pub use doctor::{doctor, DoctorReport, integrity, fix as doctor_fix, resolve_home, InstallReport};
 pub use heal::{heal, HealCtx, HealResult, Strategy};
@@ -17,3 +18,4 @@ pub use sense::{sense, Check, CheckKind, SenseResult};
 pub use snapshot::{snapshot, SnapshotResult};
 pub use trace::{Trace, TraceVerify};
 pub use accept::{verify_gate, GateResult};
+pub use prompt_ledger::{capture, verify_against, Manifest, Verdict};

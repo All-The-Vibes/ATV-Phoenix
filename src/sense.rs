@@ -58,6 +58,9 @@ pub enum CheckKind {
     FileSha256,
     /// Pass iff regex `expect` matches the contents of file `target`.
     RegexInFile,
+    /// Pass iff the prompt surface recorded in the baseline manifest at `target[0]` is unchanged
+    /// (no added / removed / changed files). RED on any drift. `target = [baseline_manifest_path]`.
+    PromptManifest,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
@@ -116,6 +119,7 @@ pub fn sense(check: &Check) -> SenseResult {
         CheckKind::CommandExit => sense_command(check),
         CheckKind::FileSha256 => sense_sha256(check),
         CheckKind::RegexInFile => sense_regex(check),
+        CheckKind::PromptManifest => sense_prompt_manifest(check),
     }
 }
 
@@ -222,6 +226,32 @@ fn sense_regex(check: &Check) -> SenseResult {
             evidence: format!("path={} pattern={}", path.display(), pat),
         },
         Err(e) => SenseResult { ok: false, signal: "regex_in_file".into(), evidence: format!("read failed: {e}") },
+    }
+}
+
+fn sense_prompt_manifest(check: &Check) -> SenseResult {
+    if check.target.is_empty() {
+        return SenseResult {
+            ok: false,
+            signal: "prompt_manifest".into(),
+            evidence: "empty target (need baseline manifest path)".into(),
+        };
+    }
+    let p = Path::new(&check.target[0]);
+    match crate::prompt_ledger::verify_manifest_file(p) {
+        Ok((m, v)) => SenseResult {
+            ok: v.ok,
+            signal: "prompt_manifest".into(),
+            evidence: truncate(format!(
+                "manifest={} composite={} added={:?} removed={:?} changed={:?}",
+                p.display(), m.composite_sha256, v.added, v.removed, v.changed
+            )),
+        },
+        Err(e) => SenseResult {
+            ok: false,
+            signal: "prompt_manifest".into(),
+            evidence: truncate(format!("read manifest {} failed: {e}", p.display())),
+        },
     }
 }
 
