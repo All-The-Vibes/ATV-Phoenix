@@ -2,6 +2,20 @@
 
 All notable changes to ATV-Phoenix are documented here.
 
+## [Unreleased]
+
+### Added
+- **Prompt-manifest drift sense — the "living prompt document"** (`src/prompt_ledger.rs` + a fourth
+  `CheckKind::PromptManifest`). Captures Phoenix's own prompt surface (the 18 skills + `AGENTS.md`) into a
+  content-addressed manifest, then SENSES drift against it: GREEN when the surface matches the blessed
+  baseline, RED — naming the added/removed/changed files — on any edit. Because it is an ordinary `Check`,
+  it inherits the whole spine: `phoenix_accept` proves a prompt check went **red → green**, the trace audits
+  it. The self-owned, verification-gated analog of a "living system-prompt document" — Phoenix refuses to
+  silently accept edits to what steers it. Built failure-first through the real `phoenix-mcp` binary:
+  `cargo test --locked prompt_ledger` sensed **red → green**, `phoenix_accept` returned ok=true (trace
+  intact, `check_digest 4fa0e55c`). Committed living document: `docs/prompt-ledger/phoenix-prompts.json`
+  (regenerate with `cargo run --example capture_prompts`). (#27)
+
 ## [0.4.0] — 2026-06-20
 
 **The factory turns on itself.** Phoenix builds its first *connector* — and builds it *with* Phoenix: the

@@ -1,0 +1,102 @@
+{
+  "version": 1,
+  "generated_ts": "1782789247.524833300",
+  "roots": [
+    "skills",
+    "AGENTS.md"
+  ],
+  "ext_filter": [
+    ".md"
+  ],
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "fbb53021694e4afe3c7cfe987fdf749cb58a272fbabc6e06edb224f462f75f62"
+    },
+    {
+      "path": "skills/index.md",
+      "sha256": "3a81dabd1638bef2277781bce7487e62b58506902672da50345d0bc9e13784d1"
+    },
+    {
+      "path": "skills/phoenix-auto/SKILL.md",
+      "sha256": "e57c40a4e564fcf75fbca09bd94078ee8148cf12bcce780a7624b0201cb1ea8b"
+    },
+    {
+      "path": "skills/phoenix-build/SKILL.md",
+      "sha256": "b0a6a005ea6d802943bf9d6a749b63736be56bd63f690542b498915811cbde6a"
+    },
+    {
+      "path": "skills/phoenix-context/SKILL.md",
+      "sha256": "e3ed7612ad9b9f77f3043b93a4d8a0fce51f9a8ecbd6e63bb85a113eb2c2230e"
+    },
+    {
+      "path": "skills/phoenix-craft/SKILL.md",
+      "sha256": "f04a64939ecba64630e4599d4992f73e1ed2533453151f21a6fc9db353100036"
+    },
+    {
+      "path": "skills/phoenix-debug/SKILL.md",
+      "sha256": "ad330b6f5e1dd4ebe69b7ff93172283798b3e917b32abb9beb789533f4c568b7"
+    },
+    {
+      "path": "skills/phoenix-design/SKILL.md",
+      "sha256": "d8b6b2ffba71f46d64d3e4ff25a57c44b8df5dfd827579cd7fc934d105e5bb37"
+    },
+    {
+      "path": "skills/phoenix-doctor/SKILL.md",
+      "sha256": "59f4f6bcd728a3e6cbb4ec45c3599d8c69a48d675cf4320c235056eb68fa3937"
+    },
+    {
+      "path": "skills/phoenix-goal/SKILL.md",
+      "sha256": "7efb52c61527ccf9c59539e36262f2ca745895425c9fcc347d8029b75ae87670"
+    },
+    {
+      "path": "skills/phoenix-okf/SKILL.md",
+      "sha256": "e0df3c3a963f14ba9b7849bceff9e14d92f0bfae625157de2dececab09d4917e"
+    },
+    {
+      "path": "skills/phoenix-okf/checks/README.md",
+      "sha256": "0c122fffad86e8a120bddb9aefc167f1c79239fbb26d1877a74b5a896eb0be7a"
+    },
+    {
+      "path": "skills/phoenix-okf/references/OKF-SPEC-0.1.md",
+      "sha256": "4c1b2f05bd8864484a7b9603307e48891a9906c04b64a491eeb0d20df355a2d3"
+    },
+    {
+      "path": "skills/phoenix-plan/SKILL.md",
+      "sha256": "6951cc6c8d4cdfe75049d5adfa1c477c35c4085ac27ccf49ac0b421ce3efb391"
+    },
+    {
+      "path": "skills/phoenix-ralph/SKILL.md",
+      "sha256": "c9a60b700c4541af61c38ebb18bfb915bc950993964ced3f82c2884a6b836ff9"
+    },
+    {
+      "path": "skills/phoenix-review/SKILL.md",
+      "sha256": "73290d8c2197233bed0428f5b74934ce9a3861ba805f73d8a507c80ef6df72ef"
+    },
+    {
+      "path": "skills/phoenix-self-heal/SKILL.md",
+      "sha256": "7daa1a8379b9d28c1f48f16e3e7387c9269ecf160fe9bece4a61c8c742cba34b"
+    },
+    {
+      "path": "skills/phoenix-ship/SKILL.md",
+      "sha256": "ce26c0aa2eefe0980214aab48e9627bc4f923895a09e694fdbbf203104f1c938"
+    },
+    {
+      "path": "skills/phoenix-test/SKILL.md",
+      "sha256": "b9c7a5aa55c2d6626d553dfa05fb0f06d0c8503861385356715caf3d7927f7a7"
+    },
+    {
+      "path": "skills/phoenix-think/SKILL.md",
+      "sha256": "5aec19b1437fa053436f073fa40796c76858934855cd46b1e8facf5f9bce2296"
+    },
+    {
+      "path": "skills/phoenix-typescript/SKILL.md",
+      "sha256": "a5892d88be18ca62385c47bb59228ea3154fd0df67fcdcad361d203f06815005"
+    },
+    {
+      "path": "skills/phoenix/SKILL.md",
+      "sha256": "458c86266176f58bc812e924130e042c1920a887c60ccaa205e723eed85c90fa"
+    }
+  ],
+  "composite_sha256": "145a7b9b107c1378b5b4673da67c373115111af4fb5cf7bafe0ae322e48b5513"
+}
