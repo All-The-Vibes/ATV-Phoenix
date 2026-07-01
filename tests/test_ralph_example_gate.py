@@ -76,3 +76,19 @@ def test_readme_warns_vacuous_gates() -> None:
         "README must mention the vacuous-gate pitfall (bare build/test exits 0 on "
         "fresh scaffold). Add a note near the done-check.json contract section."
     )
+
+def test_example_has_negative_assertion_tip() -> None:
+    """done-check.example.json must carry a _negative_assertion_tip that points users
+    to surface-scan-template.mjs for absence/legacy-gone assertions (issue #13 rec-1).
+    Positive-only gates are the documented root cause of premature completion; the
+    example must actively guide users toward negative assertions.
+    """
+    data = _example()
+    tip = data.get("_negative_assertion_tip", "")
+    assert tip, (
+        "done-check.example.json must include _negative_assertion_tip guiding users to",
+        " add negative/absence assertions (e.g. surface-scan-template.mjs).",
+    )
+    assert "surface-scan" in tip.lower() or "absence" in tip.lower() or "negative" in tip.lower(), (
+        f"_negative_assertion_tip must mention surface-scan-template or absence assertions. Got: {tip!r}"
+    )

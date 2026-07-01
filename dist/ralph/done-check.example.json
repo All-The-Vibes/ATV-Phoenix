@@ -1,5 +1,6 @@
 {
   "_comment": "Top-level acceptance check for the whole goal. MUST start RED (fail before the feature exists) so completion can be proven failure-first. A bare npm test or pnpm build exits 0 on an empty scaffold -- the driver will reject such vacuous gates. Gate on CONTENT: run a specific test that asserts your real goal is met, or a verify script that checks the built artifact contains the expected output.",
+  "_negative_assertion_tip": "Strong done-checks also encode ABSENCE: the legacy thing is GONE, not just the new thing present. For surface migrations, copy dist/ralph/surface-scan-template.mjs and add a forbiddenPatterns list to assert no legacy signatures remain. Start it RED (offenders listed) before migration; green means the surface is clean. See issue #13 for the root-cause scenario.",
   "kind": "command_exit",
   "target": ["python", "-m", "pytest", "tests/test_acceptance.py::test_goal_complete", "-v"],
   "expect": 0,
