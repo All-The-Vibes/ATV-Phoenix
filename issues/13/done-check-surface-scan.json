@@ -1,0 +1,6 @@
+{
+  "kind": "command_exit",
+  "target": ["python", "-m", "pytest", "tests/test_surface_scan_template.py", "-v"],
+  "expect": 0,
+  "cwd": "C:/Users/shyamsridhar/code/ATV-Phoenix-dream/13-surface-scan"
+}
