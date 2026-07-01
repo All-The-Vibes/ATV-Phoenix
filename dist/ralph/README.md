@@ -70,6 +70,12 @@ MAX_LOOPS=30 bash dist/ralph/phoenix-ralph.sh
   or a verify script that checks the built artifact for expected output. The example in
   `done-check.example.json` demonstrates this pattern.
 
+**Also add a negative/absence assertion** — prove the legacy thing is *gone*, not just
+the new thing present. Positive-only gates are a documented source of premature
+completion (see issue #13). Copy `dist/ralph/surface-scan-template.mjs`, configure its
+`forbiddenPatterns` list, and add it as a second done-check step: start RED (offenders
+listed at `file:line`), green when the surface is clean.
+
 ### Guardrails the driver owns
 `-MaxLoops`, `-MaxMinutes` (wall-clock), `-NoProgressStop` (stop after N loops with no trace/backlog
 change), trace-intact check every iteration, and the proof bundle + git tag on success. The agent
