@@ -76,3 +76,17 @@ def test_readme_warns_vacuous_gates() -> None:
         "README must mention the vacuous-gate pitfall (bare build/test exits 0 on "
         "fresh scaffold). Add a note near the done-check.json contract section."
     )
+
+def test_readme_mentions_surface_scan() -> None:
+    """README must mention surface-scan-template.mjs so the negative-assertion
+    pattern is discoverable from the main ralph documentation (issue #13 rec-1).
+    The done-check contract section explains what makes a gate strong; it must
+    also tell users how to add a negative/absence assertion.
+    """
+    readme = _readme()
+    lower = readme.lower()
+    assert "surface-scan" in lower or "surface_scan" in lower, (
+        "README dist/ralph/README.md must mention surface-scan-template.mjs in the",
+        " done-check contract section. Negative assertions (legacy thing gone) are",
+        " as important as positive ones — document the template that enables them.",
+    )
