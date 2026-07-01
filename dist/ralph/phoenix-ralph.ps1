@@ -1,4 +1,4 @@
-﻿#requires -Version 5
+#requires -Version 5
 <#
 .SYNOPSIS
   ATV-Phoenix Ralph loop driver — Geoffrey Huntley's `while :; do cat PROMPT.md | agent; done`
@@ -109,7 +109,26 @@ while ($loop -lt $MaxLoops) {
 
   # 1. DRIVER decides done: is the done-check failure-first satisfied on an intact trace?
   & $PhoenixBin accept $doneArg 2>$null | Out-Null
-  if ($LASTEXITCODE -eq 0) { Info "done-check ACCEPTED (failure-first, green). Goal proven complete."; break }
+  if ($LASTEXITCODE -eq 0) {
+    Info "done-check ACCEPTED (failure-first, green). Goal proven complete."
+    # Issue #13: warn when the done-check greens but backlog items are still done:false.
+    # This is a symptom of a weak-proxy gate — the check encoded something shallower than the
+    # full goal (positive assertions only, no negative/absence assertions). The warning is
+    # non-fatal: the failure-first proof is valid; the human should tighten the gate.
+    if (Test-Path $backlog) {
+      try {
+        $bl = Get-Content $backlog -Raw | ConvertFrom-Json
+        $unfinished = @($bl | Where-Object { $_.PSObject.Properties["done"] -and $_.done -eq $false }).Count
+        if ($unfinished -gt 0) {
+          Warn ("done-check green but {0} backlog item(s) still done:false -- POSSIBLE UNDER-SPECIFIED GATE. " +
+                "Your done-check may be a proxy, not the full goal. " +
+                "Add negative/absence assertions (the legacy thing is gone, all surfaces migrated). " +
+                "See https://github.com/All-The-Vibes/ATV-Phoenix/issues/13") -f $unfinished
+        }
+      } catch { <# non-fatal: malformed backlog.json -- skip warning #> }
+    }
+    break
+  }
 
   # 2. Capture pre-turn trace/backlog signature to detect launch failures.
   $preTurnSig = (FileSig $traceFile) + "|" + (FileSig $backlog)
