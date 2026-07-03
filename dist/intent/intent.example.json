@@ -1,0 +1,47 @@
+{
+  "_schema_version": "1",
+  "_description": "Example intent manifest for phoenix-intent. Copy to .phoenix-intent/intent.json and edit.",
+  "_rules": [
+    "goals must have unique ids (kebab-case) — used as per-goal trace directory names",
+    "max 5 goals per intent (ceiling; split into multiple intents if more are needed)",
+    "depends_on lists goal ids that must be proven complete before this goal starts",
+    "every check MUST start RED at baseline — a green check at baseline is a vacuous gate",
+    "kind is optional: build | integrate | configure | notify | cron | webhook"
+  ],
+  "intent": "Wire the Teams notification into the daily pipeline and verify end-to-end",
+  "goals": [
+    {
+      "id": "build-connector",
+      "title": "Build the Teams connector module (tests green)",
+      "kind": "build",
+      "check": {
+        "kind": "command_exit",
+        "target": ["cargo", "test", "--", "teams"],
+        "expect": 0
+      },
+      "depends_on": []
+    },
+    {
+      "id": "configure-webhook",
+      "title": "Wire the webhook endpoint key into the pipeline config",
+      "kind": "configure",
+      "check": {
+        "kind": "regex_in_file",
+        "target": ["config/pipeline.toml"],
+        "expect": "teams_webhook\\s*="
+      },
+      "depends_on": ["build-connector"]
+    },
+    {
+      "id": "notify-team",
+      "title": "Send a test Teams notification and confirm receipt via verify script",
+      "kind": "notify",
+      "check": {
+        "kind": "command_exit",
+        "target": ["node", "scripts/verify-teams.mjs"],
+        "expect": 0
+      },
+      "depends_on": ["configure-webhook"]
+    }
+  ]
+}
