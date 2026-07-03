@@ -22,6 +22,9 @@ use std::path::Path;
 /// Maximum number of goals per intent manifest (v1 ceiling; revisit after H6 data).
 pub const MAX_GOALS: usize = 5;
 
+/// Number of hex characters to show in contamination warnings (enough to distinguish digests).
+const DIGEST_DISPLAY_LEN: usize = 16;
+
 /// Automation-goal kind — determines which typed acceptance-check template to apply.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -128,7 +131,7 @@ pub fn verify_intent(workspace: &Path, manifest: &IntentManifest) -> CompositeAc
                 "[intent] WARNING: goals share identical check digest ({}) — \
                  independence contamination detected. A shared check can mask \
                  per-goal failures. (v1: log only; v2 will enforce isolation)",
-                &digest[..16]
+                &digest[..DIGEST_DISPLAY_LEN]
             );
         }
     }
