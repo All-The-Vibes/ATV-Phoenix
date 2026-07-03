@@ -44,8 +44,8 @@ breach, not progress — this rule outranks "compound knowledge" and the build l
    model). **Never advance on red.** Escalate only when stuck.
 7. **COMPLETION = PROOF** (`phoenix_accept`). A task is done **only when the hash-chained trace proves a
    check went red → green (failure-first) and is green now.** Never report "done" from the model's opinion.
-8. **SHIP via PR** (`phoenix-ship`). Attach the `phoenix_verify_trace` / `phoenix_accept` result as
-   evidence. **Human gate on risky changes. Never direct-commit** to the default branch.
+8. **SHIP via PR + AUTO-MERGE GATE** (`phoenix-ship`). Attach the `phoenix_verify_trace` / `phoenix_accept` result as
+   evidence. Run `scripts/eval-gate.ps1` after push: exit 0 → merge (gh pr ready + gh pr merge --squash), exit 1 → leave draft + notify (regression), exit 2 → leave draft + notify (error). Docs/test-only: -Exempt flag. Never auto-merge: AGENTS.md/charter/prompts or blast-radius >3 files.
 9. **REMEMBER** (`phoenix-okf`). Promote the verified outcome into the OKF / Phoenix's-Nest bundle,
    indexed by TMX structural signature, so the next run retrieves it as cheap context.
 
