@@ -1,0 +1,74 @@
+{
+    "_schema":  "1.0",
+    "_doc":  "Canonical score tracker. baseline block written once from first scored run on main. Runs array is append-only. Never auto-update baseline downward.",
+    "baseline":  {
+                     "date":  "2026-07-03",
+                     "commit":  "c0687cb27127e87a5f5d04c7d20b47d3bd9cb267",
+                     "swe_bench_lite":  {
+                                            "arm_a_vanilla_resolved":  0.778,
+                                            "arm_a_vanilla_resolved_n":  7,
+                                            "arm_b_phoenix_resolved":  1.0,
+                                            "arm_b_phoenix_resolved_n":  9,
+                                            "tasks":  9,
+                                            "model":  "GitHub Copilot CLI 1.0.61",
+                                            "reps":  1,
+                                            "results_file":  "evals/swe-bench-lite/results.jsonl"
+                                        },
+                     "north_star":  null
+                 },
+    "runs":  [
+                 {
+                     "date":  "2026-07-03",
+                     "commit":  "c0687cb27127e87a5f5d04c7d20b47d3bd9cb267",
+                     "trigger":  "manual",
+                     "tier":  "lite",
+                     "arm_a_vanilla_resolved":  0.778,
+                     "arm_b_phoenix_resolved":  1.0,
+                     "delta_b_from_baseline":  0.0,
+                     "tasks":  9,
+                     "model":  "GitHub Copilot CLI 1.0.61",
+                     "reps":  1,
+                     "pr":  null,
+                     "note":  "Initial baseline run. Arm B: 9/9 (100%). Arm A: 7/9 (78%). Lift from gate: +22pp on underspecified tasks."
+                 },
+                 {
+                     "date":  "2026-07-03",
+                     "commit":  "c0687cb27127e87a5f5d04c7d20b47d3bd9cb267",
+                     "trigger":  "manual",
+                     "tier":  "lite",
+                     "arm_a_vanilla_resolved":  0.7778,
+                     "arm_b_phoenix_resolved":  1,
+                     "delta_b_from_baseline":  0.0,
+                     "tasks":  9,
+                     "model":  "GitHub Copilot CLI",
+                     "reps":  1,
+                     "pr":  null
+                 },
+                 {
+                     "date":  "2026-07-03",
+                     "commit":  "c0687cb27127e87a5f5d04c7d20b47d3bd9cb267",
+                     "trigger":  "manual",
+                     "tier":  "lite",
+                     "arm_a_vanilla_resolved":  0.7778,
+                     "arm_b_phoenix_resolved":  1,
+                     "delta_b_from_baseline":  0.0,
+                     "tasks":  9,
+                     "model":  "GitHub Copilot CLI",
+                     "reps":  1,
+                     "pr":  null
+                 },
+                 {
+                     "date":  "2026-07-03",
+                     "commit":  "c0687cb27127e87a5f5d04c7d20b47d3bd9cb267",
+                     "trigger":  "test",
+                     "tier":  "lite",
+                     "arm_a_vanilla_resolved":  0.7778,
+                     "arm_b_phoenix_resolved":  1,
+                     "delta_b_from_baseline":  0.0,
+                     "tasks":  9,
+                     "model":  "GitHub Copilot CLI",
+                     "reps":  1,
+                     "pr":  null
+                 }
+             ]
+}
