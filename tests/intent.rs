@@ -13,11 +13,11 @@ use phoenix::Trace;
 use std::path::{Path, PathBuf};
 
 fn tmp_ws(name: &str) -> PathBuf {
-    let mut d = std::env::temp_dir();
-    d.push(format!("phoenix_intent_{}_{}", name, std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(d.join(".phoenix")).unwrap();
-    d
+    let mut dir = std::env::temp_dir();
+    dir.push(format!("phoenix_intent_{}_{}", name, std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join(".phoenix")).unwrap();
+    dir
 }
 
 fn regex_check(file: &Path, pat: &str) -> Check {
@@ -111,9 +111,9 @@ fn goal_count_ceiling_rejects_over_max() {
     let ws = tmp_ws("over_max");
     let out = ws.join("x.txt");
     let check = regex_check(&out, "DONE");
-    // MAX_GOALS+1 goals
+    // MAX_GOALS+1 goals — intentionally one over the ceiling to trigger the guard
     let goals: Vec<GoalSpec> =
-        (0..=MAX_GOALS).map(|i| make_goal(&format!("goal-{i}"), &format!("Goal {i}"), check.clone())).collect();
+        (0..(MAX_GOALS + 1)).map(|i| make_goal(&format!("goal-{i}"), &format!("Goal {i}"), check.clone())).collect();
 
     let manifest = IntentManifest { intent: "too many goals".into(), goals };
     let result = verify_intent(&ws, &manifest);
