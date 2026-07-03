@@ -1,0 +1,19 @@
+{
+  "_description": "Typed acceptance-check template for a webhook trigger goal.",
+  "_usage": "Copy check into your intent.json goal with kind=webhook. Replace ENDPOINT_URL with your webhook URL.",
+  "_pattern": "Verify the webhook endpoint is reachable and responds correctly to a test payload.",
+  "kind": "webhook",
+  "check": {
+    "kind": "command_exit",
+    "target": ["node", "SCRIPT_PATH/verify-webhook.mjs", "--url", "ENDPOINT_URL"],
+    "expect": 0,
+    "timeout_secs": 20
+  },
+  "_notes": [
+    "The verify script should send a test payload to the webhook endpoint and confirm a 2xx response (or the expected acknowledgement).",
+    "The check MUST fail before the endpoint is wired up — exits 1 when the endpoint is absent or returns non-2xx.",
+    "For GitHub repository webhooks, the script can verify the webhook is registered via the GitHub API and returns a test delivery result.",
+    "For Phoenix automation webhooks, verify the endpoint is registered in the automation manifest and responds to a ping.",
+    "Avoid side-effects in the verify script — use a dedicated test/ping path, not the production event path."
+  ]
+}

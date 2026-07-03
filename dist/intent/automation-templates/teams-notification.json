@@ -1,0 +1,17 @@
+{
+  "_description": "Typed acceptance-check template for a Teams notification goal.",
+  "_usage": "Copy check into your intent.json goal with kind=notify. Replace SCRIPT_PATH with your verify script.",
+  "_pattern": "Run a verification script that returns exit 0 only when the Teams message was received/confirmed.",
+  "kind": "notify",
+  "check": {
+    "kind": "command_exit",
+    "target": ["node", "SCRIPT_PATH/verify-teams-notification.mjs"],
+    "expect": 0,
+    "timeout_secs": 30
+  },
+  "_notes": [
+    "The verify script should confirm the message arrived (e.g. query the Teams incoming webhook log or a sentinel file written by the notification handler).",
+    "The check MUST fail before the notification goal is implemented — use a placeholder script that exits 1 to enforce baseline RED.",
+    "For Phoenix Teams relay (ATV-Teams), the script can POST a test message and verify a sentinel acknowledgement."
+  ]
+}

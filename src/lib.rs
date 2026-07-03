@@ -11,6 +11,7 @@ pub mod trace;
 pub mod doctor;
 pub mod accept;
 pub mod prompt_ledger;
+pub mod intent;
 
 pub use doctor::{doctor, DoctorReport, integrity, fix as doctor_fix, resolve_home, InstallReport};
 pub use heal::{heal, HealCtx, HealResult, Strategy};
@@ -19,3 +20,4 @@ pub use snapshot::{snapshot, SnapshotResult};
 pub use trace::{Trace, TraceVerify};
 pub use accept::{verify_gate, GateResult};
 pub use prompt_ledger::{capture, verify_against, Manifest, Verdict};
+pub use intent::{verify_intent, IntentManifest, GoalSpec, CompositeAcceptResult, GoalAcceptResult, GoalKind, MAX_GOALS};

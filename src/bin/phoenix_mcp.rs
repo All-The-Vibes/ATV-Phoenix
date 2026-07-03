@@ -11,6 +11,7 @@ use std::path::PathBuf;
 use phoenix::sense::{canonical_digest, sense, Check};
 use phoenix::snapshot::snapshot;
 use phoenix::{heal, HealCtx, Strategy, Trace};
+use phoenix::intent::{verify_intent, IntentManifest};
 
 use rmcp::{
     ServerHandler, ServiceExt,
@@ -58,6 +59,12 @@ pub struct HealArgs {
     pub strategy: Strategy,
     /// Recovery context (path+snap_id for rollback, command for retry) and the external recheck.
     pub ctx: HealCtx,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct IntentAcceptArgs {
+    /// Path to the intent manifest JSON file (relative to workspace), e.g. ".phoenix-intent/intent.json".
+    pub manifest_path: String,
 }
 
 #[derive(Clone)]
@@ -115,6 +122,22 @@ impl Phoenix {
         let g = phoenix::accept::verify_gate(&workspace(), &args.0.check);
         serde_json::to_string(&g).unwrap_or_else(|e| format!("{{\"error\":\"{e}\"}}"))
     }
+
+    /// Prove composite completion for an N-goal intent manifest (failure-first for ALL goals).
+    #[tool(description = "Composite DONE proof for a multi-goal intent. Reads an intent manifest JSON file and verifies that ALL goals are individually proven failure-first (each saw red→green on an intact per-goal trace and is currently green). Returns {ok, intent, goal_count, goals_ok, goals, reason}. ok=true only when every goal passes. Use after running per-goal phoenix-ralph loops with per-goal PHOENIX_WORKSPACE. EXAMPLE: {\"manifest_path\":\".phoenix-intent/intent.json\"}.")]
+    async fn phoenix_intent_accept(&self, args: Parameters<IntentAcceptArgs>) -> String {
+        let ws = workspace();
+        let manifest_path = ws.join(&args.0.manifest_path);
+        let manifest: IntentManifest = match std::fs::read_to_string(&manifest_path)
+            .map_err(|e| e.to_string())
+            .and_then(|s| serde_json::from_str(&s).map_err(|e| e.to_string()))
+        {
+            Ok(m) => m,
+            Err(e) => return format!("{{\"ok\":false,\"error\":\"failed to read manifest: {e}\"}}"),
+        };
+        let result = verify_intent(&ws, &manifest);
+        serde_json::to_string(&result).unwrap_or_else(|e| format!("{{\"error\":\"{e}\"}}"))
+    }
 }
 
 #[tool_handler(router = self.tool_router)]
@@ -124,7 +147,9 @@ impl ServerHandler for Phoenix {
         info.instructions = Some(
             "ATV-Phoenix self-healing spine. Use phoenix_sense to objectively check success, \
              phoenix_snapshot to save a blessed last-good state, phoenix_heal to recover \
-             (bounded), and phoenix_verify_trace to audit. Prefer sensing over self-judging."
+             (bounded), phoenix_verify_trace to audit, phoenix_accept to prove a single goal \
+             done (failure-first), and phoenix_intent_accept to prove composite completion \
+             for a multi-goal intent (all N goals failure-first)."
                 .into(),
         );
         info.capabilities = ServerCapabilities::builder().enable_tools().build();
@@ -201,6 +226,21 @@ fn run_cli(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
             let v = trace().verify();
             println!("{}", serde_json::to_string(&v)?);
             exit(v.ok);
+        }
+        "intent-accept" => {
+            // Composite gate: are ALL goals in an intent manifest proven failure-first?
+            // Reads <workspace>/<manifest_path> and verifies each goal against its per-goal trace.
+            // ok=true only when every goal passes; exits 0 if composite ok, 1 otherwise.
+            let manifest_path = ws.join(&args[2]);
+            let manifest: IntentManifest = {
+                let raw = std::fs::read_to_string(&manifest_path)
+                    .map_err(|e| format!("cannot read {}: {e}", manifest_path.display()))?;
+                serde_json::from_str(&raw)
+                    .map_err(|e| format!("invalid intent manifest {}: {e}", manifest_path.display()))?
+            };
+            let result = verify_intent(&ws, &manifest);
+            println!("{}", serde_json::to_string(&result)?);
+            exit(result.ok);
         }
         "doctor" => {
             // Two modes:
@@ -293,7 +333,7 @@ fn run_cli(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
             Ok(())
         }
         other => {
-            eprintln!("phoenix: unknown subcommand '{other}'. Use: sense|accept|snapshot|heal|verify-trace|doctor|serve");
+            eprintln!("phoenix: unknown subcommand '{other}'. Use: sense|accept|intent-accept|snapshot|heal|verify-trace|doctor|serve");
             std::process::exit(2);
         }
     }

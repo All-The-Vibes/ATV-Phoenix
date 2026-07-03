@@ -1,0 +1,19 @@
+{
+  "_description": "Typed acceptance-check template for a scheduled cron-beat goal.",
+  "_usage": "Copy check into your intent.json goal with kind=cron. Replace BEAT_NAME and SCHEDULE with your values.",
+  "_pattern": "Verify the scheduled task is registered and will fire on the expected schedule.",
+  "kind": "cron",
+  "check": {
+    "kind": "command_exit",
+    "target": ["node", "SCRIPT_PATH/verify-cron-beat.mjs", "--name", "BEAT_NAME", "--schedule", "SCHEDULE"],
+    "expect": 0,
+    "timeout_secs": 15
+  },
+  "_notes": [
+    "The verify script should confirm the beat is registered in the scheduler (e.g. GitHub Actions scheduled workflow, OS cron, or the Phoenix automation runner).",
+    "SCHEDULE is a cron expression, e.g. '0 8 * * 1-5' for weekdays at 08:00 UTC.",
+    "The check MUST fail before the beat is registered — exits 1 when the beat is absent.",
+    "For GitHub Actions, the script can verify the workflow file exists and contains the expected schedule trigger.",
+    "For the Phoenix automation runner, verify the beat is listed in the automation manifest."
+  ]
+}
