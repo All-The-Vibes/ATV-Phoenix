@@ -14,7 +14,7 @@ param(
 )
 
 $ErrorActionPreference = "Continue"
-$root    = Split-Path $MyInvocation.MyCommand.Path -Parent
+$root = $PSScriptRoot
 $cop     = "$env:APPDATA\npm\copilot.cmd"
 
 # Resolve task directory: explicit override > set-based default
@@ -101,3 +101,4 @@ foreach ($task in $TASKS) {
   }
 }
 Write-Output "DONE -> $results"
+
