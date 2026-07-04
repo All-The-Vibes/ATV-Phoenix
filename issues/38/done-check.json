@@ -1,0 +1,7 @@
+{
+  "_comment": "Issue #38: dogfood pipeline -- harvest dream traces as eval datapoints. RED before scripts/harvest-datapoint.ps1 + tests/test_harvest_datapoint.py exist.",
+  "kind": "command_exit",
+  "target": ["python", "-m", "pytest", "tests/test_harvest_datapoint.py", "-q"],
+  "expect": 0,
+  "cwd": "."
+}
