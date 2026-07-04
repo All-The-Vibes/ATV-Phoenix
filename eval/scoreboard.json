@@ -14,7 +14,13 @@
                                             "reps":  1,
                                             "results_file":  "evals/swe-bench-lite/results.jsonl"
                                         },
-                     "north_star":  null
+                     "north_star":  {
+                                        "date":  "2026-07-03",
+                                        "arm_a_resolved":  0.35,
+                                        "arm_b_resolved":  0.25,
+                                        "instances":  20,
+                                        "model":  "gpt-5.1"
+                                    }
                  },
     "runs":  [
                  {
