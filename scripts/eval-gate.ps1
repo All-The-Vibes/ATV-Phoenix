@@ -30,7 +30,7 @@ if ($PrebuiltResults -and (Test-Path $PrebuiltResults)) {
   $runSwe = Join-Path $repoRoot "evals\swe-bench-lite\run_swe.ps1"
   if (-not (Test-Path $runSwe)) { Write-Error "[eval-gate] ERROR: run_swe.ps1 not found"; exit 2 }
   Write-Output "[eval-gate] Running swe-bench-lite..."
-  powershell -ExecutionPolicy Bypass -File $runSwe -OutFile $ResultsOut -Append:$false 2>&1
+  powershell -NoProfile -ExecutionPolicy Bypass -File $runSwe -OutFile $ResultsOut 2>&1
   if (-not (Test-Path $ResultsOut)) { Write-Error "[eval-gate] ERROR: no results produced"; exit 2 }
 }
 
@@ -43,7 +43,7 @@ Write-Output "[eval-gate] Arm B score: $scoreB (baseline: $baselineB delta: $del
 
 $updater = Join-Path $PSScriptRoot "update-scoreboard.ps1"
 if (Test-Path $updater) {
-  powershell -ExecutionPolicy Bypass -File $updater -ResultsFile $ResultsOut -Trigger pr 2>&1 | Out-Null
+  powershell -NoProfile -ExecutionPolicy Bypass -File $updater -ResultsFile $ResultsOut -Trigger pr 2>&1 | Out-Null
 }
 
 if ($delta -lt 0) {
