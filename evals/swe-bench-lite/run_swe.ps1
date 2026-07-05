@@ -8,20 +8,39 @@ param(
   [int]$Reps = 1,
   [string]$Filter = "*",      # wildcard on task folder name (e.g. "hard-*")
   [string]$OutFile = "",       # results file; default results.jsonl
-  [switch]$Append              # keep existing results instead of truncating
+  [switch]$Append,             # keep existing results instead of truncating
+  [string]$Set = "swe-bench-lite",  # task set: "swe-bench-lite" or "dogfood"
+  [string]$TasksDir = ""       # override task directory (used by tests and harvest pipeline)
 )
 
 $ErrorActionPreference = "Continue"
-$root    = "C:\Users\shyamsridhar\code\ATV-Phoenix\evals\swe-bench-lite"
-$taskdir = "$root\tasks"
+$root = $PSScriptRoot
 $cop     = "$env:APPDATA\npm\copilot.cmd"
-$results = if ($OutFile) { $OutFile } else { "$root\results.jsonl" }
+
+# Resolve task directory: explicit override > set-based default
+if ($TasksDir) {
+    $taskdir = $TasksDir
+} elseif ($Set -eq "dogfood") {
+    $taskdir = Join-Path (Split-Path $root -Parent) "dogfood\tasks"
+} else {
+    $taskdir = Join-Path $root "tasks"
+}
+
+$results = if ($OutFile) { $OutFile } else { Join-Path $root "results.jsonl" }
+
+if (-not (Test-Path $taskdir)) {
+    Write-Output "INFO: task directory not found ($taskdir) -- no tasks to run"
+    Write-Output "DONE -> $results (0 tasks)"
+    exit 0
+}
 
 function New-Instance($task) {
   # Fresh working copy with ONLY solution.py + problem.md visible to the agent (tests are hidden).
   $dir = Join-Path $env:TEMP ("swe_" + $task.Name + "_" + [guid]::NewGuid().ToString("N").Substring(0,6))
   New-Item -ItemType Directory -Force -Path $dir | Out-Null
-  Copy-Item "$($task.FullName)\solution.py" "$dir\solution.py" -Force
+  # Support solution.py or solution.<ext> (dogfood tasks may use other languages)
+  $sol = Get-ChildItem $task.FullName -Filter "solution.*" | Select-Object -First 1
+  if ($sol) { Copy-Item $sol.FullName "$dir\$($sol.Name)" -Force }
   Copy-Item "$($task.FullName)\problem.md" "$dir\problem.md" -Force
   return $dir
 }
@@ -46,7 +65,13 @@ function Invoke-Copilot($dir, $prompt) {
 }
 
 if ((Test-Path $results) -and (-not $Append)) { Remove-Item $results -Force }
-$TASKS = Get-ChildItem $taskdir -Directory | Where-Object { $_.Name -like $Filter }
+$TASKS = Get-ChildItem $taskdir -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -like $Filter }
+
+if (-not $TASKS) {
+    Write-Output "INFO: no matching tasks in $taskdir (filter=$Filter)"
+    Write-Output "DONE -> $results (0 tasks)"
+    exit 0
+}
 
 foreach ($task in $TASKS) {
   $problem = Get-Content "$taskdir\$($task.Name)\problem.md" -Raw
@@ -76,3 +101,4 @@ foreach ($task in $TASKS) {
   }
 }
 Write-Output "DONE -> $results"
+
