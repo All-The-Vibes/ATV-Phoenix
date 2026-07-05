@@ -75,6 +75,32 @@
                      "model":  "GitHub Copilot CLI",
                      "reps":  1,
                      "pr":  null
+                 },
+                 {
+                     "date":  "2026-07-05",
+                     "commit":  "3beb0279a30f22170e31cdb45218c6ddf6b339a3",
+                     "trigger":  "pr",
+                     "tier":  "lite",
+                     "arm_a_vanilla_resolved":  0.7778,
+                     "arm_b_phoenix_resolved":  1,
+                     "delta_b_from_baseline":  0.0,
+                     "tasks":  9,
+                     "model":  "GitHub Copilot CLI",
+                     "reps":  1,
+                     "pr":  null
+                 },
+                 {
+                     "date":  "2026-07-05",
+                     "commit":  "5bcca470b83b7427342aaf6958a7d045772d9eef",
+                     "trigger":  "manual",
+                     "tier":  "lite",
+                     "arm_a_vanilla_resolved":  0.7778,
+                     "arm_b_phoenix_resolved":  1,
+                     "delta_b_from_baseline":  0.0,
+                     "tasks":  9,
+                     "model":  "GitHub Copilot CLI",
+                     "reps":  1,
+                     "pr":  null
                  }
              ]
 }

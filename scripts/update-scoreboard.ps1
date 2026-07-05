@@ -41,7 +41,14 @@ if ($readmePath) {
     "| ---- | --- | -------- | -------- | ----- | ---- |"
     "| swe-bench-lite (local, $tasks tasks) | **B Phoenix** | **$rB** | $baseB | $deltaSymB | $today |"
     "| swe-bench-lite (local, $tasks tasks) | A Vanilla | $rA | $baseA | -- | $today |"
-    "| SWE-bench Verified 500 (Azure) | B Phoenix | -- | -- | -- | *not yet run* |"
+    if ($board.baseline.north_star) {
+      $ns = $board.baseline.north_star
+      $nsDelta = if ($board.baseline.north_star.arm_b_resolved) { "+0.0" } else { "--" }
+      "| SWE-bench Verified $($ns.instances) (Azure) | **B Phoenix** | **$($ns.arm_b_resolved)** | $($ns.arm_b_resolved) | $nsDelta | $($ns.date) |"
+      "| SWE-bench Verified $($ns.instances) (Azure) | A Vanilla | $($ns.arm_a_resolved) | $($ns.arm_a_resolved) | -- | $($ns.date) |"
+    } else {
+      "| SWE-bench Verified (Azure) | B Phoenix | -- | -- | -- | *not yet run* |"
+    }
     ""
     "_Score gate: implementation PRs must hold or beat Arm B baseline ($baseB). Docs/test-only PRs exempt._"
     ""
