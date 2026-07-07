@@ -153,28 +153,33 @@ function Get-SnapshotData($repo, $dir) {
     }
 }
 
-function Format-Snapshot($s) {
-    $state  = if ($s.is_complete) { "COMPLETE" } elseif ($s.loop) { "RUNNING" } else { "IDLE" }
-    $loop   = if ($s.loop)      { "$($s.loop)/$($s.max_loops)" } else { "--" }
-    $noProg = if ($s.no_progress -ne $null) { "$($s.no_progress)" } else { "--" }
-    $bl     = "$($s.backlog_done)/$($s.backlog_total)"
-    $cur    = if ($s.current_item) { $s.current_item } else { "(none)" }
-    $ti     = if ($s.trace_intact -eq $true) { "INTACT" } elseif ($s.trace_intact -eq $false) { "BROKEN" } else { "--" }
-    $ls     = if ($s.last_sense_ok -eq $true) { "GREEN" } elseif ($s.last_sense_ok -eq $false) { "RED" } else { "--" }
-    $lsSig  = if ($s.last_sense_sig) { $s.last_sense_sig } else { "" }
-    $ac     = if ($s.accept_ok -eq $true) { "PROVEN" } elseif ($s.accept_ok -eq $false) { "UNPROVEN" } else { "--" }
-    $acSaw  = if ($s.accept_saw_red -ne $null) { "saw_red=$($s.accept_saw_red)" } else { "" }
-
-    $lines = @(
-        "phoenix-ralph monitor  state=$state  $(Get-Date -Format 'HH:mm:ss')"
-        "  loop        $loop"
-        "  no-progress $noProg"
-        "  backlog     $bl  current: $cur"
-        "  trace       $($s.trace_events) events  chain=$ti"
-        "  last sense  $ls  $lsSig"
-        "  done-check  $ac  $acSaw"
-    )
-    return $lines -join "`n"
+function Write-Snapshot($s) {
+    $stateColor = if ($s.is_complete) { "Green" } elseif ($s.loop) { "Cyan" } else { "DarkGray" }
+    $state      = if ($s.is_complete) { "COMPLETE" } elseif ($s.loop) { "RUNNING" } else { "IDLE" }
+    $loop       = if ($s.loop) { "$($s.loop)/$($s.max_loops)" } else { "--" }
+    $noProg     = if ($s.no_progress -ne $null) { $s.no_progress } else { "--" }
+    $noProgColor= if ($s.no_progress -gt 0) { "Yellow" } else { "Gray" }
+    $bl         = "$($s.backlog_done)/$($s.backlog_total)"
+    $cur        = if ($s.current_item) { $s.current_item } else { "(none)" }
+    $ti         = if ($s.trace_intact -eq $true) { "INTACT" } elseif ($s.trace_intact -eq $false) { "BROKEN" } else { "--" }
+    $tiColor    = if ($s.trace_intact -eq $true) { "Green" }  elseif ($s.trace_intact -eq $false) { "Red" }    else { "DarkGray" }
+    $ls         = if ($s.last_sense_ok -eq $true) { "GREEN" } elseif ($s.last_sense_ok -eq $false) { "RED" }   else { "--" }
+    $lsColor    = if ($s.last_sense_ok -eq $true) { "Green" } elseif ($s.last_sense_ok -eq $false) { "Red" }   else { "DarkGray" }
+    $ac         = if ($s.accept_ok -eq $true) { "PROVEN" } elseif ($s.accept_ok -eq $false) { "UNPROVEN" } else { "--" }
+    $acColor    = if ($s.accept_ok -eq $true) { "Green" }  elseif ($s.accept_ok -eq $false) { "Yellow" }   else { "DarkGray" }
+    $acSaw      = if ($s.accept_saw_red -ne $null) { "saw_red=$($s.accept_saw_red)" } else { "" }
+    $lsSig      = if ($s.last_sense_sig) { $s.last_sense_sig } else { "" }
+    Write-Host "phoenix-ralph monitor  state=" -NoNewline -ForegroundColor White
+    Write-Host $state -NoNewline -ForegroundColor $stateColor
+    Write-Host "  $(Get-Date -Format 'HH:mm:ss')" -ForegroundColor DarkGray
+    Write-Host "  loop        " -NoNewline -ForegroundColor DarkGray; Write-Host $loop -ForegroundColor Gray
+    Write-Host "  no-progress " -NoNewline -ForegroundColor DarkGray; Write-Host $noProg -ForegroundColor $noProgColor
+    Write-Host "  backlog     " -NoNewline -ForegroundColor DarkGray; Write-Host "$bl  current: $cur" -ForegroundColor Gray
+    Write-Host "  trace       $($s.trace_events) events  chain=" -NoNewline -ForegroundColor DarkGray; Write-Host $ti -ForegroundColor $tiColor
+    Write-Host "  last sense  " -NoNewline -ForegroundColor DarkGray; Write-Host $ls -NoNewline -ForegroundColor $lsColor
+    if ($lsSig) { Write-Host "  $lsSig" -NoNewline -ForegroundColor DarkGray }; Write-Host ""
+    Write-Host "  done-check  " -NoNewline -ForegroundColor DarkGray; Write-Host $ac -NoNewline -ForegroundColor $acColor
+    if ($acSaw) { Write-Host "  $acSaw" -NoNewline -ForegroundColor DarkGray }; Write-Host ""
 }
 
 # ---- main ----
@@ -187,7 +192,7 @@ do {
         $snap | ConvertTo-Json -Depth 5
     } else {
         if ($continuous) { Clear-Host }
-        Write-Host (Format-Snapshot $snap)
+        Write-Snapshot $snap
     }
     if ($continuous) { Start-Sleep -Seconds $RefreshSecs }
 } while ($continuous)
