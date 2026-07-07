@@ -177,8 +177,14 @@ if ($LASTEXITCODE -eq 0) {
     trace_sha256   = (FileSig $traceFile)
     backlog_sha256 = (FileSig $backlog)
   }
-  $proof | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $state "completed.json")
-  Info "COMPLETE in $loop iterations. Proof -> $Dir\completed.json"
+  $proofJson = $proof | ConvertTo-Json -Depth 6
+  $proofJson | Set-Content (Join-Path $state "completed.json")
+  # Phase-aware proof: also write completed.<check_digest_short>.json so multi-phase runs
+  # accumulate an auditable chain of proofs instead of each phase overwriting the last.
+  $digestShort = if ($proof.accept.check_digest) { $proof.accept.check_digest.Substring(0,12) } else { (Get-Date).ToString("yyyyMMdd-HHmmss") }
+  $phaseProof = Join-Path $state "completed.$($digestShort).json"
+  $proofJson | Set-Content $phaseProof
+  Info "COMPLETE in $loop iterations. Proof -> $Dir\completed.json + completed.$($digestShort).json"
   if (-not $NoTag -and (Test-Path "$repo\.git")) {
     try {
       $tag = "phoenix-ralph-$((Get-Date).ToString('yyyyMMdd-HHmmss'))"
