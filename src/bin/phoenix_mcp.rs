@@ -328,12 +328,30 @@ fn run_cli(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
             );
             exit(overall);
         }
+        "monitor" => {
+            // CLI: phoenix-mcp monitor [--once] [--json] [--dir <dir>]
+            // Read-only snapshot of a phoenix-ralph run state.
+            let dir_arg = args.windows(2)
+                .find(|w| w[0] == "--dir")
+                .map(|w| w[1].as_str())
+                .unwrap_or(".phoenix-ralph");
+            let json_mode = args.iter().any(|a| a == "--json");
+            let ws = workspace();
+            let bin = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("phoenix-mcp"));
+            let snap = phoenix::monitor::snapshot(&ws, dir_arg, &bin);
+            if json_mode {
+                println!("{}", serde_json::to_string(&snap).unwrap_or_default());
+            } else {
+                phoenix::monitor::print_snapshot(&snap);
+            }
+            Ok(())
+        }
         "--version" | "-V" => {
             println!("phoenix {}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
         other => {
-            eprintln!("phoenix: unknown subcommand '{other}'. Use: sense|accept|intent-accept|snapshot|heal|verify-trace|doctor|serve");
+            eprintln!("phoenix: unknown subcommand '{other}'. Use: sense|accept|intent-accept|snapshot|heal|verify-trace|monitor|doctor|serve");
             std::process::exit(2);
         }
     }

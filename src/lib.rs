@@ -12,6 +12,7 @@ pub mod doctor;
 pub mod accept;
 pub mod prompt_ledger;
 pub mod intent;
+pub mod monitor;
 
 pub use doctor::{doctor, DoctorReport, integrity, fix as doctor_fix, resolve_home, InstallReport};
 pub use heal::{heal, HealCtx, HealResult, Strategy};
