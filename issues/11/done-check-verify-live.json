@@ -1,0 +1,1 @@
+{"kind":"command_exit","target":["python","-c","import pathlib; pathlib.Path(\"dist/ralph/templates/verify-live.mjs\").stat()"],"expect":0,"cwd":"."}
