@@ -3,7 +3,7 @@
 # Arm A: gpt-5.1 vanilla. Arm B: gpt-5.1 + Phoenix verify-heal loop.
 # Usage: pwsh -File scripts/run-north-star.ps1 [-Instances 20] [-DryRun]
 param(
-  [int]$Instances  = 20,
+  [int]$Instances  = 100,
   [int]$MaxWorkers = 4,
   [string]$Location    = "eastus2",
   [string]$VmSize      = "Standard_D8s_v5",
@@ -22,9 +22,21 @@ function Log($m) { Write-Output "[north-star] $m" }
 
 if ($DryRun) { Log "DRY RUN -- no Azure resources created"; exit 0 }
 
+# Terminal guard: everything from RG-create onward runs inside try/finally so the
+# ephemeral RG is ALWAYS torn down -- even if bootstrap/inference/eval throws.
+$rgCreated = $false
+try {
+
+# Pre-flight: nuke any stale RG left by a previously-failed run (prevents VM stacking).
+if ((az group exists --name $RgName) -eq "true") {
+  Log "Stale $RgName exists from a prior run -- deleting before recreate..."
+  az group delete --name $RgName --yes --output none
+}
+
 # ── 1. Create ephemeral RG + VM with system-assigned managed identity ──
 Log "Creating resource group $RgName..."
 az group create --name $RgName --location $Location --output none
+$rgCreated = $true
 
 Log "Creating VM $VmName ($VmSize) with managed identity..."
 $vmJson = az vm create `
@@ -37,6 +49,12 @@ $vmJson = az vm create `
 $vmIp  = $vmJson.publicIpAddress
 $vmId  = $vmJson.id
 Log "VM ready: $vmIp  id=$vmId"
+
+# Dead-man's switch: if THIS orchestrator process dies before the finally-block
+# teardown (e.g. host reboot), Azure still auto-deallocates the VM so runaway
+# compute billing is capped. The finally block is the primary teardown; this is backup.
+az vm auto-shutdown --ids $vmId --time 0900 --output none 2>$null
+Log "Auto-shutdown safety net armed (~0900 UTC deallocate)"
 
 # Grant VM identity access to the Azure OpenAI resource (Cognitive Services User)
 $vmPrincipal = az vm identity show --ids $vmId --query "principalId" -o tsv
@@ -206,12 +224,19 @@ if (-not $board.baseline.north_star) {
 $ns = [System.Text.UTF8Encoding]::new($false)
 [System.IO.File]::WriteAllText($sb, ($board | ConvertTo-Json -Depth 10), $ns)
 
-# ── 9. Delete VM ──
-Log "Deleting resource group $RgName (async)..."
-az group delete --name $RgName --yes --no-wait
-
-# ── 10. Commit ──
+# ── 9. Commit results (VM teardown happens in the finally block below) ──
 git -C $repoRoot add "eval\"
 git -C $repoRoot commit -m "chore(eval): north-star $today Arm B=$scoreB Arm A=$scoreA ($Instances instances)"
 git -C $repoRoot push origin main
 Log "Done. Results in eval/north-star/$today/"
+
+}
+finally {
+  # Terminal guard: tear the ephemeral RG down no matter how we got here.
+  if ($rgCreated) {
+    Log "Teardown: deleting resource group $RgName (async)..."
+    az group delete --name $RgName --yes --no-wait 2>$null
+  } else {
+    Log "Teardown: no RG was created, nothing to delete."
+  }
+}
