@@ -30,42 +30,6 @@ $json = $board | ConvertTo-Json -Depth 10
 $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
 [System.IO.File]::WriteAllText((Resolve-Path $ScoreboardFile).Path, $json, $utf8NoBom)
 
-# Rewrite README Score Tracker section
-$readmePath = if (Test-Path "README.md") { (Resolve-Path "README.md").Path } else { $null }
-if ($readmePath) {
-  $deltaSymB = if ($deltaB -ge 0) { "+$deltaB" } else { "WARN:$deltaB" }
-  $lines = @(
-    "## Score Tracker"
-    ""
-    "| Tier | Arm | Resolved | Baseline | Delta | Date |"
-    "| ---- | --- | -------- | -------- | ----- | ---- |"
-    "| swe-bench-lite (local, $tasks tasks) | **B Phoenix** | **$rB** | $baseB | $deltaSymB | $today |"
-    "| swe-bench-lite (local, $tasks tasks) | A Vanilla | $rA | $baseA | -- | $today |"
-    if ($board.baseline.north_star) {
-      $ns = $board.baseline.north_star
-      $nsDelta = if ($board.baseline.north_star.arm_b_resolved) { "+0.0" } else { "--" }
-      "| SWE-bench Verified $($ns.instances) (Azure) | **B Phoenix** | **$($ns.arm_b_resolved)** | $($ns.arm_b_resolved) | $nsDelta | $($ns.date) |"
-      "| SWE-bench Verified $($ns.instances) (Azure) | A Vanilla | $($ns.arm_a_resolved) | $($ns.arm_a_resolved) | -- | $($ns.date) |"
-    } else {
-      "| SWE-bench Verified (Azure) | B Phoenix | -- | -- | -- | *not yet run* |"
-    }
-    ""
-    "_Score gate: implementation PRs must hold or beat Arm B baseline ($baseB). Docs/test-only PRs exempt._"
-    ""
-  )
-  $newSection = $lines -join "`n"
-  $rawR = [System.IO.File]::ReadAllBytes($readmePath)
-  if ($rawR[0] -eq 0xEF) { $rawR = $rawR[3..($rawR.Length-1)] }
-  $readme = [System.Text.Encoding]::UTF8.GetString($rawR)
-  if ($readme -match "(?s)## Score Tracker.*?(?=\n## |\z)") {
-    $readme = $readme -replace "(?s)## Score Tracker.*?(?=\n## |\z)", ($newSection)
-  } else {
-    $first = $readme.IndexOf("`n")
-    $readme = $readme.Substring(0, $first+1) + "`n" + $newSection + $readme.Substring($first+1)
-  }
-  [System.IO.File]::WriteAllText($readmePath, $readme, $utf8NoBom)
-  Write-Output "README updated"
-}
 Write-Output "Arm B: $rB (baseline: $baseB delta: $deltaB)"
 if ($deltaB -lt 0) { Write-Warning "REGRESSION: Arm B dropped $([math]::Abs($deltaB))"; exit 1 }
 exit 0

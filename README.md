@@ -1,16 +1,5 @@
 # ATV-Phoenix
 
-## Score Tracker
-
-| Tier | Arm | Resolved | Baseline | Delta | Date |
-| ---- | --- | -------- | -------- | ----- | ---- |
-| swe-bench-lite (local, 9 tasks) | **B Phoenix** | **1** | 1.0 | +0.0 | 2026-07-05 |
-| swe-bench-lite (local, 9 tasks) | A Vanilla | 0.7778 | 0.778 | -- | 2026-07-05 |
-| SWE-bench Verified 20 (Azure) | **B Phoenix** | **0.25** | 0.25 | +0.0 | 2026-07-03 |
-| SWE-bench Verified 20 (Azure) | A Vanilla | 0.35 | 0.35 | -- | 2026-07-03 |
-
-_Score gate: implementation PRs must hold or beat Arm B baseline (1.0). Docs/test-only PRs exempt._
-
 ## One line in. A demonstrated outcome out.
 
 ![Intent in, demonstrated outcome out](assets/journey-v2.jpg)

@@ -60,17 +60,6 @@ def test_update_scoreboard_improvement_exits_0(tmp_path):
     _run_update_test(tmp_path, arm_b=1.0, arm_a=0.9, expect_exit=0)
 
 
-def test_readme_score_tracker_section():
-    """README.md must contain a Score Tracker section with the baseline values."""
-    readme = (REPO / "README.md").read_text(encoding="utf-8")
-    assert "## Score Tracker" in readme, "README must have a ## Score Tracker section"
-    data = json.loads(SCOREBOARD.read_bytes().lstrip(b"\xef\xbb\xbf").decode("utf-8"))
-    b = data["baseline"]["swe_bench_lite"]
-    assert str(b["arm_b_phoenix_resolved"]) in readme, (
-        f"README Score Tracker must show baseline Arm B value {b['arm_b_phoenix_resolved']}"
-    )
-
-
 # --- helpers ---
 
 def _make_results_jsonl(tmp_path, arm_b_resolved, arm_a_resolved, tasks=9):
