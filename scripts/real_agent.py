@@ -1,258 +1,258 @@
 #!/usr/bin/env python3
+"""scripts/real_agent.py -- repo-aware SWE-bench agent for the ATV-Phoenix north-star.
+
+Unlike the old context-free agents (which fed the model only the issue text and
+so produced diffs that rarely applied), this agent clones each instance's repo at
+its ``base_commit`` and gives the model real file context. Two arms share that
+context and differ only in the gate:
+
+  * ``vanilla``  -- single-shot control: generate once, emit as-is.
+  * ``phoenix``  -- verify-heal treatment: generate, then heal against
+    ``git apply --check`` until the patch applies *by construction*.
+
+Heavy SDK imports (openai, azure-identity) are lazy, so the module imports with
+stdlib only and is unit-testable with an injected mock LLM (no Azure, no network).
+
+CLI (run on the eval VM):
+    python3 real_agent.py --arm vanilla < instances.json > pred_a.json
+    python3 real_agent.py --arm phoenix < instances.json > pred_b.json
 """
-scripts/real_agent.py -- repo-aware SWE-bench agent for the north-star eval.
-
-Problem with the original arm_a.py / arm_b.py:
-  - Only problem_statement is given to the model (no repo, no file context).
-  - Generated diffs are context-free and rarely apply cleanly.
-  - arm_b.py's verify-heal gate checks patch FORMAT (---/+++/@@), not correctness.
-
-This agent fixes both:
-  1. Clones the repo at base_commit (shallow) so the model sees the actual files.
-  2. Feeds the model the failing test + up to MAX_CONTEXT_FILES relevant file slices.
-  3. Writes the model's patch to a temp dir, runs `git apply --check`, and only
-     submits patches that apply cleanly. Arm B routes through the phoenix verify-heal
-     loop using a command_exit check on `git apply --check` (not a format proxy).
-
-Environment variables (set by run-north-star.ps1 before invoking):
-  AOAI_ENDPOINT    Azure OpenAI endpoint URL
-  AOAI_DEPLOYMENT  Model deployment name (e.g. gpt-5.1)
-  PHOENIX_BIN      Path to phoenix-mcp binary (default: ~/ATV-Phoenix/target/release/phoenix-mcp)
-  ARM              "A" (vanilla) or "B" (phoenix verify-heal). Default: "A"
-  MAX_HEALS        Max heal iterations for Arm B. Default: 3
-
-Usage:
-  python3 real_agent.py < instances.json > predictions.json
-  ARM=B python3 real_agent.py < instances.json > predictions.json
-
-instances.json must include: instance_id, repo, problem_statement, base_commit, test_patch
-(use ns_fetch_instances.py with --full flag to include base_commit + test_patch)
-"""
-
+import argparse
 import json
 import os
+import pathlib
+import re
 import subprocess
 import sys
 import tempfile
-import textwrap
-from pathlib import Path
 
-# ── Configuration ─────────────────────────────────────────────────────────────
-ENDPOINT        = os.environ["AOAI_ENDPOINT"]
-DEPLOYMENT      = os.environ["AOAI_DEPLOYMENT"]
-PHOENIX_BIN     = os.environ.get("PHOENIX_BIN", str(Path.home() / "ATV-Phoenix/target/release/phoenix-mcp"))
-ARM             = os.environ.get("ARM", "A").upper()
-MAX_HEALS       = int(os.environ.get("MAX_HEALS", "3"))
-MAX_CONTEXT_FILES = 8       # max source files to include in the prompt
-MAX_FILE_LINES  = 120       # max lines per file slice
-CLONE_DEPTH     = 1
-MODEL_NAME      = f"gpt-5.1-{'phoenix' if ARM == 'B' else 'vanilla'}"
+_DIFF_START = re.compile(r"(diff --git |--- )", re.M)
+_IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]{2,}")
+_TOUCHED = re.compile(r"^\+\+\+ b/(.+)$", re.M)
+_SRC_EXT = {".py", ".js", ".ts", ".java", ".go", ".rb", ".c", ".cc", ".cpp", ".h", ".rs"}
 
-# ── Azure OpenAI client (Entra auth via Managed Identity) ─────────────────────
-from openai import AzureOpenAI
-from azure.identity import ManagedIdentityCredential
-
-class _EntraTokenProvider:
-    def __init__(self):
-        self._cred = ManagedIdentityCredential()
-    def __call__(self):
-        return self._cred.get_token("https://cognitiveservices.azure.com/.default").token
-
-client = AzureOpenAI(
-    azure_endpoint=ENDPOINT,
-    azure_ad_token_provider=_EntraTokenProvider(),
-    api_version="2024-12-01-preview",
+_SYSTEM = (
+    "You are a senior software engineer. Given a repository issue and the relevant "
+    "source files, produce a MINIMAL fix as a single unified git diff (starting with "
+    "'diff --git' and using '--- ', '+++ ', '@@' hunk headers). Output ONLY the diff, "
+    "no prose, no code fences."
 )
 
 
-def _llm(messages: list[dict]) -> str:
-    resp = client.chat.completions.create(
-        model=DEPLOYMENT,
-        messages=messages,
-        max_completion_tokens=4096,
+def extract_diff(text):
+    """Pull a unified diff out of a model response (tolerant of fences / prose)."""
+    if not text:
+        return ""
+    t = text.strip()
+    fence = re.search(r"```(?:diff|patch)?\s*\n(.*?)```", t, re.S)
+    if fence:
+        t = fence.group(1)
+    start = _DIFF_START.search(t)
+    if start:
+        t = t[start.start():]
+    t = t.strip()
+    if t and not t.endswith("\n"):
+        t += "\n"
+    return t
+
+
+def apply_check(repo_dir, patch):
+    """Return (ok, stderr) for whether ``patch`` applies cleanly in ``repo_dir``."""
+    if not patch or not patch.strip():
+        return False, "empty patch"
+    p = subprocess.run(
+        ["git", "apply", "--check", "-"],
+        cwd=repo_dir, input=patch, capture_output=True, text=True,
     )
-    return resp.choices[0].message.content or ""
+    return p.returncode == 0, (p.stderr or "").strip()
 
 
-def _clone_repo(repo: str, base_commit: str, clone_dir: Path) -> bool:
-    """Shallow-clone repo at base_commit. Returns True on success."""
-    try:
-        # Clone with depth 1 targeting the right commit
-        subprocess.run(
-            ["git", "clone", "--depth", str(CLONE_DEPTH), "--no-single-branch",
-             f"https://github.com/{repo}.git", str(clone_dir)],
-            check=True, capture_output=True, timeout=120,
-        )
-        # Check out the exact base commit
-        subprocess.run(
-            ["git", "checkout", base_commit],
-            cwd=clone_dir, check=True, capture_output=True, timeout=30,
-        )
-        return True
-    except Exception as exc:
-        print(f"  clone failed for {repo}@{base_commit}: {exc}", file=sys.stderr)
-        return False
+def _touched_files(test_patch):
+    return [m.strip() for m in _TOUCHED.findall(test_patch or "")]
 
 
-def _collect_context(clone_dir: Path, test_patch: str, problem: str) -> str:
-    """Return a prompt-ready string with relevant file slices."""
-    # Files touched by the test patch are the best hint at what to fix
-    touched: list[str] = []
-    for line in test_patch.splitlines():
-        if line.startswith("+++ b/"):
-            touched.append(line[6:].strip())
-    # Also scan for .py files mentioned in the problem statement
-    py_mentions = [w.rstrip(".,;") for w in problem.split() if w.endswith(".py")]
-    candidates = list(dict.fromkeys(touched + py_mentions))[:MAX_CONTEXT_FILES]
+def _candidate_files(repo_dir, problem_statement, test_patch="", max_files=6):
+    root = pathlib.Path(repo_dir)
+    # Highest signal: the files the failing test patch touches.
+    touched = [root / rel for rel in _touched_files(test_patch) if (root / rel).is_file()]
+    files = [
+        p for p in root.rglob("*")
+        if p.is_file() and p.suffix in _SRC_EXT and ".git" not in p.parts
+    ]
+    if not files:
+        files = [p for p in root.rglob("*") if p.is_file() and ".git" not in p.parts]
+    idents = {w.lower() for w in _IDENT.findall(problem_statement or "")}
 
-    parts: list[str] = []
-    for rel_path in candidates:
-        full = clone_dir / rel_path
-        if not full.exists():
-            continue
+    def score(p):
+        s = 5 if p.stem.lower() in idents else 0
         try:
-            lines = full.read_text(encoding="utf-8", errors="replace").splitlines()
+            head = p.read_text(errors="ignore")[:4000].lower()
+            s += sum(1 for w in idents if w in head)
+        except Exception:
+            pass
+        return s
+
+    files.sort(key=score, reverse=True)
+    # touched files first (they show the exact failing behavior), then scored source.
+    return list(dict.fromkeys(touched + files))[:max_files]
+
+
+def build_context(repo_dir, problem_statement, test_patch="", max_files=6, max_bytes=8000):
+    parts = []
+    for p in _candidate_files(repo_dir, problem_statement, test_patch, max_files):
+        try:
+            body = p.read_text(errors="ignore")
         except Exception:
             continue
-        # Take first MAX_FILE_LINES lines as context
-        snippet = "\n".join(lines[:MAX_FILE_LINES])
-        parts.append(f"### {rel_path}\n```python\n{snippet}\n```")
+        rel = p.relative_to(repo_dir)
+        parts.append(f"### File: {rel}\n{body[:max_bytes]}")
     return "\n\n".join(parts)
 
 
-def _try_apply(clone_dir: Path, patch: str) -> bool:
-    """Return True if the patch applies cleanly (git apply --check)."""
-    if not patch.strip():
-        return False
-    try:
-        r = subprocess.run(
-            ["git", "apply", "--check", "-"],
-            input=patch.encode(), cwd=clone_dir,
-            capture_output=True, timeout=15,
-        )
-        return r.returncode == 0
-    except Exception:
-        return False
-
-
-def _phoenix_sense_apply(check_file: Path, cwd: Path) -> bool:
-    """Arm B: run phoenix_sense command_exit on git apply --check via @file."""
-    try:
-        r = subprocess.run(
-            [PHOENIX_BIN, "sense", f"@{check_file}"],
-            capture_output=True, text=True, timeout=15, cwd=cwd,
-        )
-        result = json.loads(r.stdout)
-        return result.get("ok", False)
-    except Exception:
-        return False
-
-
-def solve(inst: dict, clone_dir: Path) -> str:
-    """Generate a patch that applies cleanly to the repo at base_commit."""
-    repo     = inst["repo"]
-    problem  = inst["problem_statement"]
-    test_pch = inst.get("test_patch", "")
-    context  = _collect_context(clone_dir, test_pch, problem)
-
-    system_msg = textwrap.dedent("""\
-        You are an expert software engineer. You will be given:
-        - A problem statement describing a bug or missing feature.
-        - The failing test(s) that must pass after your fix.
-        - Relevant source file slices from the repository.
-
-        Produce a minimal unified diff patch (git diff format) that fixes the issue.
-        The patch must apply cleanly with `git apply`.
-        Output ONLY the patch — no explanation, no markdown fences.
-    """)
-
-    user_msg = (
-        f"Repository: {repo}\n\n"
-        f"Problem:\n{problem}\n\n"
-        f"Failing test patch (for context):\n{test_pch[:2000]}\n\n"
-        f"Source context:\n{context}\n\n"
-        "Produce the fix patch:"
+def _messages(inst, context, feedback=None):
+    test_patch = inst.get("test_patch", "")
+    test_block = (
+        f"Failing test (must pass after your fix):\n{test_patch[:2000]}\n\n"
+        if test_patch else ""
     )
+    user = (
+        f"Repository: {inst.get('repo', '')}\n\n"
+        f"Issue:\n{inst.get('problem_statement', '')}\n\n"
+        f"{test_block}"
+        f"Relevant files:\n{context}\n\n"
+        "Produce the unified diff patch:"
+    )
+    msgs = [{"role": "system", "content": _SYSTEM}, {"role": "user", "content": user}]
+    if feedback:
+        msgs.append({
+            "role": "user",
+            "content": (
+                "Your previous patch did NOT apply cleanly (`git apply --check` failed):\n"
+                f"{feedback}\n\n"
+                "Return a corrected unified diff that applies against the files shown. "
+                "Match the exact existing lines and correct '@@' hunk headers."
+            ),
+        })
+    return msgs
 
-    patch = _llm([{"role": "system", "content": system_msg},
-                  {"role": "user", "content": user_msg}])
 
-    if ARM != "B":
+def generate_patch(inst, repo_dir, llm, feedback=None, context=None):
+    if context is None:
+        context = build_context(repo_dir, inst.get("problem_statement", ""),
+                                inst.get("test_patch", ""))
+    return extract_diff(llm(_messages(inst, context, feedback)))
+
+
+def solve(inst, repo_dir, llm, arm="phoenix", max_heals=3):
+    """Produce a model_patch for one instance.
+
+    vanilla: single-shot (control). phoenix: verify-heal until it applies.
+    """
+    context = build_context(repo_dir, inst.get("problem_statement", ""),
+                            inst.get("test_patch", ""))
+    patch = generate_patch(inst, repo_dir, llm, context=context)
+    if arm != "phoenix":
         return patch
-
-    # ── Arm B: phoenix verify-heal loop ──────────────────────────────────────
-    # Done-check: git apply --check exits 0 (patch applies cleanly to the repo).
-    # This is a real correctness gate, not a format proxy.
-    check_data = {
-        "kind": "command_exit",
-        "target": ["git", "apply", "--check", "-"],
-        "expect": 0,
-        "stdin": patch,   # NOTE: phoenix_sense command_exit doesn't support stdin yet;
-                          # we use a wrapper script written to a temp file instead.
-        "cwd": str(clone_dir),
-    }
-    # Write the patch to a temp file and use a shell command for the check
-    patch_file = clone_dir / "phoenix_candidate.patch"
-
-    for heal_round in range(MAX_HEALS + 1):
-        patch_file.write_text(patch, encoding="utf-8")
-        applies = _try_apply(clone_dir, patch)
-        if applies:
-            break
-        if heal_round == MAX_HEALS:
-            # Exhausted heals -- return best effort (may not apply)
-            print(f"  {inst['instance_id']}: heal exhausted after {MAX_HEALS} rounds", file=sys.stderr)
-            break
-        # Heal: ask the model to fix the patch given the apply failure
-        fail_info = "Patch does not apply cleanly with `git apply`."
-        patch = _llm([
-            {"role": "system", "content": "You are fixing a broken git patch. Output ONLY the corrected patch."},
-            {"role": "user", "content": (
-                f"Repository: {repo}\n\nProblem:\n{problem}\n\n"
-                f"Your previous patch failed: {fail_info}\n\n"
-                f"Previous patch:\n{patch}\n\n"
-                f"Source context:\n{context}\n\n"
-                "Produce a corrected patch that applies cleanly:"
-            )},
-        ])
-
-    # Clean up temp file
-    if patch_file.exists():
-        patch_file.unlink()
+    ok, err = apply_check(repo_dir, patch)
+    heals = 0
+    while not ok and heals < max_heals:
+        heals += 1
+        patch = generate_patch(inst, repo_dir, llm, feedback=err, context=context)
+        ok, err = apply_check(repo_dir, patch)
     return patch
 
 
-def main() -> None:
-    instances: list[dict] = json.load(sys.stdin)
-    predictions: list[dict] = []
+def run(instances, llm, resolve_repo, arm="phoenix", max_heals=3, model="gpt-5.1"):
+    """Solve every instance, returning SWE-bench prediction dicts.
 
+    ``resolve_repo(inst) -> repo_dir`` is injected so tests can supply a local
+    fixture repo and production supplies a clone-on-demand resolver.
+    """
+    label = f"{model}-{arm}"
+    preds = []
     for inst in instances:
-        iid = inst["instance_id"]
-        repo = inst["repo"]
-        base_commit = inst.get("base_commit", "HEAD")
-        print(f"  [{ARM}] {iid} ...", file=sys.stderr, flush=True)
-
-        with tempfile.TemporaryDirectory(prefix="ns_clone_") as tmpd:
-            clone_dir = Path(tmpd) / repo.replace("/", "_")
-            clone_ok = _clone_repo(repo, base_commit, clone_dir)
-            if not clone_ok:
-                # Degenerate: no repo context, emit empty patch
-                patch = ""
-            else:
-                try:
-                    patch = solve(inst, clone_dir)
-                except Exception as exc:
-                    print(f"  {iid}: solve error: {exc}", file=sys.stderr)
-                    patch = ""
-
-        predictions.append({
-            "instance_id": iid,
+        try:
+            repo_dir = resolve_repo(inst)
+            patch = solve(inst, repo_dir, llm, arm=arm, max_heals=max_heals)
+        except Exception as e:  # never let one instance abort the whole run
+            patch = ""
+            print(f"  [warn] {inst.get('instance_id')}: {e}", file=sys.stderr, flush=True)
+        preds.append({
+            "instance_id": inst["instance_id"],
             "model_patch": patch,
-            "model_name_or_path": MODEL_NAME,
+            "model_name_or_path": label,
         })
+        print(f"  solved {inst['instance_id']}", file=sys.stderr, flush=True)
+    return preds
 
-    json.dump(predictions, sys.stdout)
-    print("", file=sys.stderr, flush=True)
+
+def _clone_resolver(cache_dir):
+    """Clone-on-demand (partial clone, cached per repo, checkout base_commit)."""
+    cache = {}
+
+    def resolve(inst):
+        repo = inst["repo"]
+        commit = inst.get("base_commit")
+        dest = cache.get(repo)
+        if dest is None:
+            dest = os.path.join(cache_dir, repo.replace("/", "__"))
+            if not os.path.isdir(dest):
+                subprocess.run(
+                    ["git", "clone", "--filter=blob:none", "--quiet",
+                     f"https://github.com/{repo}.git", dest],
+                    check=True,
+                )
+            cache[repo] = dest
+        if commit:
+            subprocess.run(["git", "-C", dest, "checkout", "--quiet", commit], check=True)
+        return dest
+
+    return resolve
+
+
+def _azure_llm():
+    from openai import AzureOpenAI
+    from azure.identity import ManagedIdentityCredential
+
+    endpoint = os.environ["AOAI_ENDPOINT"]
+    deployment = os.environ["AOAI_DEPLOYMENT"]
+    cred = ManagedIdentityCredential()
+
+    def token_provider():
+        return cred.get_token("https://cognitiveservices.azure.com/.default").token
+
+    client = AzureOpenAI(
+        azure_endpoint=endpoint,
+        azure_ad_token_provider=token_provider,
+        api_version="2024-12-01-preview",
+    )
+
+    def llm(messages):
+        r = client.chat.completions.create(
+            model=deployment, messages=messages, max_completion_tokens=4096,
+        )
+        return r.choices[0].message.content
+
+    return llm
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description="Repo-aware SWE-bench agent (north-star).")
+    ap.add_argument("--arm", choices=["vanilla", "phoenix"],
+                    default=os.environ.get("ARM", "vanilla"))
+    ap.add_argument("--max-heals", type=int, default=3)
+    ap.add_argument("--model", default=os.environ.get("AOAI_DEPLOYMENT", "gpt-5.1"))
+    ap.add_argument("--work-dir", default=None)
+    args = ap.parse_args(argv)
+
+    instances = json.load(sys.stdin)
+    work = args.work_dir or tempfile.mkdtemp(prefix="ns_repos_")
+    os.makedirs(work, exist_ok=True)
+    resolve = _clone_resolver(work)
+    llm = _azure_llm()
+    preds = run(instances, llm, resolve, arm=args.arm,
+                max_heals=args.max_heals, model=args.model)
+    json.dump(preds, sys.stdout)
 
 
 if __name__ == "__main__":
