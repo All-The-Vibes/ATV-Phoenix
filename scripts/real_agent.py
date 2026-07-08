@@ -28,6 +28,7 @@ import tempfile
 
 _DIFF_START = re.compile(r"(diff --git |--- )", re.M)
 _IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]{2,}")
+_TOUCHED = re.compile(r"^\+\+\+ b/(.+)$", re.M)
 _SRC_EXT = {".py", ".js", ".ts", ".java", ".go", ".rb", ".c", ".cc", ".cpp", ".h", ".rs"}
 
 _SYSTEM = (
@@ -66,8 +67,14 @@ def apply_check(repo_dir, patch):
     return p.returncode == 0, (p.stderr or "").strip()
 
 
-def _candidate_files(repo_dir, problem_statement, max_files=6):
+def _touched_files(test_patch):
+    return [m.strip() for m in _TOUCHED.findall(test_patch or "")]
+
+
+def _candidate_files(repo_dir, problem_statement, test_patch="", max_files=6):
     root = pathlib.Path(repo_dir)
+    # Highest signal: the files the failing test patch touches.
+    touched = [root / rel for rel in _touched_files(test_patch) if (root / rel).is_file()]
     files = [
         p for p in root.rglob("*")
         if p.is_file() and p.suffix in _SRC_EXT and ".git" not in p.parts
@@ -86,12 +93,13 @@ def _candidate_files(repo_dir, problem_statement, max_files=6):
         return s
 
     files.sort(key=score, reverse=True)
-    return files[:max_files]
+    # touched files first (they show the exact failing behavior), then scored source.
+    return list(dict.fromkeys(touched + files))[:max_files]
 
 
-def build_context(repo_dir, problem_statement, max_files=6, max_bytes=8000):
+def build_context(repo_dir, problem_statement, test_patch="", max_files=6, max_bytes=8000):
     parts = []
-    for p in _candidate_files(repo_dir, problem_statement, max_files):
+    for p in _candidate_files(repo_dir, problem_statement, test_patch, max_files):
         try:
             body = p.read_text(errors="ignore")
         except Exception:
@@ -102,9 +110,15 @@ def build_context(repo_dir, problem_statement, max_files=6, max_bytes=8000):
 
 
 def _messages(inst, context, feedback=None):
+    test_patch = inst.get("test_patch", "")
+    test_block = (
+        f"Failing test (must pass after your fix):\n{test_patch[:2000]}\n\n"
+        if test_patch else ""
+    )
     user = (
         f"Repository: {inst.get('repo', '')}\n\n"
         f"Issue:\n{inst.get('problem_statement', '')}\n\n"
+        f"{test_block}"
         f"Relevant files:\n{context}\n\n"
         "Produce the unified diff patch:"
     )
@@ -124,7 +138,8 @@ def _messages(inst, context, feedback=None):
 
 def generate_patch(inst, repo_dir, llm, feedback=None, context=None):
     if context is None:
-        context = build_context(repo_dir, inst.get("problem_statement", ""))
+        context = build_context(repo_dir, inst.get("problem_statement", ""),
+                                inst.get("test_patch", ""))
     return extract_diff(llm(_messages(inst, context, feedback)))
 
 
@@ -133,7 +148,8 @@ def solve(inst, repo_dir, llm, arm="phoenix", max_heals=3):
 
     vanilla: single-shot (control). phoenix: verify-heal until it applies.
     """
-    context = build_context(repo_dir, inst.get("problem_statement", ""))
+    context = build_context(repo_dir, inst.get("problem_statement", ""),
+                            inst.get("test_patch", ""))
     patch = generate_patch(inst, repo_dir, llm, context=context)
     if arm != "phoenix":
         return patch

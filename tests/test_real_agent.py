@@ -129,3 +129,17 @@ def test_run_returns_swebench_shape(repo):
     assert p["instance_id"] == "proj-1"
     assert p["model_patch"].strip()
     assert p["model_name_or_path"] == "gpt-5.1-phoenix"
+
+
+def test_test_patch_files_are_prioritized_in_context(repo):
+    # A file the failing test patch touches must win a scarce context slot,
+    # even when the problem statement doesn't mention it (the #52 signal).
+    (repo / "helper.py").write_text("def helper():\n    return 1\n")
+    _git(["add", "."], repo)
+    _git(["commit", "-q", "-m", "add helper"], repo)
+    test_patch = (
+        "--- a/helper.py\n+++ b/helper.py\n@@ -1,2 +1,2 @@\n"
+        " def helper():\n-    return 1\n+    return 2\n"
+    )
+    ctx = real_agent.build_context(str(repo), "unrelated text", test_patch=test_patch, max_files=1)
+    assert "helper.py" in ctx
