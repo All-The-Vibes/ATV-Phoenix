@@ -1,0 +1,1 @@
+{"kind":"regex_in_file","target":["src/sense.rs"],"expect":"UiBehavior","cwd":"."}
