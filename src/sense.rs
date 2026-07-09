@@ -61,6 +61,9 @@ pub enum CheckKind {
     /// Pass iff the prompt surface recorded in the baseline manifest at `target[0]` is unchanged
     /// (no added / removed / changed files). RED on any drift. `target = [baseline_manifest_path]`.
     PromptManifest,
+    /// Run `target[0]` with node (plus any args in target[1..]), parse `{"ok":bool}` from stdout.
+    /// Used with verify-ui.mjs or any --json behavioral gate. Pass iff ok=true in output.
+    UiBehavior,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
@@ -120,6 +123,7 @@ pub fn sense(check: &Check) -> SenseResult {
         CheckKind::FileSha256 => sense_sha256(check),
         CheckKind::RegexInFile => sense_regex(check),
         CheckKind::PromptManifest => sense_prompt_manifest(check),
+        CheckKind::UiBehavior => sense_ui_behavior(check),
     }
 }
 
@@ -252,6 +256,31 @@ fn sense_prompt_manifest(check: &Check) -> SenseResult {
             signal: "prompt_manifest".into(),
             evidence: truncate(format!("read manifest {} failed: {e}", p.display())),
         },
+    }
+}
+
+fn sense_ui_behavior(check: &Check) -> SenseResult {
+    if check.target.is_empty() {
+        return SenseResult { ok: false, signal: "ui_behavior".into(), evidence: "empty target (need script path)".into() };
+    }
+    let started = Instant::now();
+    let mut cmd = Command::new("node");
+    cmd.arg(&check.target[0]);
+    cmd.args(&check.target[1..]);
+    cmd.arg("--json");
+    if let Some(dir) = &check.cwd { cmd.current_dir(dir); }
+    match cmd.output() {
+        Ok(out) => {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            let ok = serde_json::from_str::<serde_json::Value>(stdout.trim())
+                .ok().and_then(|v| v.get("ok").and_then(|b| b.as_bool())).unwrap_or(false);
+            let evidence = truncate(format!("script={} ok={} exit={} ({}ms)\n{}",
+                &check.target[0], ok, out.status.code().unwrap_or(-1),
+                started.elapsed().as_millis(), stdout.chars().take(512).collect::<String>()));
+            SenseResult { ok, signal: "ui_behavior".into(), evidence }
+        }
+        Err(e) => SenseResult { ok: false, signal: "ui_behavior".into(),
+            evidence: truncate(format!("node spawn failed: {e}")) },
     }
 }
 
