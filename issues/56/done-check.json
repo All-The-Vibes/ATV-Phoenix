@@ -1,0 +1,10 @@
+{
+  "kind": "command_exit",
+  "target": [
+    "python",
+    "-c",
+    "from pathlib import Path; import re; raw=Path('AGENTS.md').read_text(encoding='utf-8'); t=re.sub(r'<!--.*?-->', '', raw, flags=re.S); assert '\"Build the factory\" = wire **3 connectors**' not in t; assert re.search(r'^## Shipped connector inventory[ \\t]*$', t, flags=re.M); assert len(re.findall(r'^## Current verified backlog[ \\t]*$', t, flags=re.M)) == 1; assert 'This is the **only** section Dreaming may use to seed an empty GitHub board.' in t; assert 'GREEN now → the entry is stale or shipped; do not create an issue.' in t"
+  ],
+  "expect": 0,
+  "cwd": "."
+}

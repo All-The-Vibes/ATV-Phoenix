@@ -59,17 +59,40 @@ breach, not progress — this rule outranks "compound knowledge" and the build l
 
 ---
 
-## What we are building — the 3 connectors (+ the do-first)
+## Shipped connector inventory
 
-The spine (`phoenix-mcp`, 5 tools), the skill family, both installers, and the OKF/Nest format are
-**already shipped and installed.** "Build the factory" = wire **3 connectors** onto that.
+The connector rows below are historical inventory, **not actionable backlog**. On 2026-07-17, their
+acceptance suites returned exit 0 together (`23 passed, 1 skipped`) through `phoenix_sense`. Dreaming
+must never seed an issue from this table.
 
-| # | Connector | Acceptance check (the gate; formalize precisely before coding) | Order |
-|---|---|---|---|
-| **3** | **`phoenix-learn`** — GEPA/SIA-H over the trace ledger (port `goose/tools/gepa_optimize.py` + `sia_h_run.py`) | **MEASURED-GAIN GATE (Goose standard):** on a held-out **PRIVATE** split (3-way sha256, leakage firewall, anti-gaming lint), a candidate skill-diff is `ADOPT_ELIGIBLE` **only** at **n≥20, +10pp (or +2 net correct), ZERO right→wrong**; else `EXPERIMENTAL_SMOKE_TEST` and it adopts nothing. `phoenix_sense` is the **sealed grader** (candidates can't bring their own). `pytest tests/test_phoenix_learn.py` exits 0 **and** a red→green trace exists for the "reject un-gated / low-n diff" case. | **DO FIRST** (gap 15, the first dollar; no GPU, ~$2–10/run) |
-| 1 | **Verify ⨯ Context** — TMX-scoped `phoenix_sense` | For a change to symbol X on a fixture repo, the gate runs **exactly** the tests in TMX's impact set for X (selected == graph-derived set; a test outside the set is not run). Assertion test exits 0. | after #3 has trace volume |
-| 2 | **Nest → Obsidian** — `phoenix-okf` emits to a vault folder | After a verified fix, a valid **markdown + YAML-frontmatter** OKF bundle appears in the configured vault folder, parses, and is retrievable by TMX signature; re-emit is idempotent. `pytest tests/test_nest_emit.py` exits 0. | depends on #3 |
-| — | **Finish Scout adapter** (`dist/scout/`) | `dist/scout` install registers the phoenix MCP into Scout's config and `phoenix_*` tools are callable in a Scout session (smoke check exits 0). | parallel, when Scout build needed |
+| Connector | Current verification |
+|---|---|
+| **`phoenix-learn`** — GEPA/SIA-H over the trace ledger | `python -m pytest tests/test_phoenix_learn.py -q` |
+| **Verify ⨯ Context** — TMX-scoped `phoenix_sense` | `python -m pytest tests/test_verify_context.py -q` |
+| **Nest → Obsidian** — `phoenix-okf` vault emission | `python -m pytest tests/test_nest_emit.py -q` |
+| **Scout adapter** (`dist/scout/`) | `python -m pytest tests/test_scout_install.py -q` |
+
+## Current verified backlog
+
+This is the **only** section Dreaming may use to seed an empty GitHub board. Every entry must state one
+bounded outcome, stay within the blast-radius budget, and include a runnable `command_exit` done-check.
+Before creating an issue, run that exact check through `phoenix_sense` against a clean `origin/main`
+worktree:
+
+- GREEN now → the entry is stale or shipped; do not create an issue.
+- RED now → apply the Karpathy filter, then create `proposed` and promote to `ready` only if all gates pass.
+
+### DO FIRST — connector proof CI enforcement
+
+Add a CI workflow that runs the connector acceptance suite and rejects a broken Phoenix trace. This is
+the previously documented enforcement gap after the first connector landed.
+
+- **Scope:** `.github/workflows/connector-proof.yml` and `tests/test_connector_proof_ci.py`; no production
+  behavior change.
+- **Test contract:** parse the workflow and assert executable `run` steps invoke both
+  `tests/test_phoenix_learn.py` and `phoenix-mcp verify-trace`; a fixture missing either command must fail.
+- **Done-check (verified RED on 2026-07-17):**
+  `python -m pytest tests/test_connector_proof_ci.py -q`
 
 **Architecture rules:**
 - Monorepo owns the **spine + skills + OKF + host adapters**. `phoenix-learn` lands here as a Python
