@@ -1,0 +1,83 @@
+name: Connector proof
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "phoenix_learn/**"
+      - "src/**"
+      - "tests/test_phoenix_learn*.py"
+      - "tests/test_connector_proof_ci.py"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "build.rs"
+      - ".github/workflows/connector-proof.yml"
+  pull_request:
+    paths:
+      - "phoenix_learn/**"
+      - "src/**"
+      - "tests/test_phoenix_learn*.py"
+      - "tests/test_connector_proof_ci.py"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "build.rs"
+      - ".github/workflows/connector-proof.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  phoenix-learn:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install test dependency
+        run: python -m pip install --quiet pytest
+      - name: Run connector acceptance test
+        run: python -m pytest tests/test_phoenix_learn.py tests/test_connector_proof_ci.py
+      - name: Build Phoenix CLI
+        run: |
+          cargo build --release --locked --bin phoenix-mcp
+          echo "$PWD/target/release" >> "$GITHUB_PATH"
+      - name: Record connector proof and verify trace
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          check = {
+              "kind": "command_exit",
+              "target": [sys.executable, "-m", "pytest", "tests/test_phoenix_learn.py"],
+              "expect": "0",
+          }
+          Path(os.environ["RUNNER_TEMP"], "connector-check.json").write_text(
+              json.dumps(check), encoding="utf-8"
+          )
+          PY
+          phoenix-mcp sense "@$RUNNER_TEMP/connector-check.json"
+          phoenix-mcp verify-trace
+          test -s .phoenix/trace.jsonl
+          cp .phoenix/trace.jsonl "$RUNNER_TEMP/valid-trace.jsonl"
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          trace = Path(".phoenix/trace.jsonl")
+          rows = trace.read_text(encoding="utf-8").splitlines()
+          first = json.loads(rows[0])
+          first["evidence"] = "tampered by connector-proof negative control"
+          rows[0] = json.dumps(first, separators=(",", ":"))
+          trace.write_text("\n".join(rows) + "\n", encoding="utf-8")
+          PY
+          if phoenix-mcp verify-trace; then
+            echo "verify-trace accepted a tampered trace" >&2
+            exit 1
+          fi
