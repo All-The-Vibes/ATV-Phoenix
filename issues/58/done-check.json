@@ -1,0 +1,12 @@
+{
+  "kind": "command_exit",
+  "target": [
+    "python",
+    "-m",
+    "pytest",
+    "tests/test_mission_north_star.py",
+    "-q"
+  ],
+  "expect": 0,
+  "cwd": "."
+}

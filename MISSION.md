@@ -2,7 +2,7 @@
 
 > _Rises from its own ashes. Senses when it's broken, heals itself, and gets better with use._
 
-> **Status note (updated 2026-06-10).** This is the original **founding charter** — the vision and POV
+> **Status note (updated 2026-07-17).** This is the original **founding charter** — the vision and POV
 > Phoenix was built against. For what has actually shipped, see [`README.md`](README.md) and
 > [`CHANGELOG.md`](CHANGELOG.md). Two things below describe the *intended* future, not today's reality:
 > the **install path** is `setup.py` today (the `copilot plugin marketplace` / `npx` distribution is
@@ -10,10 +10,73 @@
 > scratch — no third-party skill packs).
 
 ## One sentence
-**ATV-Phoenix is a self-healing harness *for GitHub Copilot* (and Microsoft Scout) — installed today via
-a one-command `setup.py` (a `plugin marketplace` + `npx` path is planned) — that carries a bundled pack
-of agentskills.io skills, senses and heals failures via a fast Rust MCP companion, and compounds
-capability over time. Built with Claude Code; runs on Copilot.**
+**ATV-Phoenix is the verification, healing, and learning control plane for an AI-native lights-out
+software factory on GitHub Copilot and Microsoft Scout: intent enters, isolated agent fleets execute,
+objective gates prove outcomes, bounded recovery handles failures, policy governs shipping, and every
+verified run compounds the next.**
+
+## North star: the AI-native dark factory
+
+Phoenix exists to close the software-delivery loop, not merely assist inside it. A human supplies
+**intent, policy, and risk budget**; the factory converts that intent into objective acceptance checks
+and maintained work, initiates and fans out isolated jobs, routes each step to the right model, executes,
+verifies, heals, reviews, ships eligible low-risk changes, remembers verified outcomes, and improves its
+own scaffolding from measured evidence.
+
+At the north star, humans **steer by intent and monitor by exception**. Routine decomposition,
+coordination, execution, verification, recovery, and low-risk delivery do not wait for manual kickoff or
+babysitting. Human attention is reserved for changed intent, ambiguous policy, material risk, exhausted
+budgets, security boundaries, and irreducible failures.
+
+This is not an agent-count vanity target. Hundreds to thousands of isolated agents are useful only when
+the loop remains durable, economical, policy-compliant, and objectively correct. A larger fleet that
+creates more review work or hides failures is farther from the mission, not closer.
+
+### Trigger and orchestration plane
+
+Scout heartbeat and scheduled or condition-triggered automations form the trigger plane. They
+continuously sense maintained backlog, telemetry, feedback, schedules, active locks, budgets, and run
+health. When policy permits, the controller claims idempotent work and invokes Phoenix Dreaming or a
+durable `phoenix-ralph` run; Copilot and Scout workers execute in dedicated worktrees. The trigger plane
+requires a persistent job ledger, work keys, leases, and restart-safe checkpoints to prevent duplicate
+shipping and recover work after process or host failure.
+
+## Mission criteria — all gates must be green
+
+Phoenix reaches the north star only when **every** gate below is green. These are conjunctive safety and
+outcome criteria. **A failed gate cannot be averaged away.**
+
+| Gate | North-star criterion |
+|---|---|
+| **Intent steering** | Every mission becomes a runnable acceptance contract and bounded work graph before mutation; operators specify outcomes and constraints, not task-by-task instructions. |
+| **Autonomous initiation** | At least 90% of all items eligible during the measurement window are autonomously started within the configured start SLA; items never started count against the rate. |
+| **Durable fleet execution** | Isolated, idempotent jobs survive retries and restarts without duplicate shipping or workspace collisions; concurrency can scale from tens toward thousands without changing the control model. |
+| **Verified outcomes** | 100% of outcomes marked done or shipped have a currently-green `phoenix_accept` failure-first proof bound to the exact check and commit, plus an intact trace. |
+| **Bounded recovery** | At least 95% of recoverable RED states heal within the bounded retry/rollback policy; exhausted cases become explicit exceptions, never silent success. |
+| **Policy-gated shipping** | Eligible low-risk changes can merge automatically after objective test, review, security, cost, and blast-radius gates; risky or ambiguous changes enter a human exception lane. |
+| **Compounding learning** | Verified outcomes enter retrievable memory automatically; skill or policy changes adopt only on sealed, measured gains with zero right-to-wrong regression. |
+| **Economic control** | Every mission has model-routing and spend limits; no runaway compute; cost, latency, and tokens per verified outcome stay within budget and trend down without quality regression. |
+| **Exception operations** | Human intervention is required for no more than 10% of eligible outcomes, excluding changed intent or policy; routine status stays silent and alerts carry one concrete decision or recovery action. |
+
+### Metric definitions
+
+- **Eligible work:** a maintained item whose done-check is RED on the current base, whose dependencies are
+  green, and whose policy classification permits autonomous execution. Human-gated, blocked, and
+  superseded items are excluded until their state changes.
+- **Autonomous initiation rate:** items autonomously started within the configured start SLA divided by
+  all items that were eligible at any point during the measurement window. Items never started count against the rate.
+- **Done-proof coverage:** proven done-or-shipped outcomes divided by all outcomes marked done or shipped.
+  The target is 100%; an item without a matching acceptance proof cannot enter either state.
+- **Terminal telemetry coverage:** At least 95% of terminal work items (done, failed, blocked, or canceled)
+  must carry a machine-readable final status and check reference. The denominator is every item entering a terminal state during the measurement window; uncovered items count against coverage and can never count as done.
+- **Bounded recovery rate:** recoverable RED states returned to GREEN within the configured retry/rollback
+  cap divided by all RED states classified as recoverable.
+- **Human intervention rate:** eligible outcomes requiring unplanned human action after initiation divided by all eligible outcomes reaching a terminal state. Changed intent and policy decisions are excluded.
+
+**Code-quality benchmarks are subordinate evidence**, not the north star. They remain necessary regression
+and capability signals, but a high benchmark score cannot prove autonomous initiation, durable
+orchestration, policy-safe shipping, compounding learning, controlled economics, or exception-only
+operations.
 
 ## Target runtime: GitHub Copilot (this is a Copilot harness, not a standalone agent)
 Phoenix does NOT ship its own model loop. **The agent runtime is GitHub Copilot** (CLI + VS Code).
@@ -155,7 +218,9 @@ technical reason behind "disregard process ceremony" — ceremony burns tokens f
   schema/hash check, artifact). "Unknown" is allowed; fabricated success is a severe failure.
 - **Frozen model + evolving scaffolding.** No weight training. Improvement is skills/prompts/
   tactics, gated by measured gains on sealed evals.
-- **Human owns direction.** The loop executes and verifies; choosing *what* to pursue stays human.
+- **Human owns intent and policy; the factory owns eligible execution.** Humans set outcomes,
+  constraints, risk boundaries, and budgets. Inside those boundaries the factory may discover, start,
+  execute, and ship low-risk work; humans handle only exceptions and policy-changing decisions.
 - **Fast and inspectable.** Rust core; every decision, heal, and skill-load is logged and replayable.
 - **Reversible by default.** Self-healing prefers rollback-to-last-good over irreversible action.
 
@@ -190,7 +255,9 @@ retrieval, RSI/compounding, multi-skill, agents, npx installer, marketplace) bui
 - v1: skills self-improve against a sealed eval with a *measured* gain (reusing our eval-harness pattern).
 - v2: one-command install (`copilot plugin marketplace add` / `npx atv-phoenix init`) lands the full
   Phoenix harness (skills + agents + instructions + MCP server) into a repo, ATV-StarterKit-style.
-- vN: Phoenix runs a real goal from the user's digital life end-to-end on Copilot, evidence at each stage.
+- vN: Phoenix runs the AI-native dark factory end-to-end: autonomous initiation, durable isolated fleets,
+  verified and policy-gated delivery, bounded healing, measured learning, controlled economics, and
+  exception-only human operations — all mission criteria green at once.
 
 ## Grounding (researched 2026-06-09)
 - **TokenMasterX (shyamsridhar123/TokenMasterX — YOUR repo):** routing agent for Claude Code + Copilot
