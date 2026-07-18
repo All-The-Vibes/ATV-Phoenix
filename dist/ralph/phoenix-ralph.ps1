@@ -31,20 +31,6 @@
     under pwsh it arrived as 1 intact token.)
 #>
 
-# ---- Windows PS5.1 guard: self-promote to pwsh ----
-# Must be before [CmdletBinding()] / param() so the re-exec happens before parameter binding.
-if ($PSVersionTable.PSVersion.Major -lt 6) {
-  if (-not (Get-Command pwsh -ErrorAction SilentlyContinue)) {
-    Write-Host "[ralph] FATAL: phoenix-ralph requires PowerShell 7+ on Windows (PS 5.1 mangles agent prompt args)." -ForegroundColor Red
-    Write-Host "[ralph]        Install PowerShell 7: https://aka.ms/powershell" -ForegroundColor Red
-    exit 2
-  }
-  & pwsh -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath @args
-  exit $LASTEXITCODE
-}
-# Belt-and-suspenders on PS 7+: pin Standard arg passing so native commands receive verbatim argv.
-$PSNativeCommandArgumentPassing = 'Standard'
-
 [CmdletBinding()]
 param(
   [string]$Dir = ".phoenix-ralph",
@@ -54,8 +40,30 @@ param(
   [string]$PhoenixBin = "",
   [string]$Copilot = "",
   [switch]$AllowPreGreen,
+  [switch]$ReScope,
   [switch]$NoTag
 )
+
+# ---- Windows PS5.1 guard: self-promote to pwsh ----
+if ($PSVersionTable.PSVersion.Major -lt 6) {
+  if (-not (Get-Command pwsh -ErrorAction SilentlyContinue)) {
+    Write-Host "[ralph] FATAL: phoenix-ralph requires PowerShell 7+ on Windows (PS 5.1 mangles agent prompt args)." -ForegroundColor Red
+    Write-Host "[ralph]        Install PowerShell 7: https://aka.ms/powershell" -ForegroundColor Red
+    exit 2
+  }
+  $forwardArgs = @()
+  foreach ($entry in $PSBoundParameters.GetEnumerator()) {
+    if ($entry.Value -is [System.Management.Automation.SwitchParameter]) {
+      if ($entry.Value.IsPresent) { $forwardArgs += "-$($entry.Key)" }
+    } else {
+      $forwardArgs += "-$($entry.Key)", "$($entry.Value)"
+    }
+  }
+  & pwsh -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath @forwardArgs
+  exit $LASTEXITCODE
+}
+# Belt-and-suspenders on PS 7+: pin Standard arg passing so native commands receive verbatim argv.
+$PSNativeCommandArgumentPassing = 'Standard'
 
 $ErrorActionPreference = "Stop"
 function Info($m){ Write-Host "[ralph] $m" -ForegroundColor Cyan }
@@ -66,6 +74,8 @@ function FileSig($p){ if (Test-Path $p) { (Get-FileHash $p -Algorithm SHA256).Ha
 $repo = (Get-Location).Path
 $state = Join-Path $repo $Dir
 $doneCheck = Join-Path $state "done-check.json"
+$acceptanceContract = Join-Path $state "acceptance-contract.json"
+$acceptanceContractArg = [System.IO.Path]::GetRelativePath($repo, $acceptanceContract)
 $prompt = Join-Path $state "PROMPT.md"
 
 # ---- locate binaries ----
@@ -86,6 +96,11 @@ $env:PHOENIX_WORKSPACE = $repo
 # Pass the check by @file (not inline JSON) — avoids PowerShell->exe quote-mangling.
 $doneArg = "@$doneCheck"
 
+function AssertContract($where) {
+  & $PhoenixBin contract-validate $acceptanceContractArg $doneArg | Out-Null
+  if ($LASTEXITCODE -ne 0) { Die "acceptance contract mismatch $where -- stopping; use -ReScope only with an intentional currently-RED replacement." }
+}
+
 # ---- baseline: the done-check should start RED so completion can be proven failure-first ----
 Info "binaries: phoenix=$PhoenixBin  copilot=$Copilot"
 Info "baseline sense of done-check..."
@@ -93,6 +108,17 @@ Info "baseline sense of done-check..."
 $baselineGreen = ($LASTEXITCODE -eq 0)
 if ($baselineGreen -and -not $AllowPreGreen) {
   Die "done-check is ALREADY GREEN at start -- it can't prove failure-first (it'd be a vacuous gate). Re-target the check at the real unmet goal, or pass -AllowPreGreen if it's legitimately satisfied."
+}
+
+# ---- freeze the acceptance scope (or explicitly replace it with a currently-RED check) ----
+if ($ReScope) {
+  Info "explicitly re-scoping acceptance contract..."
+  & $PhoenixBin contract-rescope $acceptanceContractArg $doneArg | Out-Null
+  if ($LASTEXITCODE -ne 0) { Die "acceptance contract re-scope rejected; the replacement must be currently RED." }
+} else {
+  Info "freezing initial acceptance contract..."
+  & $PhoenixBin contract-freeze $acceptanceContractArg $doneArg | Out-Null
+  if ($LASTEXITCODE -ne 0) { Die "acceptance contract freeze rejected; refusing to run with a changed or non-RED done-check." }
 }
 
 # ---- the loop ----
@@ -108,6 +134,7 @@ while ($loop -lt $MaxLoops) {
   if (((Get-Date) - $start).TotalMinutes -ge $MaxMinutes) { Warn "wall-clock budget ($MaxMinutes min) reached."; break }
 
   # 1. DRIVER decides done: is the done-check failure-first satisfied on an intact trace?
+  AssertContract "before accept"
   & $PhoenixBin accept $doneArg 2>$null | Out-Null
   if ($LASTEXITCODE -eq 0) {
     Info "done-check ACCEPTED (failure-first, green). Goal proven complete."
@@ -146,6 +173,8 @@ while ($loop -lt $MaxLoops) {
     Remove-Item $tmpPrompt -ErrorAction SilentlyContinue
   }
 
+  AssertContract "after agent iteration $loop"
+
   # 4. Detect launch failure: agent exited nonzero AND trace/backlog signature is unchanged.
   #    That pattern means the process never started (or started and immediately crashed) rather than
   #    ran and chose not to change anything. Fail fast with a clear message instead of burning iterations.
@@ -168,6 +197,7 @@ while ($loop -lt $MaxLoops) {
 }
 
 # ---- completion: DRIVER writes the proof bundle + tag (never the agent) ----
+AssertContract "before accept"
 $acc = & $PhoenixBin accept $doneArg 2>$null
 if ($LASTEXITCODE -eq 0) {
   $proof = [ordered]@{
