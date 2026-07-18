@@ -166,6 +166,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //   phoenix-mcp snapshot <path> '<check-json>'
     //   phoenix-mcp heal <rollback|retry> '<ctx-json>'
     //   phoenix-mcp verify-trace
+    //   phoenix-mcp contract-<freeze|validate|rescope> <baseline> '<check-json>'
     // MCP server mode (for GitHub Copilot via /mcp): no subcommand (or `serve`).
     if args.len() > 1 && args[1] != "serve" {
         return run_cli(&args);
@@ -205,6 +206,58 @@ fn run_cli(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
             let g = phoenix::accept::verify_gate(&ws, &check);
             println!("{}", serde_json::to_string(&g)?);
             exit(g.ok);
+        }
+        "contract-freeze" | "contract-validate" | "contract-rescope" => {
+            let action = match args[1].as_str() {
+                "contract-freeze" => "frozen",
+                "contract-validate" => "validated",
+                _ => "rescoped",
+            };
+            let input_failure = |reason: String| phoenix::accept::ContractResult {
+                ok: false,
+                action: action.into(),
+                baseline_digest: String::new(),
+                current_digest: String::new(),
+                reason,
+            };
+            if args.len() < 4 {
+                let result = input_failure(format!(
+                    "usage: {} {} <baseline> '<check-json|@check-file>'",
+                    args[0], args[1]
+                ));
+                println!("{}", serde_json::to_string(&result)?);
+                exit(false);
+            }
+            let raw = match jarg(&args[3]) {
+                Ok(raw) => raw,
+                Err(e) => {
+                    let result = input_failure(format!(
+                        "cannot read check JSON from {}: {e}",
+                        args[3]
+                    ));
+                    println!("{}", serde_json::to_string(&result)?);
+                    exit(false);
+                }
+            };
+            let check: Check = match serde_json::from_str(&raw) {
+                Ok(check) => check,
+                Err(e) => {
+                    let result = input_failure(format!(
+                        "invalid check JSON for {}: {e}",
+                        args[1]
+                    ));
+                    println!("{}", serde_json::to_string(&result)?);
+                    exit(false);
+                }
+            };
+            let baseline = std::path::Path::new(&args[2]);
+            let result = match args[1].as_str() {
+                "contract-freeze" => phoenix::accept::freeze_contract(&ws, baseline, &check),
+                "contract-validate" => phoenix::accept::validate_contract(&ws, baseline, &check),
+                _ => phoenix::accept::rescope_contract(&ws, baseline, &check),
+            };
+            println!("{}", serde_json::to_string(&result)?);
+            exit(result.ok);
         }
         "snapshot" => {
             let path = ws.join(&args[2]);
@@ -351,7 +404,7 @@ fn run_cli(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
             Ok(())
         }
         other => {
-            eprintln!("phoenix: unknown subcommand '{other}'. Use: sense|accept|intent-accept|snapshot|heal|verify-trace|monitor|doctor|serve");
+            eprintln!("phoenix: unknown subcommand '{other}'. Use: sense|accept|contract-freeze|contract-validate|contract-rescope|intent-accept|snapshot|heal|verify-trace|monitor|doctor|serve");
             std::process::exit(2);
         }
     }
