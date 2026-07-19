@@ -1,0 +1,184 @@
+{
+  "schema_version": "1.0",
+  "protocol_id": "phoenix-harness-eval-preregistration-v1",
+  "protocol_status": "preregistered",
+  "execution_status": "not_run",
+  "purpose": "Prospective paired evaluation of Phoenix and control harness behavior.",
+  "pinning": {
+    "phoenix_source_commit": {
+      "value": "PREREGISTRATION_PLACEHOLDER:git-commit:phoenix-source",
+      "state": "preregistration_placeholder",
+      "replace_before": "first_benchmark_run",
+      "immutable_during_run": true
+    },
+    "phoenix_build_stamp": {
+      "value": "PREREGISTRATION_PLACEHOLDER:build-stamp:phoenix-artifact",
+      "state": "preregistration_placeholder",
+      "replace_before": "first_benchmark_run",
+      "immutable_during_run": true
+    },
+    "model_id": {
+      "value": "PREREGISTRATION_PLACEHOLDER:model-id:provider-and-version",
+      "state": "preregistration_placeholder",
+      "replace_before": "first_benchmark_run",
+      "immutable_during_run": true
+    },
+    "runner_version": {
+      "value": "PREREGISTRATION_PLACEHOLDER:runner-version:harness-eval",
+      "state": "preregistration_placeholder",
+      "replace_before": "first_benchmark_run",
+      "immutable_during_run": true
+    },
+    "environment_manifest_hash": {
+      "value": "PREREGISTRATION_PLACEHOLDER:sha256:environment-manifest",
+      "state": "preregistration_placeholder",
+      "replace_before": "first_benchmark_run",
+      "immutable_during_run": true
+    },
+    "task_set_hash": {
+      "value": "PREREGISTRATION_PLACEHOLDER:sha256:ordered-task-set",
+      "state": "preregistration_placeholder",
+      "replace_before": "first_benchmark_run",
+      "immutable_during_run": true
+    },
+    "seeds": {
+      "values": [
+        104729,
+        130363,
+        155921,
+        181081,
+        205759
+      ],
+      "state": "preregistered_fixed",
+      "immutable_during_run": true
+    },
+    "level_1_sealed_verifier_hash": {
+      "value": "PREREGISTRATION_PLACEHOLDER:sha256:level-1-sealed-verifier",
+      "state": "preregistration_placeholder",
+      "replace_before": "first_benchmark_run",
+      "immutable_during_run": true
+    },
+    "level_2_adversarial_verifier_hash": {
+      "value": "PREREGISTRATION_PLACEHOLDER:sha256:level-2-adversarial-verifier",
+      "state": "preregistration_placeholder",
+      "replace_before": "first_benchmark_run",
+      "immutable_during_run": true
+    }
+  },
+  "execution": {
+    "arms": [
+      "phoenix",
+      "control"
+    ],
+    "min_repetitions": 5,
+    "repetitions_per_task": 5,
+    "pairing": {
+      "unit": [
+        "task_id",
+        "seed"
+      ],
+      "same_task_required": true,
+      "same_seed_required": true,
+      "one_run_per_arm_required": true,
+      "drop_incomplete_pairs": true
+    },
+    "order": {
+      "policy": "deterministic_counterbalanced",
+      "derivation": "sha256(task_id || seed) parity",
+      "arm_state_isolation_required": true
+    }
+  },
+  "mocks": {
+    "classification": "mechanics_only",
+    "allowed_uses": [
+      "runner wiring",
+      "fixture parsing",
+      "pairing validation",
+      "metric calculation tests"
+    ],
+    "performance_evidence_allowed": false,
+    "included_in_metrics": false
+  },
+  "checks": {
+    "agent_visible": [
+      {
+        "id": "task_acceptance_public",
+        "visibility": "agent_visible",
+        "content_source": "task_package_public_checks"
+      },
+      {
+        "id": "repository_declared_checks",
+        "visibility": "agent_visible",
+        "content_source": "repository_instructions"
+      }
+    ],
+    "evaluator_only": [
+      {
+        "id": "objective_level_1",
+        "level": "level_1_sealed",
+        "visibility": "evaluator_only",
+        "exposed_to_agent": false,
+        "pin": "level_1_sealed_verifier_hash"
+      },
+      {
+        "id": "objective_level_2",
+        "level": "level_2_adversarial",
+        "visibility": "evaluator_only",
+        "exposed_to_agent": false,
+        "pin": "level_2_adversarial_verifier_hash"
+      }
+    ]
+  },
+  "metrics": {
+    "primary_output": "paired_objective_metrics",
+    "objective_pass": {
+      "pass_field": "all_required_sealed_and_adversarial_checks_passed",
+      "numerator": "runs_passing_all_required_sealed_and_adversarial_checks",
+      "denominator": "eligible_completed_runs"
+    },
+    "silent_failure": {
+      "numerator": "runs_claimed_complete_that_fail_any_required_evaluator_check",
+      "denominator": "runs_claimed_complete",
+      "report_components": [
+        "numerator",
+        "denominator",
+        "rate"
+      ]
+    },
+    "cost_per_verified_outcome": {
+      "numerator": "total_run_cost_in_pinned_cost_units",
+      "denominator": "objective_pass_count",
+      "zero_denominator_policy": "report_undefined_with_raw_components"
+    },
+    "confidence_intervals": {
+      "required": true,
+      "confidence_level": 0.95,
+      "method": "paired_bootstrap",
+      "resamples": 10000,
+      "seed": 32452843,
+      "resampling_unit": "task_id_seed_pair",
+      "report_for": [
+        "objective_pass_rate",
+        "silent_failure_rate",
+        "cost_per_verified_outcome",
+        "paired_arm_differences"
+      ]
+    },
+    "subjective_assessment": {
+      "ranked_leaderboard": false,
+      "role": "secondary_diagnostic_only"
+    }
+  },
+  "evidence": {
+    "benchmark_results": [],
+    "performance_claims_allowed": false,
+    "activation_condition": "all_placeholders_replaced_and_preflight_validation_passed",
+    "completed_evidence_requires": [
+      "immutable pin manifest",
+      "paired raw run records",
+      "sealed evaluator records",
+      "adversarial evaluator records",
+      "metric computation record"
+    ]
+  }
+}
