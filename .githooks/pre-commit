@@ -3,7 +3,14 @@
 # doc/skill commits stay instant. fmt is intentionally NOT enforced: this crate uses a
 # deliberate hand style and rustfmt would rewrite ~88 files — the gate mirrors rust.yml
 # (build + test), never fmt. Bypass in a pinch with `git commit --no-verify`.
-changed=$(git diff --cached --name-only --diff-filter=ACM)
+changed=$(git diff --cached --name-only --diff-filter=ACMRT)
+blocked=$(printf '%s\n' "$changed" | grep -E '^\.phoenix/|^\.phoenix-ralph/(backlog\.json|driver\.log|completed[^/]*\.json|acceptance-contract\.json)$')
+if [ -n "$blocked" ]; then
+  echo "pre-commit BLOCKED: live Phoenix runtime state must not be committed:"
+  printf '  %s\n' "$blocked"
+  exit 1
+fi
+
 if echo "$changed" | grep -Eq '\.rs$|(^|/)Cargo\.(toml|lock)$|(^|/)build\.rs$'; then
   echo "pre-commit: Rust change staged -> cargo check --locked"
   cargo check --locked --quiet || { echo "pre-commit BLOCKED: cargo check failed"; exit 1; }
