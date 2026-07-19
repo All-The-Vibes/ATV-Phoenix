@@ -4,6 +4,8 @@ param(
     $Seeds = "104729,130363,155921,181081,205759",
     [string]$OutputDir = "",
     [string]$CopilotCommand = "",
+    [switch]$FreezePins,
+    [string]$PinnedProtocolFile = "",
     [switch]$Force
 )
 
@@ -48,6 +50,30 @@ function Write-Utf8NoBom([string]$Path, [string]$Text, [bool]$Append) {
     }
 }
 
+function Write-JsonAtomic([string]$Path, $Value) {
+    $TemporaryPath = "$Path.$([guid]::NewGuid().ToString("N")).tmp"
+    $BackupPath = "$Path.$([guid]::NewGuid().ToString("N")).bak"
+    try {
+        Write-Utf8NoBom $TemporaryPath (Get-CanonicalJson $Value) $false
+        if (Test-Path -LiteralPath $Path) {
+            [IO.File]::Replace($TemporaryPath, $Path, $BackupPath)
+        } else {
+            [IO.File]::Move($TemporaryPath, $Path)
+        }
+    } finally {
+        Remove-Item -LiteralPath $TemporaryPath -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $BackupPath -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Set-ObjectProperty($Value, [string]$Name, $PropertyValue) {
+    if ($Value -is [Collections.IDictionary]) {
+        $Value[$Name] = $PropertyValue
+    } else {
+        $Value | Add-Member -NotePropertyName $Name -NotePropertyValue $PropertyValue -Force
+    }
+}
+
 function Fail([string]$Message) {
     [Console]::Error.WriteLine("ERROR: $Message")
     exit 1
@@ -85,6 +111,12 @@ $MechanicsOnly = $UsingTasksOverride -or $UsingOutputOverride -or $UsingCopilotO
 if (-not $TasksDir) { $TasksDir = $DefaultTasksDir }
 if (-not $OutputDir) { $OutputDir = $DefaultOutputDir }
 if (-not $CopilotCommand) { $CopilotCommand = Join-Path $env:APPDATA "npm\copilot.cmd" }
+if (-not $PinnedProtocolFile) {
+    $PinnedProtocolFile = Join-Path $OutputDir "protocol-pinned.json"
+}
+if ($FreezePins -and $MechanicsOnly) {
+    Fail "-FreezePins requires the default production tasks, seeds, output, and Copilot command"
+}
 
 if (-not (Test-Path -LiteralPath $TasksDir -PathType Container)) { Fail "task directory is missing" }
 if (-not (Test-Path -LiteralPath $Verifier -PathType Leaf)) { Fail "verifier is missing" }
@@ -268,26 +300,118 @@ $ComputedPins = [ordered]@{
     level_1_sealed_verifier_hash = "sha256:$($VerifierHashes.level1_sealed)"
     level_2_adversarial_verifier_hash = "sha256:$($VerifierHashes.level2_adversarial)"
 }
-if (-not $MechanicsOnly) {
-    foreach ($Name in $ComputedPins.Keys) {
-        $Pin = $Protocol.pinning.PSObject.Properties[$Name].Value
-        if ($Pin.state -cne "pinned" -or
-            $Pin.value -match "PREREGISTRATION_PLACEHOLDER" -or
-            [string]$Pin.value -cne [string]$ComputedPins[$Name]) {
-            Fail "production protocol pins are not finalized"
-        }
-    }
-}
-if (-not (Test-Path -LiteralPath $CopilotCommand -PathType Leaf)) {
-    Fail "Copilot command is missing"
-}
 
 New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
 $RawPath = Join-Path $OutputDir "raw-runs.jsonl"
-$ManifestPath = Join-Path $OutputDir "manifest.json"
-if ((Test-Path -LiteralPath $RawPath) -or (Test-Path -LiteralPath $ManifestPath)) {
-    if (-not $Force) { Fail "output exists; use -Force to overwrite" }
-    Remove-Item -LiteralPath $RawPath, $ManifestPath -Force -ErrorAction SilentlyContinue
+$ManifestPath = Join-Path $OutputDir "run-manifest.json"
+try {
+    $OutputLock = [IO.File]::Open(
+        "$ManifestPath.lock",
+        [IO.FileMode]::OpenOrCreate,
+        [IO.FileAccess]::ReadWrite,
+        [IO.FileShare]::None
+    )
+} catch [IO.IOException] {
+    Fail "another harness phase is active for this output"
+}
+
+$PinnedValues = [ordered]@{
+    phoenix_source_commit = [ordered]@{ state = "pinned"; value = $ComputedPins.phoenix_source_commit }
+    phoenix_build_stamp = [ordered]@{ state = "pinned"; value = $ComputedPins.phoenix_build_stamp }
+    model_id = [ordered]@{ state = "pinned"; value = $ComputedPins.model_id }
+    runner_version = [ordered]@{ state = "pinned"; value = $ComputedPins.runner_version }
+    environment_manifest_hash = [ordered]@{ state = "pinned"; value = $ComputedPins.environment_manifest_hash }
+    task_set_hash = [ordered]@{ state = "pinned"; value = $ComputedPins.task_set_hash }
+    seeds = [ordered]@{ state = "pinned"; values = @($Seeds) }
+    level_1_sealed_verifier_hash = [ordered]@{
+        state = "pinned"; value = $ComputedPins.level_1_sealed_verifier_hash
+    }
+    level_2_adversarial_verifier_hash = [ordered]@{
+        state = "pinned"; value = $ComputedPins.level_2_adversarial_verifier_hash
+    }
+    runner_hash = $RunnerSha
+    runner_sha256 = $RunnerSha
+}
+$FrozenManifest = [ordered]@{
+    schema_version = "1.0"
+    protocol_id = $Protocol.protocol_id
+    protocol_status = $Protocol.protocol_status
+    execution_status = "frozen"
+    evidence_classification = if ($MechanicsOnly) { "mechanics_only" } else { "benchmark" }
+    tasks = @($Tasks.Name)
+    environment = $Environment
+    pins = $PinnedValues
+    task_manifest = $TaskManifest
+    run_count = 0
+}
+
+if ($FreezePins) {
+    if ((Test-Path -LiteralPath $PinnedProtocolFile) -or
+        (Test-Path -LiteralPath $ManifestPath) -or
+        (Test-Path -LiteralPath $RawPath)) {
+        if (-not $Force) { Fail "frozen output exists; use -Force to overwrite" }
+        Remove-Item -LiteralPath $PinnedProtocolFile, $ManifestPath, $RawPath `
+            -Force -ErrorAction SilentlyContinue
+    }
+    $PinnedProtocol = (Get-CanonicalJson $Protocol) | ConvertFrom-Json
+    foreach ($Name in $ComputedPins.Keys) {
+        $PinnedProtocol.pinning.PSObject.Properties[$Name].Value.value = $ComputedPins[$Name]
+        $PinnedProtocol.pinning.PSObject.Properties[$Name].Value.state = "pinned"
+    }
+    $PinnedProtocol.pinning.seeds.values = @($Seeds)
+    $PinnedProtocol.pinning.seeds.state = "pinned"
+    Write-JsonAtomic $PinnedProtocolFile $PinnedProtocol
+    Write-JsonAtomic $ManifestPath $FrozenManifest
+    $OutputLock.Dispose()
+    Write-Output "FROZEN: production pins written; no runs executed"
+    exit 0
+}
+
+if ($MechanicsOnly) {
+    if (-not (Test-Path -LiteralPath $CopilotCommand -PathType Leaf)) {
+        Fail "Copilot command is missing"
+    }
+    if ((Test-Path -LiteralPath $RawPath) -or (Test-Path -LiteralPath $ManifestPath)) {
+        if (-not $Force) { Fail "output exists; use -Force to overwrite" }
+        Remove-Item -LiteralPath $RawPath, $ManifestPath -Force -ErrorAction SilentlyContinue
+    }
+    $Manifest = $FrozenManifest
+    $Manifest.execution_status = "mechanics_only"
+    Write-JsonAtomic $ManifestPath $Manifest
+} else {
+    if (-not (Test-Path -LiteralPath $PinnedProtocolFile -PathType Leaf)) {
+        Fail "pinned protocol is required; run production phase A with -FreezePins"
+    }
+    if (-not (Test-Path -LiteralPath $ManifestPath -PathType Leaf)) {
+        Fail "frozen run manifest is required; run production phase A with -FreezePins"
+    }
+    if (Test-Path -LiteralPath $RawPath) {
+        Fail "raw output already exists; freeze a new production run"
+    }
+    try {
+        $PinnedProtocol = Get-Content -LiteralPath $PinnedProtocolFile -Raw | ConvertFrom-Json
+        $Manifest = Get-Content -LiteralPath $ManifestPath -Raw | ConvertFrom-Json
+    } catch {
+        Fail "frozen production artifacts are malformed"
+    }
+    $ExpectedPinnedProtocol = (Get-CanonicalJson $Protocol) | ConvertFrom-Json
+    foreach ($Name in $ComputedPins.Keys) {
+        $ExpectedPinnedProtocol.pinning.PSObject.Properties[$Name].Value.value = $ComputedPins[$Name]
+        $ExpectedPinnedProtocol.pinning.PSObject.Properties[$Name].Value.state = "pinned"
+    }
+    $ExpectedPinnedProtocol.pinning.seeds.values = @($Seeds)
+    $ExpectedPinnedProtocol.pinning.seeds.state = "pinned"
+    if ((Get-CanonicalJson $PinnedProtocol) -cne (Get-CanonicalJson $ExpectedPinnedProtocol)) {
+        Fail "pinned protocol does not exactly match current production inputs"
+    }
+    if ((Get-CanonicalJson $Manifest) -cne (Get-CanonicalJson $FrozenManifest)) {
+        Fail "frozen run manifest does not exactly match current production inputs"
+    }
+    if (-not (Test-Path -LiteralPath $CopilotCommand -PathType Leaf)) {
+        Fail "Copilot command is missing"
+    }
+    $Manifest.execution_status = "running"
+    Write-JsonAtomic $ManifestPath $Manifest
 }
 
 $Seen = @{}
@@ -322,14 +446,19 @@ foreach ($Task in $Tasks) {
                     "--add-dir", $Workspace)
                 if ($Arm -eq "control") { $Arguments += @("--disable-mcp-server", "phoenix") }
                 $Started = [DateTime]::UtcNow.ToString("o")
+                $PreviousErrorActionPreference = $ErrorActionPreference
                 try {
+                    $ErrorActionPreference = "Continue"
                     $Transcript = (& $CopilotCommand @Arguments 2>&1 | Out-String)
                     $ExitCode = $LASTEXITCODE
                     if ($null -eq $ExitCode) { $ExitCode = 0 }
                 } catch {
                     $Transcript = $_.Exception.Message
                     $ExitCode = 1
+                } finally {
+                    $ErrorActionPreference = $PreviousErrorActionPreference
                 }
+                if ($ExitCode -ne 0) { Fail "Copilot command failed with exit code $ExitCode" }
                 $Ended = [DateTime]::UtcNow.ToString("o")
                 $ClaimedDone = $Transcript -match "(?im)\bDONE\b"
                 $SolutionPath = Join-Path $Workspace "solution.py"
@@ -351,10 +480,13 @@ foreach ($Task in $Tasks) {
                 }
                 $Objective = $Verification.level1.pass -and $Verification.level2.pass
                 $Record = [ordered]@{
+                    run_id = [guid]::NewGuid().ToString("N")
                     task_id = $Task.Name; seed = $Seed; arm = $Arm
                     order = [Array]::IndexOf($Arms, $Arm)
                     started_utc = $Started; completed_utc = $Ended
                     exit_code = [int]$ExitCode; claimed_done = [bool]$ClaimedDone
+                    model_id = $Model
+                    runner_sha256 = $RunnerSha
                     prompt_sha256 = Get-Sha256Text $Prompt
                     transcript_sha256 = Get-Sha256Text $Transcript
                     final_solution_sha256 = $EvaluatedSolutionSha
@@ -362,6 +494,7 @@ foreach ($Task in $Tasks) {
                     level1_pass = [bool]$Verification.level1.pass
                     level2_pass = [bool]$Verification.level2.pass
                     objective_pass = [bool]$Objective
+                    mock_run = [bool]$MechanicsOnly
                 }
                 Write-Utf8NoBom $RawPath (Get-CanonicalJson $Record) $true
                 $CompletedRows++
@@ -382,11 +515,13 @@ try {
     Fail "raw run records are malformed"
 }
 $RecordFields = @(
-    "task_id", "seed", "arm", "order", "started_utc", "completed_utc", "exit_code",
-    "claimed_done", "prompt_sha256", "transcript_sha256", "final_solution_sha256",
-    "cost_units", "level1_pass", "level2_pass", "objective_pass"
+    "run_id", "task_id", "seed", "arm", "order", "started_utc", "completed_utc",
+    "exit_code", "claimed_done", "model_id", "runner_sha256", "prompt_sha256",
+    "transcript_sha256", "final_solution_sha256", "cost_units", "level1_pass",
+    "level2_pass", "objective_pass", "mock_run"
 )
 $ValidatedRuns = @{}
+$ValidatedRunIds = @{}
 foreach ($Row in $Rows) {
     $Key = "$($Row.task_id)|$($Row.seed)|$($Row.arm)"
     if (-not (Test-ExactProperties $Row $RecordFields) -or
@@ -394,14 +529,19 @@ foreach ($Row in $Rows) {
         $Row.arm -notin @("control", "phoenix") -or $Row.order -notin @(0, 1) -or
         $Row.claimed_done -isnot [bool] -or $Row.level1_pass -isnot [bool] -or
         $Row.level2_pass -isnot [bool] -or $Row.objective_pass -isnot [bool] -or
+        $Row.mock_run -isnot [bool] -or $Row.mock_run -ne $MechanicsOnly -or
         $Row.objective_pass -ne ($Row.level1_pass -and $Row.level2_pass) -or
+        $Row.run_id -isnot [string] -or [string]::IsNullOrWhiteSpace($Row.run_id) -or
+        $Row.model_id -cne $Model -or $Row.runner_sha256 -cne $RunnerSha -or
+        $Row.runner_sha256 -notmatch "^[0-9a-f]{64}$" -or
         $Row.prompt_sha256 -notmatch "^[0-9a-f]{64}$" -or
         $Row.transcript_sha256 -notmatch "^[0-9a-f]{64}$" -or
         $Row.final_solution_sha256 -notmatch "^[0-9a-f]{64}$" -or
-        $ValidatedRuns.ContainsKey($Key)) {
+        $ValidatedRuns.ContainsKey($Key) -or $ValidatedRunIds.ContainsKey($Row.run_id)) {
         Fail "incomplete or duplicate arm pairs"
     }
     $ValidatedRuns[$Key] = $true
+    $ValidatedRunIds[$Row.run_id] = $true
 }
 $Groups = @($Rows | Group-Object { "$($_.task_id)|$($_.seed)" })
 if ($Rows.Count -ne $ExpectedRows -or $ValidatedRuns.Count -ne $ExpectedRows -or
@@ -416,31 +556,10 @@ if ($Rows.Count -ne $ExpectedRows -or $ValidatedRuns.Count -ne $ExpectedRows -or
 
 $CompletionUtc = [DateTime]::UtcNow.ToString("o")
 $Status = if ($MechanicsOnly) { "mechanics_only" } else { "completed" }
-$Manifest = [ordered]@{
-    schema_version = "1.0"
-    protocol_id = $Protocol.protocol_id
-    protocol_status = $Protocol.protocol_status
-    execution_status = $Status
-    evidence_classification = if ($MechanicsOnly) { "mechanics_only" } else { "benchmark" }
-    tasks = @($Tasks.Name)
-    environment = $Environment
-    pins = [ordered]@{
-        phoenix_source_commit = $ComputedPins.phoenix_source_commit
-        phoenix_build_stamp = $ComputedPins.phoenix_build_stamp
-        model_id = $ComputedPins.model_id
-        runner_version = $ComputedPins.runner_version
-        runner_hash = $RunnerSha
-        environment_manifest_hash = $ComputedPins.environment_manifest_hash
-        task_set_hash = $ComputedPins.task_set_hash
-        seeds = @($Seeds)
-        level_1_sealed_verifier_hash = $ComputedPins.level_1_sealed_verifier_hash
-        level_2_adversarial_verifier_hash = $ComputedPins.level_2_adversarial_verifier_hash
-        raw_jsonl_hash = Get-FileSha256 $RawPath
-        runner_sha256 = $RunnerSha
-        completion_utc = $CompletionUtc
-    }
-    task_manifest = $TaskManifest
-    run_count = $CompletedRows
-}
-Write-Utf8NoBom $ManifestPath (Get-CanonicalJson $Manifest) $false
+$Manifest.execution_status = $Status
+$Manifest.run_count = $CompletedRows
+Set-ObjectProperty $Manifest.pins "raw_jsonl_hash" (Get-FileSha256 $RawPath)
+Set-ObjectProperty $Manifest.pins "completion_utc" $CompletionUtc
+Write-JsonAtomic $ManifestPath $Manifest
+$OutputLock.Dispose()
 Write-Output "DONE: $CompletedRows runs; status=$Status"

@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -188,6 +189,58 @@ def run_runner(
     return subprocess.run(command, capture_output=True, text=True, env=merged, timeout=90)
 
 
+def make_production_fixture(base: Path, name: str):
+    fixture_root = base / name
+    harness = fixture_root / "evals" / "harness-eval"
+    harness.mkdir(parents=True)
+    shutil.copy2(VERIFIERS, harness / VERIFIERS.name)
+    runner = harness / RUNNER.name
+    runner_text = RUNNER.read_text(encoding="utf-8")
+    runner_text = runner_text.replace(
+        '$Seeds = "104729,130363,155921,181081,205759"',
+        '$Seeds = "7"',
+    )
+    runner_text = runner_text.replace(
+        '$DefaultSeeds = @(104729, 130363, 155921, 181081, 205759)',
+        "$DefaultSeeds = @(7)",
+    )
+    expected_tasks = (
+        '$ExpectedTasks = @("cache-lru", "csv-parser", "date-range", "hard-dedupe",\n'
+        '    "hard-slugify", "hard-titlecase", "hard-truncate", "money-round", '
+        '"retry-backoff")'
+    )
+    runner_text = runner_text.replace(expected_tasks, '$ExpectedTasks = @("cache-lru")')
+    runner_text = runner_text.replace(
+        "$Execution.min_repetitions -ne 5 -or "
+        "$Execution.repetitions_per_task -ne 5",
+        "$Execution.min_repetitions -ne 1 -or "
+        "$Execution.repetitions_per_task -ne 1",
+    )
+    runner_text = runner_text.replace(
+        '$RepoRoot = (Resolve-Path (Join-Path $HarnessDir "..\\..")).Path',
+        f"$RepoRoot = '{str(ROOT).replace(chr(39), chr(39) * 2)}'",
+    )
+    fixture_tasks = fixture_root / "evals" / "swe-bench-lite" / "tasks"
+    runner_text = runner_text.replace(
+        '$DefaultTasksDir = Join-Path $RepoRoot "evals\\swe-bench-lite\\tasks"',
+        f"$DefaultTasksDir = '{str(fixture_tasks).replace(chr(39), chr(39) * 2)}'",
+    )
+    assert '$Seeds = "7"' in runner_text
+    assert "$DefaultSeeds = @(7)" in runner_text
+    assert '$ExpectedTasks = @("cache-lru")' in runner_text
+    assert "$Execution.min_repetitions -ne 1" in runner_text
+    assert f"$DefaultTasksDir = '{fixture_tasks}'" in runner_text
+    runner.write_text(runner_text, encoding="utf-8")
+
+    protocol = json.loads(PROTOCOL.read_text(encoding="utf-8"))
+    protocol["pinning"]["seeds"]["values"] = [7]
+    protocol["execution"]["min_repetitions"] = 1
+    protocol["execution"]["repetitions_per_task"] = 1
+    (harness / PROTOCOL.name).write_text(json.dumps(protocol), encoding="utf-8")
+    make_task(fixture_tasks)
+    return fixture_root, harness, runner
+
+
 @pytest.mark.skipif(not POWERSHELL, reason="PowerShell unavailable")
 def test_runner_executes_paired_isolated_counterbalanced_runs(tmp_path):
     tasks = tmp_path / "tasks"
@@ -269,15 +322,21 @@ def test_runner_executes_paired_isolated_counterbalanced_runs(tmp_path):
             assert len(row[field]) == 64
         assert "transcript" not in row
 
-    manifest = json.loads((output / "manifest.json").read_text(encoding="utf-8"))
+    manifest = json.loads((output / "run-manifest.json").read_text(encoding="utf-8"))
     assert manifest["schema_version"] == "1.0"
     assert manifest["protocol_status"] == "preregistered"
     assert manifest["execution_status"] == "mechanics_only"
     assert manifest["evidence_classification"] == "mechanics_only"
     assert manifest["tasks"] == ["cache-lru"]
-    assert manifest["pins"]["seeds"] == [104729, 130363]
-    assert len(manifest["pins"]["phoenix_source_commit"]) == 40
-    assert manifest["pins"]["model_id"] == "gpt-5.6-sol"
+    assert manifest["pins"]["seeds"] == {
+        "state": "pinned",
+        "values": [104729, 130363],
+    }
+    assert len(manifest["pins"]["phoenix_source_commit"]["value"]) == 40
+    assert manifest["pins"]["model_id"] == {
+        "state": "pinned",
+        "value": "gpt-5.6-sol",
+    }
     assert manifest["pins"]["runner_hash"] == hashlib.sha256(RUNNER.read_bytes()).hexdigest()
     assert manifest["pins"]["runner_sha256"] == manifest["pins"]["runner_hash"]
     assert manifest["pins"]["raw_jsonl_hash"] == hashlib.sha256(
@@ -289,8 +348,10 @@ def test_runner_executes_paired_isolated_counterbalanced_runs(tmp_path):
         inspect.getsource(verifiers.level2_adversarial).encode()
     ).hexdigest()
     assert level1_hash != level2_hash
-    assert manifest["pins"]["level_1_sealed_verifier_hash"] == f"sha256:{level1_hash}"
-    assert manifest["pins"]["level_2_adversarial_verifier_hash"] == (
+    assert manifest["pins"]["level_1_sealed_verifier_hash"]["value"] == (
+        f"sha256:{level1_hash}"
+    )
+    assert manifest["pins"]["level_2_adversarial_verifier_hash"]["value"] == (
         f"sha256:{level2_hash}"
     )
     task_files = manifest["task_manifest"][0]["files"]
@@ -299,13 +360,13 @@ def test_runner_executes_paired_isolated_counterbalanced_runs(tmp_path):
     canonical_task_manifest = json.dumps(
         manifest["task_manifest"], separators=(",", ":"), ensure_ascii=False
     )
-    assert manifest["pins"]["task_set_hash"] == hashlib.sha256(
+    assert manifest["pins"]["task_set_hash"]["value"] == hashlib.sha256(
         canonical_task_manifest.encode()
     ).hexdigest()
     canonical_environment = json.dumps(
         manifest["environment"], separators=(",", ":"), ensure_ascii=False
     )
-    assert manifest["pins"]["environment_manifest_hash"] == hashlib.sha256(
+    assert manifest["pins"]["environment_manifest_hash"]["value"] == hashlib.sha256(
         canonical_environment.encode()
     ).hexdigest()
     environment_text = json.dumps(manifest["environment"]).lower()
@@ -324,7 +385,7 @@ def test_runner_executes_paired_isolated_counterbalanced_runs(tmp_path):
         for value in manifest["pins"].values()
     )
     artifacts = (output / "raw-runs.jsonl").read_text() + (
-        output / "manifest.json"
+        output / "run-manifest.json"
     ).read_text()
     assert '{"message":"DONE"}' not in artifacts
     assert "objective checks failed" not in artifacts
@@ -340,12 +401,12 @@ def test_runner_refuses_overwrite_without_explicit_force(tmp_path):
     env = {"FAKE_COPILOT_LOG": str(tmp_path / "fake.jsonl")}
     first = run_runner(tasks, output, fake, seeds=(7,), env=env)
     assert first.returncode == 0, first.stderr
-    original = (output / "manifest.json").read_bytes()
+    original = (output / "run-manifest.json").read_bytes()
 
     refused = run_runner(tasks, output, fake, seeds=(7,), env=env)
     assert refused.returncode != 0
     assert "use -Force" in refused.stderr
-    assert (output / "manifest.json").read_bytes() == original
+    assert (output / "run-manifest.json").read_bytes() == original
 
     replaced = run_runner(tasks, output, fake, seeds=(7,), extra=("-Force",), env=env)
     assert replaced.returncode == 0, replaced.stderr
@@ -368,7 +429,7 @@ def test_duplicate_seeds_are_rejected_before_any_run(tmp_path):
     assert completed.returncode != 0
     assert "unique integers" in completed.stderr
     assert not log.exists()
-    assert not (output / "manifest.json").exists()
+    assert not (output / "run-manifest.json").exists()
 
 
 @pytest.mark.skipif(not POWERSHELL, reason="PowerShell unavailable")
@@ -390,11 +451,11 @@ def test_incomplete_task_packages_are_rejected_before_any_run(tmp_path, missing)
     assert completed.returncode != 0
     assert "task package is incomplete" in completed.stderr
     assert not log.exists()
-    assert not (output / "manifest.json").exists()
+    assert not (output / "run-manifest.json").exists()
 
 
 @pytest.mark.skipif(not POWERSHELL, reason="PowerShell unavailable")
-def test_default_production_refuses_placeholder_protocol_before_calls(tmp_path):
+def test_default_production_requires_build_stamp_before_calls(tmp_path):
     appdata = tmp_path / "appdata"
     (appdata / "npm").mkdir(parents=True)
     fake = appdata / "npm" / "copilot.cmd"
@@ -415,14 +476,320 @@ def test_default_production_refuses_placeholder_protocol_before_calls(tmp_path):
         env={
             **os.environ,
             "APPDATA": str(appdata),
-            "PHOENIX_BUILD_STAMP": "final-build-for-preflight-test",
             "FAKE_COPILOT_LOG": str(log),
         },
     )
     assert fake.exists()
     assert completed.returncode != 0
-    assert "production protocol pins are not finalized" in completed.stderr
+    assert "PHOENIX_BUILD_STAMP is required" in completed.stderr
     assert not log.exists()
+
+
+@pytest.mark.skipif(not POWERSHELL, reason="PowerShell unavailable")
+def test_production_requires_frozen_pins_before_calls(tmp_path):
+    _, harness, runner = make_production_fixture(tmp_path, "unfrozen")
+    appdata = tmp_path / "appdata"
+    fake_dir = appdata / "npm"
+    fake_dir.mkdir(parents=True)
+    log = tmp_path / "fake.jsonl"
+    (fake_dir / "copilot.cmd").write_text(
+        '@echo called>>"%FAKE_COPILOT_LOG%"\n@exit /b 99\n', encoding="ascii"
+    )
+    completed = subprocess.run(
+        [POWERSHELL, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(runner)],
+        capture_output=True,
+        text=True,
+        timeout=90,
+        env={
+            **os.environ,
+            "APPDATA": str(appdata),
+            "PHOENIX_BUILD_STAMP": "synthetic-unfrozen-build",
+            "FAKE_COPILOT_LOG": str(log),
+        },
+    )
+    assert completed.returncode != 0
+    assert "pinned protocol is required" in completed.stderr
+    assert not log.exists()
+    assert not (harness / "results" / "run-manifest.json").exists()
+
+
+@pytest.mark.skipif(not POWERSHELL, reason="PowerShell unavailable")
+def test_production_evidence_schema_matches_program_gate(tmp_path):
+    required_pins = {
+        "phoenix_source_commit",
+        "phoenix_build_stamp",
+        "model_id",
+        "runner_version",
+        "environment_manifest_hash",
+        "task_set_hash",
+        "seeds",
+        "level_1_sealed_verifier_hash",
+        "level_2_adversarial_verifier_hash",
+    }
+    row_fields = {
+        "run_id",
+        "task_id",
+        "seed",
+        "arm",
+        "order",
+        "started_utc",
+        "completed_utc",
+        "exit_code",
+        "claimed_done",
+        "model_id",
+        "runner_sha256",
+        "prompt_sha256",
+        "transcript_sha256",
+        "final_solution_sha256",
+        "cost_units",
+        "level1_pass",
+        "level2_pass",
+        "objective_pass",
+        "mock_run",
+    }
+
+    appdata = tmp_path / "appdata"
+    fake_dir = appdata / "npm"
+    fake_dir.mkdir(parents=True)
+    fake_python = tmp_path / "fake_copilot.py"
+    fake_python.write_text(
+        "import json, os, pathlib, subprocess, sys\n"
+        "manifest_path = pathlib.Path(os.environ['EXPECTED_MANIFEST'])\n"
+        "assert manifest_path.name == 'run-manifest.json'\n"
+        "assert not manifest_path.with_name('manifest.json').exists()\n"
+        "manifest = json.loads(manifest_path.read_text(encoding='utf-8'))\n"
+        "assert manifest['execution_status'] == os.environ['EXPECTED_STATUS']\n"
+        "assert manifest['evidence_classification'] == os.environ['EXPECTED_CLASSIFICATION']\n"
+        f"required = {required_pins!r}\n"
+        "assert required <= manifest['pins'].keys()\n"
+        "for name in required:\n"
+        "    pin = manifest['pins'][name]\n"
+        "    key = 'values' if name == 'seeds' else 'value'\n"
+        "    assert set(pin) == {'state', key} and pin['state'] == 'pinned'\n"
+        "    assert 'PREREGISTRATION_PLACEHOLDER' not in str(pin[key])\n"
+        "with open(os.environ['FAKE_COPILOT_LOG'], 'a', encoding='utf-8') as log:\n"
+        "    log.write(json.dumps(manifest, separators=(',', ':')) + '\\n')\n"
+        "if os.environ.get('INTERRUPT_RUN') == '1':\n"
+        "    subprocess.run(['powershell', '-NoProfile', '-Command', "
+        "\"$p=Get-CimInstance Win32_Process -Filter ('ProcessId=' + "
+        "(Get-CimInstance Win32_Process -Filter ('ProcessId=' + $PID))."
+        "ParentProcessId); while ($p -and $p.Name -notmatch "
+        "'^(powershell|pwsh)(\\.exe)?$') {$p=Get-CimInstance Win32_Process "
+        "-Filter ('ProcessId=' + $p.ParentProcessId)}; "
+        "if ($p) {Stop-Process -Id $p.ProcessId -Force}\"], check=False)\n"
+        "    os._exit(86)\n"
+        "args = sys.argv[1:]\n"
+        "workspace = pathlib.Path(args[args.index('-C') + 1])\n"
+        f"(workspace / 'solution.py').write_text({correct_lru()!r}, encoding='utf-8')\n"
+        "print('{\"message\":\"DONE\"}')\n",
+        encoding="utf-8",
+    )
+    (fake_dir / "copilot.cmd").write_text(
+        f'@"{sys.executable}" "{fake_python}" %*\n', encoding="ascii"
+    )
+
+    def invoke(runner, env, extra=()):
+        return subprocess.run(
+            [
+                POWERSHELL,
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(runner),
+                *extra,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=90,
+            env={**os.environ, "APPDATA": str(appdata), **env},
+        )
+
+    def assert_completed(harness, classification, mock_run):
+        manifest_path = harness / "results" / "run-manifest.json"
+        assert manifest_path.is_file()
+        assert not (harness / "results" / "manifest.json").exists()
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        assert manifest["execution_status"] == (
+            "mechanics_only" if mock_run else "completed"
+        )
+        assert manifest["evidence_classification"] == classification
+        assert set(manifest) == {
+            "schema_version",
+            "protocol_id",
+            "protocol_status",
+            "execution_status",
+            "evidence_classification",
+            "tasks",
+            "environment",
+            "pins",
+            "task_manifest",
+            "run_count",
+        }
+        assert manifest["schema_version"] == "1.0"
+        assert manifest["protocol_status"] == "preregistered"
+        assert manifest["tasks"] == ["cache-lru"]
+        assert set(manifest["pins"]) == required_pins | {
+            "runner_hash",
+            "raw_jsonl_hash",
+            "runner_sha256",
+            "completion_utc",
+        }
+        for name in required_pins:
+            pin = manifest["pins"][name]
+            key = "values" if name == "seeds" else "value"
+            assert set(pin) == {"state", key}
+            assert pin["state"] == "pinned"
+            assert "PREREGISTRATION_PLACEHOLDER" not in str(pin[key])
+
+        raw_path = harness / "results" / "raw-runs.jsonl"
+        runner_sha = hashlib.sha256((harness / RUNNER.name).read_bytes()).hexdigest()
+        assert manifest["pins"]["runner_hash"] == runner_sha
+        assert manifest["pins"]["runner_sha256"] == runner_sha
+        assert manifest["pins"]["raw_jsonl_hash"] == hashlib.sha256(
+            raw_path.read_bytes()
+        ).hexdigest()
+        completion = datetime.fromisoformat(
+            manifest["pins"]["completion_utc"].replace("Z", "+00:00")
+        )
+        assert completion.tzinfo is not None and completion.utcoffset() is not None
+
+        rows = [
+            json.loads(line)
+            for line in raw_path.read_text(encoding="utf-8").splitlines()
+        ]
+        assert len(rows) == manifest["run_count"] == 2
+        assert len({row["run_id"] for row in rows}) == 2
+        for row in rows:
+            assert set(row) == row_fields
+            assert row["run_id"]
+            assert row["model_id"] == manifest["pins"]["model_id"]["value"]
+            assert row["runner_sha256"] == runner_sha
+            assert row["mock_run"] is mock_run
+            assert row["task_id"] == "cache-lru"
+            assert row["seed"] == 7
+            assert row["objective_pass"] is (
+                row["level1_pass"] and row["level2_pass"]
+            )
+        return manifest
+
+    _, production_harness, production_runner = make_production_fixture(
+        tmp_path, "production"
+    )
+    production_log = tmp_path / "production-log.jsonl"
+    production_env = {
+        "PHOENIX_BUILD_STAMP": "synthetic-production-build",
+        "EXPECTED_MANIFEST": str(production_harness / "results" / "run-manifest.json"),
+        "EXPECTED_CLASSIFICATION": "benchmark",
+        "EXPECTED_STATUS": "running",
+        "FAKE_COPILOT_LOG": str(production_log),
+    }
+    frozen = invoke(
+        production_runner,
+        production_env,
+        ("-FreezePins",),
+    )
+    assert frozen.returncode == 0, frozen.stderr + frozen.stdout
+    assert not production_log.exists()
+    production_results = production_harness / "results"
+    pinned_path = production_results / "protocol-pinned.json"
+    frozen_manifest_path = production_results / "run-manifest.json"
+    assert pinned_path.is_file()
+    pinned_protocol = json.loads(pinned_path.read_text(encoding="utf-8"))
+    assert pinned_protocol["execution_status"] == "not_run"
+    assert set(pinned_protocol["pinning"]) == required_pins
+    for name, pin in pinned_protocol["pinning"].items():
+        assert pin["state"] == "pinned"
+        value = pin["values"] if name == "seeds" else pin["value"]
+        assert "PREREGISTRATION_PLACEHOLDER" not in str(value)
+        assert pin["immutable_during_run"] is True
+    assert pinned_protocol["pinning"]["seeds"]["values"] == [7]
+    frozen_manifest = json.loads(frozen_manifest_path.read_text(encoding="utf-8"))
+    assert frozen_manifest["execution_status"] == "frozen"
+    assert frozen_manifest["evidence_classification"] == "benchmark"
+    assert frozen_manifest["run_count"] == 0
+    assert not {"raw_jsonl_hash", "completion_utc"} & frozen_manifest["pins"].keys()
+    assert not (production_results / "raw-runs.jsonl").exists()
+    missing_command = invoke(
+        production_runner,
+        {**production_env, "APPDATA": str(tmp_path / "missing-appdata")},
+    )
+    assert missing_command.returncode != 0
+    assert "Copilot command is missing" in missing_command.stderr
+    assert not production_log.exists()
+    assert json.loads(frozen_manifest_path.read_text(encoding="utf-8")) == frozen_manifest
+    refused_refreeze = invoke(
+        production_runner,
+        production_env,
+        ("-FreezePins",),
+    )
+    assert refused_refreeze.returncode != 0
+    assert "use -Force" in refused_refreeze.stderr
+    assert not production_log.exists()
+    assert json.loads(frozen_manifest_path.read_text(encoding="utf-8")) == frozen_manifest
+
+    production = invoke(production_runner, production_env)
+    assert production.returncode == 0, production.stderr + production.stdout
+    assert len(production_log.read_text(encoding="utf-8").splitlines()) == 2
+    assert_completed(production_harness, "benchmark", False)
+
+    mechanics_root, mechanics_harness, mechanics_runner = make_production_fixture(
+        tmp_path, "mechanics"
+    )
+    mechanics_output = mechanics_harness / "results"
+    mechanics_log = tmp_path / "mechanics-log.jsonl"
+    mechanics = invoke(
+        mechanics_runner,
+        {
+            "EXPECTED_MANIFEST": str(mechanics_output / "run-manifest.json"),
+            "EXPECTED_CLASSIFICATION": "mechanics_only",
+            "EXPECTED_STATUS": "mechanics_only",
+            "FAKE_COPILOT_LOG": str(mechanics_log),
+        },
+        (
+            "-TasksDir",
+            str(mechanics_root / "evals" / "swe-bench-lite" / "tasks"),
+            "-OutputDir",
+            str(mechanics_output),
+            "-CopilotCommand",
+            str(fake_dir / "copilot.cmd"),
+            "-Seeds",
+            "7",
+        ),
+    )
+    assert mechanics.returncode == 0, mechanics.stderr + mechanics.stdout
+    assert_completed(mechanics_harness, "mechanics_only", True)
+
+    _, interrupted_harness, interrupted_runner = make_production_fixture(
+        tmp_path, "interrupted"
+    )
+    interrupted_log = tmp_path / "interrupted-log.jsonl"
+    interrupted_env = {
+        "PHOENIX_BUILD_STAMP": "synthetic-interrupted-build",
+        "EXPECTED_MANIFEST": str(
+            interrupted_harness / "results" / "run-manifest.json"
+        ),
+        "EXPECTED_CLASSIFICATION": "benchmark",
+        "EXPECTED_STATUS": "running",
+        "FAKE_COPILOT_LOG": str(interrupted_log),
+        "INTERRUPT_RUN": "1",
+    }
+    interrupted_frozen = invoke(
+        interrupted_runner,
+        interrupted_env,
+        ("-FreezePins",),
+    )
+    assert interrupted_frozen.returncode == 0
+    assert not interrupted_log.exists()
+    interrupted = invoke(interrupted_runner, interrupted_env)
+    assert interrupted.returncode != 0
+    running_path = interrupted_harness / "results" / "run-manifest.json"
+    running = json.loads(running_path.read_text(encoding="utf-8"))
+    assert running["execution_status"] == "running"
+    assert running["evidence_classification"] == "benchmark"
+    assert not {"raw_jsonl_hash", "completion_utc"} <= running["pins"].keys()
+    with pytest.raises(AssertionError):
+        assert_completed(interrupted_harness, "benchmark", False)
 
 
 @pytest.mark.skipif(not POWERSHELL, reason="PowerShell unavailable")
@@ -465,7 +832,7 @@ def test_missing_immutable_protocol_pin_is_rejected_before_calls(tmp_path):
     assert completed.returncode != 0
     assert "protocol pins are incomplete" in completed.stderr
     assert not log.exists()
-    assert not (output / "manifest.json").exists()
+    assert not (output / "run-manifest.json").exists()
 
 
 @pytest.mark.skipif(not POWERSHELL, reason="PowerShell unavailable")
@@ -509,7 +876,7 @@ def test_missing_harness_prerequisites_are_rejected(tmp_path, missing, message):
     )
     assert completed.returncode != 0
     assert message in completed.stderr
-    assert not (output / "manifest.json").exists()
+    assert not (output / "run-manifest.json").exists()
 
 
 @pytest.mark.skipif(not POWERSHELL, reason="PowerShell unavailable")
@@ -523,7 +890,7 @@ def test_missing_harness_prerequisites_are_rejected(tmp_path, missing, message):
         ("duplicate-raw", "incomplete or duplicate arm pairs", 3),
     ],
 )
-def test_invalid_or_incomplete_pairs_never_create_manifest(
+def test_invalid_or_incomplete_pairs_leave_running_manifest(
     tmp_path, mode, message, raw_lines
 ):
     tasks = tmp_path / "tasks"
@@ -566,7 +933,10 @@ def test_invalid_or_incomplete_pairs_never_create_manifest(
     completed = run_runner(tasks, output, fake, seeds=(11,), env=env)
     assert completed.returncode != 0
     assert message in completed.stderr
-    assert not (output / "manifest.json").exists()
+    manifest = json.loads((output / "run-manifest.json").read_text(encoding="utf-8"))
+    assert manifest["execution_status"] == "mechanics_only"
+    assert manifest["evidence_classification"] == "mechanics_only"
+    assert manifest["run_count"] == 0
     raw = output / "raw-runs.jsonl"
     assert raw.exists()
     assert len(raw.read_text(encoding="utf-8").splitlines()) == raw_lines
