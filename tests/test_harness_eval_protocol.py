@@ -164,6 +164,10 @@ def sha256_bytes(value):
     return hashlib.sha256(value).hexdigest()
 
 
+def canonical_newlines(value):
+    return value.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")
+
+
 def canonical_hash(value):
     encoded = json.dumps(value, separators=(",", ":"), ensure_ascii=False).encode()
     return sha256_bytes(encoded)
@@ -210,8 +214,9 @@ def expected_task_manifest(commit):
         for name in ("problem.md", "solution.py", "test_f2p.py", "test_p2p.py"):
             relative = task_root / task_id / name
             committed = git_blob(commit, relative)
-            assert (ROOT / relative).read_bytes() == committed
-            files[name] = sha256_bytes(committed)
+            working = (ROOT / relative).read_bytes()
+            assert canonical_newlines(working) == canonical_newlines(committed)
+            files[name] = sha256_bytes(working)
         manifest.append({"task_id": task_id, "files": files})
     return manifest
 
@@ -249,6 +254,19 @@ def expected_prompt(task_id, seed, arm):
 
 def test_protocol_is_valid_json_and_satisfies_preregistered_contract():
     assert_protocol_valid(load_protocol())
+
+
+@pytest.mark.parametrize(
+    ("working", "committed", "matches"),
+    [
+        (b"alpha\r\nbeta\r\n", b"alpha\nbeta\n", True),
+        (b"alpha\rbeta\r", b"alpha\nbeta\n", True),
+        (b"alpha\r\nbeta\n", b"alpha\nchanged\n", False),
+        (b"alpha \r\nbeta\n", b"alpha\nbeta\n", False),
+    ],
+)
+def test_canonical_newlines_only_normalizes_line_endings(working, committed, matches):
+    assert (canonical_newlines(working) == canonical_newlines(committed)) is matches
 
 
 @pytest.mark.parametrize("pin_name", sorted(REQUIRED_PINS))
@@ -492,13 +510,20 @@ def test_real_paired_results_meet_minimum_repetitions():
     assert commit_check.returncode == 0, "Pinned Phoenix source commit does not exist"
 
     task_manifest = expected_task_manifest(source_commit)
+    runner_bytes = RUNNER_PATH.read_bytes()
+    verifier_bytes = VERIFIER_PATH.read_bytes()
+    assert canonical_newlines(runner_bytes) == canonical_newlines(
+        git_blob(source_commit, RUNNER_PATH.relative_to(ROOT))
+    )
+    assert canonical_newlines(verifier_bytes) == canonical_newlines(
+        git_blob(source_commit, VERIFIER_PATH.relative_to(ROOT))
+    )
+
     assert manifest["task_manifest"] == task_manifest
     assert pinned["task_set_hash"] == canonical_hash(task_manifest)
     assert pinned["environment_manifest_hash"] == canonical_hash(manifest["environment"])
 
-    runner_sha = sha256_bytes(RUNNER_PATH.read_bytes())
-    assert sha256_bytes(git_blob(source_commit, RUNNER_PATH.relative_to(ROOT))) == runner_sha
-    assert git_blob(source_commit, VERIFIER_PATH.relative_to(ROOT)) == VERIFIER_PATH.read_bytes()
+    runner_sha = sha256_bytes(runner_bytes)
     assert pins["runner_hash"] == runner_sha
     assert pins["runner_sha256"] == runner_sha
     assert pins["raw_jsonl_hash"] == sha256_bytes(raw_bytes)
