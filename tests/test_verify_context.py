@@ -55,12 +55,47 @@ def test_impact_set_union_for_multiple_symbols():
     assert set(scope) == expected, f"Expected {expected}, got {set(scope)}"
 
 
-def test_unknown_symbol_returns_empty_scope():
-    """A symbol with no graph entry returns empty scope, NOT the full suite."""
-    from phoenix_sense_tmx import get_scope
+def test_incomplete_graph_coverage_requires_full_suite():
+    """Incomplete coverage and release gates fail closed to the full suite."""
+    from phoenix_sense_tmx import FULL_SUITE_REQUIRED, get_scope
 
-    scope = get_scope(FIXTURE_GRAPH, changed_symbols=["nonexistent_symbol"])
-    assert scope == [], f"Unknown symbol should yield [], got {scope}"
+    assert get_scope({}, changed_symbols=["parse_args"]) == FULL_SUITE_REQUIRED
+    assert get_scope(FIXTURE_GRAPH, changed_symbols=[]) == FULL_SUITE_REQUIRED
+    assert (
+        get_scope(FIXTURE_GRAPH, changed_symbols=["nonexistent_symbol"])
+        == FULL_SUITE_REQUIRED
+    )
+    assert (
+        get_scope(
+            FIXTURE_GRAPH,
+            changed_symbols=["parse_args", "nonexistent_symbol"],
+        )
+        == FULL_SUITE_REQUIRED
+    )
+    assert (
+        get_scope({"uncovered": []}, changed_symbols=["uncovered"])
+        == FULL_SUITE_REQUIRED
+    )
+    assert (
+        get_scope({"malformed": "tests/test_gate.py"}, changed_symbols=["malformed"])
+        == FULL_SUITE_REQUIRED
+    )
+    assert (
+        get_scope({"blank": [""]}, changed_symbols=["blank"])
+        == FULL_SUITE_REQUIRED
+    )
+    assert (
+        get_scope(FIXTURE_GRAPH, changed_symbols=["parse_args"], mode="ship")
+        == FULL_SUITE_REQUIRED
+    )
+    assert (
+        get_scope(
+            FIXTURE_GRAPH,
+            changed_symbols=["parse_args"],
+            mode="integration",
+        )
+        == FULL_SUITE_REQUIRED
+    )
 
 
 def test_full_suite_not_returned_for_partial_change():
