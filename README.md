@@ -1,179 +1,224 @@
-# ATV-Phoenix
+<p align="center">
+  <img src="assets/logo.jpg" width="104" alt="ATV-Phoenix logo: an ember-orange phoenix on a dark background">
+</p>
 
-## One line in. A demonstrated outcome out.
+<h1 align="center">ATV-Phoenix</h1>
 
-![Intent in, demonstrated outcome out](assets/journey-v2.jpg)
+<p align="center"><strong>Copilot proposes the code. Phoenix decides whether the evidence is good enough.</strong></p>
 
-Point Phoenix at a one-line idea and walk away. It **interviews** you into a crystal intent, **formalizes**
-it into a runnable acceptance check, then runs the full **think â†’ plan â†’ build â†’ test â†’ review â†’ ship**
-lifecycle on autopilot â€” **healing every failure** and **re-checking its own work** at every step.
+<p align="center">
+  Phoenix is a verification and recovery harness for GitHub Copilot and Microsoft Scout.
+  It runs real checks, recovers from failures, and records proof that the work went from failing to passing.
+</p>
 
-For **long-horizon work** â€” multi-hour, many-step jobs â€” Phoenix's autonomous trio takes over:
-[`phoenix-goal`](skills/phoenix-goal/SKILL.md) sets a persistent definition of done,
-[`phoenix-ralph`](skills/phoenix-ralph/SKILL.md) grinds the backlog across fresh-context iterations
-(filesystem as memory), and [`phoenix-auto`](skills/phoenix-auto/SKILL.md) routes dynamically. It's the
-same long-running-agent design **OpenAI Codex** (`/goal` mode) and **Anthropic** (a goal condition
-re-checked every turn) converge on â€” but their loops still end in an *opinion* (an LLM grading output, a
-diff for you to review). **Phoenix ends in evidence:** it doesn't stop when the model *says* it's done â€”
-it stops when a **tamper-evident trace *proves*** the acceptance check went red â†’ green, or it doesn't
-ship. That's the property you actually need before you walk away from an unattended loop.
+<p align="center">
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.4.0-E07000" alt="Version 0.4.0"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-00B4D8" alt="MIT license"></a>
+  <a href="Cargo.toml"><img src="https://img.shields.io/badge/core-Rust-E07000" alt="Rust core"></a>
+  <a href=".github/workflows/connector-proof.yml"><img src="https://img.shields.io/badge/proof-failure--first-00B4D8" alt="Failure-first proof"></a>
+</p>
 
-The difference, measured: silent failures **40% â†’ 0%**, zero regressions, completion you can audit.
+<p align="center">
+  <a href="#install">Install</a> |
+  <a href="#quick-start">Quick start</a> |
+  <a href="#core-features">Features</a> |
+  <a href="#evidence">Evidence</a> |
+  <a href="#documentation">Docs</a>
+</p>
 
-**â†’ Full greenfield walkthrough: [`docs/developer-journey.md`](docs/developer-journey.md) Â· long-horizon design + lab alignment: [`docs/autonomous-workflows.md`](docs/autonomous-workflows.md)**
+Phoenix replaces "the agent says it is done" with an external control loop:
 
----
+1. Define a runnable acceptance check.
+2. Observe the check fail.
+3. Let the agent edit and recover.
+4. Re-run the same check.
+5. Ship only when the hash-chained trace shows the check was red before the fix, turned green
+   afterward, and is still green on the final recheck.
 
-## The results that justify it
-
-Three hypotheses, all tested on **live GitHub Copilot sessions**, scored by hidden checkers (ground truth):
-
-| Question | Result |
-|---|---|
-| **Does objective verification beat self-judgment?** (H2) | Silent-failure rate **40% â†’ 0%** across 20 sessions â€” vanilla Copilot shipped broken code with false confidence; Phoenix caught and healed every one. **Zero regressions.** |
-| **Does formalizing intent into a check first help?** (H1) | **+0.125** mean verified-outcome lift, **replicated 3/3 runs** (criteria-first perfect every run). |
-| **Does injecting the right context/memory help?** (H3) | **0% â†’ 100%** â€” without a project's convention, Copilot produced a plausible-but-wrong default every time; with it injected, correct every time. |
-| **Does it hold up on a SWE-bench-style contract?** | Underspecified resolved-rate **50% â†’ 100%** (overall **78% â†’ 100%**, **0 regressions**) â€” both vanilla misses were *silent failures* the enforced test-gate caught. |
-
-And it isn't just fault-recovery on broken files â€” under the loop, live Copilot **built a real project
-end-to-end** (a working Space Invaders game) gated by an objective check + a hardened Playwright
-interaction gate. Full method + raw data per experiment under [`evals/`](evals/).
-
----
-
-## What Phoenix gives the agent (5 tools)
-
-| Tool | What it does |
-|---|---|
-| `phoenix_sense` | Objectively check success â€” a command's exit code, a file hash, or a regex. **No self-grading.** |
-| `phoenix_snapshot` | Save a known-good state â€” but **only if a check passes** (never blesses broken state). |
-| `phoenix_heal` | Bounded recovery (rollback to a snapshot, or retry â‰¤3Ã—), **confirmed by an external recheck**. |
-| `phoenix_verify_trace` | Audit a tamper-evident, hash-chained trace of everything sensed and healed. |
-| `phoenix_accept` | **The gate ledger** â€” returns ok only if the trace proves a check went **redâ†’green** (failure-first) and is green now. |
-
-The loop: **baseline-green â†’ snapshot â†’ edit â†’ sense â†’ heal if red â†’ confirm green** â€” all on
-*objective* signals, all traced.
-
----
+Use Phoenix for bug fixes, refactors, PR work, and unattended jobs where a runnable check can define
+the outcome.
 
 ## Install
 
-### GitHub Copilot CLI (recommended)
+> Requires Git, [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-in-the-cli),
+> Python 3, and [Rust](https://rustup.rs).
+
 ```powershell
 git clone https://github.com/All-The-Vibes/ATV-Phoenix
 cd ATV-Phoenix
 python .copilot-plugin/skills/phoenix-setup/setup.py --repo .
 ```
-The setup script is idempotent: it builds the Rust binary if needed, registers the `phoenix` MCP
-server in `~/.copilot/mcp-config.json`, and installs the `phoenix` agent. Restart Copilot, then ask it
-to verify + heal a task. (Requires [Rust](https://rustup.rs) + Python. `dist/install.ps1` is a
-PowerShell equivalent.)
 
-### Microsoft Scout (CLI adapter)
-Scout doesn't take external MCP servers, so Phoenix ships a **CLI** the Scout agent calls via its
-shell tool, plus a Scout skill that teaches the verify-heal loop:
+The installer builds `phoenix-mcp`, registers the MCP server, installs the Phoenix agent and skill
+pack, and runs an install-integrity check. It also attempts to install TokenMasterX, the maintainer's
+graph-routing plugin. TokenMasterX requires `graphify` on `PATH`; setup prints the exact follow-up
+command when that optional dependency is missing. Restart the Copilot CLI session after setup.
+
+If an upgrade or host change breaks the install:
+
 ```powershell
-phoenix-mcp sense   '{"kind":"command_exit","target":["pytest","-q"],"expect":0}'   # exit 0 = pass
-phoenix-mcp snapshot src/app.py '{"kind":"command_exit","target":["pytest","-q"]}'
-phoenix-mcp heal    rollback '{"path":"src/app.py","snap_id":"...","recheck":{...}}'
-phoenix-mcp verify-trace
+# Windows
+.\target\release\phoenix-mcp.exe doctor --fix
+
+# macOS / Linux
+./target/release/phoenix-mcp doctor --fix
 ```
-See [`dist/scout/`](dist/scout/). Same Rust binary, both hosts.
 
-### Using it (after install)
-Phoenix is a **harness, not a background daemon** â€” it doesn't watch your repo or act on its own. It
-shapes how Copilot works *while you work*, and you stay in the driver's seat.
+## Quick start
 
-- **Automatic:** just work normally. Ask Copilot to build, fix, or ship something and the matching
-  Phoenix skill engages by itself â€” running an objective check, healing failures, and refusing to call a
-  task "done" until a check actually goes **red â†’ green**.
-- **To be sure it's engaged:** start a task with **`/phoenix`** (loads the router + the laws), or select
-  the installed **`phoenix` agent**.
-- **Hands-off / autonomous:** say **"go"** or **`/phoenix-goal "<your goal>"`** â€” it FORMALIZES an
-  objective done-check first, then runs the whole lifecycle to completion (see
-  [autonomous workflows](docs/autonomous-workflows.md)).
-- **If it won't load** â€” `copilot --agent phoenix` says *"No such agent"*, a skill is missing, or things
-  feel off after a Copilot/Phoenix update â€” run **`phoenix-mcp doctor --fix`** (or `/phoenix-doctor`): it
-  compares your install against this build and re-syncs any drift. (The installer self-checks with it too.)
+Start Copilot with the Phoenix agent:
 
-Quick smoke test: ask it to fix a failing test and watch it **sense â†’ heal â†’ confirm green**.
+```powershell
+copilot --agent phoenix
+```
 
----
+This starts an interactive session. Phoenix acts on the task you give it; it does not start an
+unattended loop by itself. If the agent does not load, run `phoenix-mcp doctor --fix`, restart
+Copilot, and retry.
 
-## Open knowledge (OKF)
+Give it a task with a concrete check:
 
-Phoenix implements the [Open Knowledge Format](https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf)
-(OKF v0.1) â€” a directory of markdown + YAML frontmatter, graph-shaped via links, with `index.md` for
-progressive disclosure. The `phoenix-okf` skill closes the full loop:
+```text
+Fix the failing test. Use `python -m pytest tests/test_widget.py -q` as the
+acceptance check. Do not finish until phoenix_accept proves red to green.
+```
 
-- **Produce** â€” export the code graph to a browsable, git-diffable OKF bundle (one concept per source file).
-- **Validate / sense** â€” Â§9 conformance is a `phoenix_sense` gate; bundles are sensed through the spine.
-- **Consume** â€” ingest any OKF bundle index-first as token-cheap context (`okf_ingest`).
-- **Interop** â€” ingest *foreign* bundles authored by other tools; broken-link-tolerant under `--strict-links`.
+Phoenix should:
 
-**See it run:** [`demo/okf/run-demo.ps1`](demo/okf/run-demo.ps1) is a narrated 5-beat community demo with a
-real redâ†’green heal. Token receipts in [`evals/m4-okf/`](evals/m4-okf/RESULT.md) and
-[`evals/m5-okf-live/`](evals/m5-okf-live/RESULT.md).
+- run the check and record the failing result;
+- edit the smallest relevant surface;
+- re-run the same check;
+- recover or roll back if it stays red;
+- call `phoenix_accept` only after the trace proves the check went red to green.
 
----
+The audit trail lives in `.phoenix/trace.jsonl`. Verify it directly with:
 
-## What's in the box
+```powershell
+# Windows
+.\target\release\phoenix-mcp.exe verify-trace
 
-- **18 verification-gated skills** â€” a meta-router, the `think â†’ ship` lifecycle, craft skills
-  (Karpathy / Pocock / Emil), the self-heal + OKF spine, a `doctor` that verifies and repairs the install
-  itself, and the autonomous `goal`/`ralph`/`auto` trio. Every stage gates on an objective `phoenix_sense`
-  check. Full catalog: **[`docs/skills.md`](docs/skills.md)**.
-- **TokenMasterX** (bundled, MIT) â€” graph-routed code navigation, **âˆ’73% tokens**; `phoenix-context`
-  routes structural questions here instead of grepping whole directories.
-- **`phoenix-learn` â€” the measured-gain adoption gate** (new in 0.4.0): the first connector built *by*
-  Phoenix, under its own redâ†’green trace. A learned skill/prompt diff is adopted only when a **held-out
-  split proves a real, regression-free gain** (n â‰¥ 20, +10pp, zero rightâ†’wrong) â€” never on a self-graded
-  hunch. The gate **decides eligibility; it never adopts** (adoption stays human-gated). First slice â€” the
-  gate core â€” shipped; the optimizer that *proposes* candidates is next.
-  [`evals/c3-phoenix-learn`](evals/c3-phoenix-learn/RESULT.md).
-- **One-command install** â€” `setup.py` installs the whole stack; nothing else to fetch.
-- **The long-horizon engine** â€” for multi-hour, many-step jobs, the autonomous trio
-  [`phoenix-goal`](skills/phoenix-goal/SKILL.md) + [`phoenix-ralph`](skills/phoenix-ralph/SKILL.md) +
-  [`phoenix-auto`](skills/phoenix-auto/SKILL.md) runs the whole lifecycle to completion unattended,
-  stopping only on a trace-demonstrated outcome. The same long-running-agent design as OpenAI Codex / Anthropic
-  â€” but completion is *demonstrated*, not judged. See the [developer journey](docs/developer-journey.md) and
-  [autonomous workflows](docs/autonomous-workflows.md).
+# macOS / Linux
+./target/release/phoenix-mcp verify-trace
+```
 
-**Why it works:** the orchestration layer â€” not the model â€” determines agent success. Most "the model
-failed" problems are *harness* failures: no objective completion signal, no recovery, no evidence.
-Two principles Phoenix proves: **enforce, don't offer** (unprompted Copilot self-verified 0/10 times),
-and **evidence over self-grading** (a fabricated "done!" is the failure mode Phoenix exists to kill).
-The bigger bet â€” Intent-to-Outcome â€” is in **[`docs/intent-to-outcome.md`](docs/intent-to-outcome.md)**.
+The MCP completion tool is `phoenix_accept`. Its direct `phoenix-mcp accept` CLI form is:
 
----
+```powershell
+.\target\release\phoenix-mcp.exe accept @check.json
+```
 
-## Status (v0.4.0)
+For a full first project walkthrough, see the
+[developer journey](docs/developer-journey.md).
 
-Every milestone has a measured eval + a screenshot.
+![A phoenix rising from dark rubble in ember orange and cyan light](assets/hero.jpg)
 
-| Milestone | Demonstrated | Evidence |
+## Core features
+
+### The proof stack
+
+| Capability | What it does |
+|---|---|
+| **1. Objective checks** | `phoenix_sense` evaluates command exits, file hashes, regexes, prompt manifests, and UI behavior without asking an LLM to grade itself. |
+| **2. Verified recovery** | `phoenix_snapshot` saves only passing state. `phoenix_heal` rolls back or retries, then confirms recovery with an external recheck. |
+| **3. Proven completion** | `phoenix_accept` rejects vacuous checks and returns success only when an intact trace proves failure first and success now. |
+
+### Beyond the core loop
+
+| Capability | What it does |
+|---|---|
+| **Long-horizon execution** | `phoenix-goal` formalizes the finish line, `phoenix-auto` chooses the next lifecycle step, and `phoenix-ralph` persists across fresh-context iterations. |
+| **Graph-aware context** | `phoenix-context` asks TokenMasterX for call relationships and change impact instead of repeatedly scanning whole directories. |
+| **Portable knowledge** | `phoenix-okf` turns code and external knowledge into Open Knowledge Format (OKF) bundles: linked Markdown that can be validated, reviewed, and reused. |
+| **Install integrity** | `phoenix-mcp doctor` detects drift in the agent, skills, MCP registration, and binary freshness, then repairs it with `--fix`. |
+| **Multiple hosts** | GitHub Copilot uses the MCP server and agent pack. Microsoft Scout uses the same Rust binary through the CLI adapter in [`dist/scout`](dist/scout). |
+
+Browse the documented lifecycle in [`docs/skills.md`](docs/skills.md).
+Skill names use hyphens (`phoenix-goal`); MCP and CLI tool names use underscores
+(`phoenix_sense`).
+
+## How the proof loop works
+
+<p align="center">
+  <img src="assets/loop.jpg" width="520" alt="Phoenix sense and heal loop with passing and failing branches">
+</p>
+
+| Tool | Role |
+|---|---|
+| `phoenix_sense` | Run an objective check and record the evidence. |
+| `phoenix_snapshot` | Save a known-good file only when its guard check passes. |
+| `phoenix_heal` | Roll back or retry with a bounded policy and an external recheck. |
+| `phoenix_verify_trace` | Verify the hash chain and report the current trace head. |
+| `phoenix_accept` | Derive completion from failure-first evidence in the trace. |
+
+The trace is the source of truth. A success message from the coding model is not.
+
+## Autonomous workflows
+
+Phoenix supports two explicit modes:
+
+- **Interactive:** `copilot --agent phoenix` works on the task and permissions you provide.
+- **Autonomous:** the following entry points create or drive persistent state only when you invoke them.
+
+| Entry point | Use it when |
+|---|---|
+| [`phoenix-goal`](skills/phoenix-goal/SKILL.md) | You have a high-level outcome and need a runnable definition of done plus a backlog. |
+| [`phoenix-auto`](skills/phoenix-auto/SKILL.md) | The next lifecycle step depends on current objective state. |
+| [`phoenix-ralph`](skills/phoenix-ralph/SKILL.md) | The job needs fresh-context iterations, filesystem memory, budgets, and an objective stop signal. |
+
+Read [`docs/autonomous-workflows.md`](docs/autonomous-workflows.md) for the state files,
+failure-first gate ledger, and unattended drivers.
+
+## Evidence
+
+Phoenix ships its evaluation inputs and outputs in the repository. The results are directional,
+not universal claims.
+
+| Evaluation | Result | Scope |
 |---|---|---|
-| M0 | token/retrieval pillar (TokenMasterX/graphify) validated | [result](evals/m0-install-path/RESULT.md) Â· [shot](evals/screenshots/m0-graph-viz.png) |
-| M1 | self-healing spine in Rust (`cargo test`) | [result](evals/m1-self-heal/RESULT.md) Â· [shot](evals/screenshots/m1-self-heal.png) |
-| M2 | works over real MCP protocol | [result](evals/m2-mcp/RESULT.md) Â· [shot](evals/screenshots/m2-mcp-session.png) |
-| M3 | heals a fault **live inside Copilot** | [result](evals/m3-live-copilot/RESULT.md) Â· [shot](evals/screenshots/m3-live-copilot.png) |
-| E2E | builds a **real project end-to-end** live in Copilot â€” Space Invaders, gated by an objective check + a **hardened Playwright interaction gate** | [result](evals/e2e-sandbox/RESULT.md) Â· [shot](evals/screenshots/e2e-space-invaders.png) |
-| Autonomy | **gate ledger** (failure-first, trace-derived completion) + Ralph loop driver | [result](evals/autonomous-workflows/RESULT.md) Â· [shot](evals/screenshots/autonomous-workflows.png) |
-| OKF | produce / validate / sense / consume / interop, 12 pytest + 3 Rust spine tests, CI | [result](evals/m4-okf/RESULT.md) Â· [live](evals/m5-okf-live/RESULT.md) |
-| C3 | **`phoenix-learn`** measured-gain adoption gate â€” held-out split (nâ‰¥20 / +10pp / zero rightâ†’wrong), built failure-first under Phoenix's own **redâ†’green trace**; gate core shipped, optimizer in progress | [result](evals/c3-phoenix-learn/RESULT.md) |
-| H1 | criteria-first lift +0.125 mean, replicated 3/3 | [method + backlog](docs/intent-to-outcome.md#5-the-research-backlog-falsifiable-hypotheses) |
-| H2 | silent failures **40%â†’0%** | [result](evals/h2-experiment/RESULT.md) Â· [shot](evals/screenshots/h2-results.png) |
-| H3 | context/memory lift **0%â†’100%** | [result](evals/h3-experiment/RESULT.md) Â· [shot](evals/screenshots/h3-results.png) |
-| SWE-bench-lite | resolved-rate, underspecified tier **50%â†’100%** (overall 78%â†’100%, **0 regressions**) | [result](evals/swe-bench-lite/RESULT.md) Â· [shot](evals/screenshots/swe-bench-result.png) |
+| [Pinned paired harness](evals/harness-eval/results/run-manifest.json) | Phoenix **38/45** objective passes vs control **34/45**; silent failures **7/45** vs **11/45** | 90 real `gpt-5.6-sol` calls, 9 tasks, 5 seeds, paired arms, independent sealed and adversarial checks |
+| [Silent-failure experiment](evals/h2-experiment/RESULT.md) | Silent failures **40% to 0%**, with zero regressions | 20 live Copilot sessions, one older model/CLI configuration, deterministic checkers |
+| [SWE-bench-style evaluation](evals/swe-bench-lite/RESULT.md) | Overall resolved rate **78% to 100%**; underspecified tier **50% to 100%** | 9 constructed tasks, one repetition, explicit test gate in the Phoenix arm; not the official SWE-bench dataset |
+| [OKF evaluation](evals/m4-okf/RESULT.md) | Index-first retrieval used **31x fewer tokens** than raw `graph.json` | 50-file bundle; benefit is strongest across repeated and larger-context work |
 
-**Honest limits:** results are directional (small n, single model, deterministic checkers). Recovery is
-"bounded objective recovery," not broad self-healing. Command timeouts aren't yet enforced in-process.
-`copilot plugin install <repo>` (marketplace path) is scaffolded but not yet verified end-to-end â€”
-install via `setup.py` today. See [`BUILDLOG.md`](BUILDLOG.md) for the full honest engineering record.
+The paired harness stores the exact source commit, model, runner, environment, task-set, seed,
+verifier, and raw-run hashes. Inspect
+[`raw-runs.jsonl`](evals/harness-eval/results/raw-runs.jsonl) for every row.
+
+## What ships
+
+- A Rust MCP and CLI spine.
+- A verification-gated lifecycle skill pack for planning, implementation, testing, debugging,
+  context, review, shipping, autonomy, and knowledge.
+- PowerShell and Bash drivers for unattended Ralph loops.
+- GitHub Copilot setup and self-repair tooling.
+- A Microsoft Scout CLI adapter.
+- TokenMasterX integration from the same maintainer, distributed under MIT.
+- Reproducible tests, experiments, raw evidence, and an engineering record in
+  [`BUILDLOG.md`](BUILDLOG.md).
+
+## Honest limits
+
+- Phoenix proves the check you give it. A weak check can still prove the wrong outcome.
+- Recovery is bounded rollback and retry, not general autonomous repair.
+- Command timeouts are represented in checks but are not yet enforced in-process.
+- The published evaluations use small constructed task sets and single models. Treat the deltas as
+  evidence for these conditions, not as a universal ranking.
+- Phoenix runs when you invoke the agent or CLI. It is not a background repository daemon.
+- Use `setup.py` today. The Copilot CLI marketplace/plugin-install path is scaffolded but not yet
+  verified end to end.
+
+## Documentation
+
+- [Developer journey](docs/developer-journey.md): build a project from intent to demonstrated outcome.
+- [Autonomous workflows](docs/autonomous-workflows.md): goal, Ralph, state, budgets, and proof.
+- [Skill catalog](docs/skills.md): every lifecycle and craft skill.
+- [Intent to outcome](docs/intent-to-outcome.md): architecture, research questions, and design rationale.
+- [Changelog](CHANGELOG.md): shipped changes by release.
+- [Build log](BUILDLOG.md): the full engineering record, including failures and recoveries.
 
 ## License
-MIT â€” see [LICENSE](LICENSE). Phoenix bundles its **16-skill verification-gated pack** (MIT) and
-**vendors TokenMasterX** (MIT Â© 2026 Shyam Sridhar) under [`vendor/token-master`](vendor/token-master),
-both installed automatically. Every skill is original, written from scratch for Phoenix.
 
+MIT. See [`LICENSE`](LICENSE).
 
+TokenMasterX is owned by the same maintainer and included under its MIT license in
+[`vendor/token-master`](vendor/token-master).
