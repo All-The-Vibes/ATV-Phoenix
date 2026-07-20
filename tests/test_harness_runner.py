@@ -393,6 +393,75 @@ def test_runner_executes_paired_isolated_counterbalanced_runs(tmp_path):
 
 
 @pytest.mark.skipif(not POWERSHELL, reason="PowerShell unavailable")
+def test_nonzero_copilot_exit_is_recorded_and_run_continues(tmp_path):
+    tasks = tmp_path / "tasks"
+    task = make_task(tasks)
+    original_solution = (task / "solution.py").read_bytes()
+    output = tmp_path / "output"
+    log = tmp_path / "fake.jsonl"
+    fake = tmp_path / "fake-copilot.ps1"
+    solution = correct_lru().replace("'", "''")
+    fake.write_text(
+        "$items=@($args)\n"
+        "$wi=[Array]::IndexOf($items,'-C'); $work=$items[$wi+1]\n"
+        "$pi=[Array]::IndexOf($items,'-p'); $prompt=$items[$pi+1]\n"
+        "$arm=if ($items -contains '--disable-mcp-server') {'control'} else {'phoenix'}\n"
+        "$entry=[ordered]@{arm=$arm;prompt=$prompt;workspace=$work}\n"
+        "$entry|ConvertTo-Json -Compress|Add-Content -LiteralPath $env:FAKE_COPILOT_LOG\n"
+        "if ($arm -eq 'control' -and $prompt -match 'seed 104729') {\n"
+        "  Write-Output '{\"message\":\"call failed\"}'\n"
+        "  exit 1\n"
+        "}\n"
+        f"Set-Content -LiteralPath (Join-Path $work 'solution.py') -Value '{solution}'\n"
+        "Write-Output '{\"message\":\"DONE\"}'\n"
+        "exit 0\n",
+        encoding="utf-8",
+    )
+
+    completed = run_runner(
+        tasks, output, fake, env={"FAKE_COPILOT_LOG": str(log)}
+    )
+    assert completed.returncode == 0, completed.stderr + completed.stdout
+
+    calls = [json.loads(line) for line in log.read_text().splitlines()]
+    rows = [
+        json.loads(line)
+        for line in (output / "raw-runs.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert len(calls) == len(rows) == 4
+    failed = next(
+        row
+        for row in rows
+        if row["arm"] == "control" and row["seed"] == 104729
+    )
+    assert failed["exit_code"] == 1
+    assert failed["claimed_done"] is False
+    assert failed["cost_units"] == 1
+    assert failed["final_solution_sha256"] == hashlib.sha256(original_solution).hexdigest()
+    assert failed["level1_pass"] is False
+    assert failed["level2_pass"] is False
+    assert failed["objective_pass"] is False
+    assert len(failed["transcript_sha256"]) == 64
+    assert all(row["exit_code"] == 0 for row in rows if row is not failed)
+    assert all(row["cost_units"] == 1 for row in rows)
+    assert rows[-1]["objective_pass"] is True
+    assert {(row["seed"], row["arm"]) for row in rows} == {
+        (seed, arm)
+        for seed in (104729, 130363)
+        for arm in ("control", "phoenix")
+    }
+
+    manifest = json.loads((output / "run-manifest.json").read_text(encoding="utf-8"))
+    assert manifest["execution_status"] == "mechanics_only"
+    assert manifest["run_count"] == 4
+    assert manifest["pins"]["raw_jsonl_hash"] == hashlib.sha256(
+        (output / "raw-runs.jsonl").read_bytes()
+    ).hexdigest()
+    artifacts = (output / "raw-runs.jsonl").read_text() + json.dumps(manifest)
+    assert '{"message":"call failed"}' not in artifacts
+
+
+@pytest.mark.skipif(not POWERSHELL, reason="PowerShell unavailable")
 def test_runner_refuses_overwrite_without_explicit_force(tmp_path):
     tasks = tmp_path / "tasks"
     make_task(tasks)
