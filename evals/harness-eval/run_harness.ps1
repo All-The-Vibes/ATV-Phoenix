@@ -453,12 +453,10 @@ foreach ($Task in $Tasks) {
                     $ExitCode = $LASTEXITCODE
                     if ($null -eq $ExitCode) { $ExitCode = 0 }
                 } catch {
-                    $Transcript = $_.Exception.Message
-                    $ExitCode = 1
+                    Fail "Copilot command could not be started"
                 } finally {
                     $ErrorActionPreference = $PreviousErrorActionPreference
                 }
-                if ($ExitCode -ne 0) { Fail "Copilot command failed with exit code $ExitCode" }
                 $Ended = [DateTime]::UtcNow.ToString("o")
                 $ClaimedDone = $Transcript -match "(?im)\bDONE\b"
                 $SolutionPath = Join-Path $Workspace "solution.py"
