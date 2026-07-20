@@ -3,6 +3,7 @@ import hashlib
 import importlib.util
 import inspect
 import json
+import random
 import re
 import subprocess
 from collections import defaultdict
@@ -20,6 +21,7 @@ VERIFIER_PATH = ROOT / "evals" / "harness-eval" / "verifiers.py"
 RESULTS_PATH = ROOT / "evals" / "harness-eval" / "results"
 RUN_MANIFEST_PATH = RESULTS_PATH / "run-manifest.json"
 RAW_RUNS_PATH = RESULTS_PATH / "raw-runs.jsonl"
+RESULT_PATH = ROOT / "evals" / "harness-eval" / "RESULT.md"
 
 REQUIRED_PINS = {
     "phoenix_source_commit",
@@ -611,3 +613,289 @@ def test_real_paired_results_meet_minimum_repetitions():
             else {"phoenix": 0, "control": 1}
         )
         assert {arm: row["order"] for arm, row in arms.items()} == expected_order
+
+
+def assert_published_report_matches_results(
+    report, raw_text, manifest, protocol, committed_raw_hash
+):
+    rows = [load_json_strict(line) for line in raw_text.splitlines() if line.strip()]
+    assert len(rows) == manifest["run_count"]
+    arms = set(protocol["execution"]["arms"])
+    assert {row["arm"] for row in rows} == arms
+
+    pairs = defaultdict(dict)
+    for row in rows:
+        assert row["mock_run"] is False
+        pairs[(row["task_id"], row["seed"])][row["arm"]] = row
+    assert all(set(pair) == arms for pair in pairs.values())
+
+    def arm_metrics(arm, sample):
+        arm_rows = [pair[arm] for pair in sample]
+        passes = sum(row["objective_pass"] for row in arm_rows)
+        claimed = sum(row["claimed_done"] for row in arm_rows)
+        silent = sum(
+            row["claimed_done"] and not row["objective_pass"] for row in arm_rows
+        )
+        cost = sum(row["cost_units"] for row in arm_rows)
+        return {
+            "passes": passes,
+            "runs": len(arm_rows),
+            "rate": passes / len(arm_rows),
+            "silent": silent,
+            "silent_rate": silent / claimed,
+            "cost": cost / passes,
+        }
+
+    pair_rows = list(pairs.values())
+    metrics = {arm: arm_metrics(arm, pair_rows) for arm in arms}
+    intervals = protocol["metrics"]["confidence_intervals"]
+    rng = random.Random(intervals["seed"])
+    samples = defaultdict(list)
+    for _ in range(intervals["resamples"]):
+        sample = [pair_rows[rng.randrange(len(pair_rows))] for _ in pair_rows]
+        sampled = {arm: arm_metrics(arm, sample) for arm in arms}
+        for arm in arms:
+            for metric in ("rate", "silent_rate", "cost"):
+                samples[(arm, metric)].append(sampled[arm][metric])
+        for metric in ("rate", "silent_rate", "cost"):
+            samples[("difference", metric)].append(
+                sampled["phoenix"][metric] - sampled["control"][metric]
+            )
+
+    def percentile(values, probability):
+        ordered = sorted(values)
+        position = (len(ordered) - 1) * probability
+        lower = int(position)
+        fraction = position - lower
+        upper = min(lower + 1, len(ordered) - 1)
+        return ordered[lower] * (1 - fraction) + ordered[upper] * fraction
+
+    cis = {
+        key: (percentile(values, 0.025), percentile(values, 0.975))
+        for key, values in samples.items()
+    }
+
+    row_pattern = re.compile(
+        r"^\| (?P<arm>Phoenix|Control) "
+        r"\| (?P<passes>\d+) / (?P<runs>\d+) "
+        r"\| (?P<rate>\d+\.\d)% \((?P<rate_low>\d+\.\d)%–(?P<rate_high>\d+\.\d)%\) "
+        r"\| (?P<silent>\d+) / (?P<claimed>\d+) "
+        r"\| (?P<silent_rate>\d+\.\d)% "
+        r"\((?P<silent_low>\d+\.\d)%–(?P<silent_high>\d+\.\d)%\) "
+        r"\| (?P<cost>\d+\.\d{2}) "
+        r"\((?P<cost_low>\d+\.\d{2})–(?P<cost_high>\d+\.\d{2})\) \|$",
+        re.MULTILINE,
+    )
+    published = {match["arm"].lower(): match.groupdict() for match in row_pattern.finditer(report)}
+    assert set(published) == arms
+    for arm in arms:
+        actual = metrics[arm]
+        shown = published[arm]
+        assert int(shown["passes"]) == actual["passes"]
+        assert int(shown["runs"]) == actual["runs"]
+        assert int(shown["silent"]) == actual["silent"]
+        assert int(shown["claimed"]) == sum(
+            row["claimed_done"] for row in rows if row["arm"] == arm
+        )
+        assert float(shown["rate"]) == pytest.approx(actual["rate"] * 100, abs=0.05)
+        assert float(shown["silent_rate"]) == pytest.approx(
+            actual["silent_rate"] * 100, abs=0.05
+        )
+        assert float(shown["cost"]) == pytest.approx(actual["cost"], abs=0.005)
+        for metric, fields, scale in (
+            ("rate", ("rate_low", "rate_high"), 100),
+            ("silent_rate", ("silent_low", "silent_high"), 100),
+            ("cost", ("cost_low", "cost_high"), 1),
+        ):
+            expected = cis[(arm, metric)]
+            assert float(shown[fields[0]]) == pytest.approx(expected[0] * scale, abs=0.05)
+            assert float(shown[fields[1]]) == pytest.approx(expected[1] * scale, abs=0.05)
+
+    outcomes = {
+        (phoenix, control): sum(
+            pair["phoenix"]["objective_pass"] is phoenix
+            and pair["control"]["objective_pass"] is control
+            for pair in pair_rows
+        )
+        for phoenix in (True, False)
+        for control in (True, False)
+    }
+    outcome_match = re.search(
+        r"Pair outcomes were (\d+) both pass, (\d+) Phoenix only, "
+        r"(\d+) control only,\s+and (\d+) neither\.",
+        report,
+    )
+    assert outcome_match
+    assert tuple(map(int, outcome_match.groups())) == (
+        outcomes[(True, True)],
+        outcomes[(True, False)],
+        outcomes[(False, True)],
+        outcomes[(False, False)],
+    )
+
+    normalized = " ".join(report.split())
+
+    def signed_number(value):
+        return float(value.replace("−", "-"))
+
+    difference_patterns = {
+        "rate": (
+            r"paired pass-rate difference is ([+−]\d+\.\d) percentage points "
+            r"\(95% CI ([+−]\d+\.\d) to ([+−]\d+\.\d)\)",
+            100,
+            0.05,
+        ),
+        "silent_rate": (
+            r"silent-failure-rate difference is ([+−]\d+\.\d) points "
+            r"\(([+−]\d+\.\d) to ([+−]\d+\.\d)\)",
+            100,
+            0.05,
+        ),
+        "cost": (
+            r"cost difference is ([+−]\d+\.\d{2}) pinned units "
+            r"\(([+−]\d+\.\d{2}) to ([+−]\d+\.\d{2})\)",
+            1,
+            0.005,
+        ),
+    }
+    for metric, (pattern, scale, tolerance) in difference_patterns.items():
+        match = re.search(pattern, normalized)
+        assert match
+        expected_point = metrics["phoenix"][metric] - metrics["control"][metric]
+        expected_interval = cis[("difference", metric)]
+        shown = tuple(signed_number(value) for value in match.groups())
+        assert shown[0] == pytest.approx(expected_point * scale, abs=tolerance)
+        assert shown[1] == pytest.approx(expected_interval[0] * scale, abs=tolerance)
+        assert shown[2] == pytest.approx(expected_interval[1] * scale, abs=tolerance)
+
+    task_count = len(manifest["tasks"])
+    seed_count = len(manifest["pins"]["seeds"]["values"])
+    assert (
+        f"nine tasks at five fixed seeds, once per task/seed/arm "
+        f"({len(pair_rows)} paired units and {len(rows)} runs)"
+        in normalized
+    )
+    assert task_count == 9 and seed_count == 5
+    assert "same task and seed" in normalized
+    assert "deterministically counterbalanced order" in normalized
+    assert "Objective pass required both evaluator-only Level 1 and Level 2 checks" in normalized
+    assert (
+        f"95% paired bootstrap over task/seed pairs: "
+        f"{intervals['resamples']:,} resamples with fixed analysis seed {intervals['seed']}"
+        in normalized
+    )
+    runtime_raw_hash = manifest["pins"]["raw_jsonl_hash"]
+    assert f"manifest `pins.raw_jsonl_hash` value `{runtime_raw_hash}`" in normalized
+    assert (
+        "run-time generated `raw-runs.jsonl` artifact bytes in the pinned Windows environment"
+        in normalized
+    )
+    assert (
+        f"committed Git blob is LF-normalized and has SHA-256 `{committed_raw_hash}`"
+        in normalized
+    )
+    assert (
+        "Git newline normalization changed the generated CRLF line endings to LF when the file "
+        "was committed, so these hashes are expected to be distinct."
+        in normalized
+    )
+    assert runtime_raw_hash != committed_raw_hash
+    assert "These are objective counts, not a subjective ranking." in normalized
+    assert "## External-comparison evidence boundary" in report
+    assert (
+        "designated committed benchmark artifacts do not archive the external comparison"
+        in normalized
+    )
+    assert (
+        "cannot verify whether that comparison pinned a Phoenix version, used N=1, objectively "
+        "tied, or contained a score-display typo"
+        in normalized
+    )
+    assert "No source-specific correction is published." in normalized
+    assert (
+        "no score-display correction is published because no archived source was available to "
+        "verify it"
+        in normalized
+    )
+    assert "An unpinned comparison is not reproducible." in normalized
+    assert (
+        "An objective tie cannot be converted into an objective winner by subjective ordering."
+        in normalized
+    )
+    assert "N=1 cannot support comparative ranking." in normalized
+    for unsupported_assertion in (
+        "The upstream comparison was unpinned",
+        "The upstream comparison objectively tied",
+        "The upstream comparison used N=1",
+        "The upstream comparison contained a score-display typo",
+        "A single trial per condition (N=1)",
+    ):
+        assert unsupported_assertion not in normalized
+    assert "current-version replication" in normalized
+    assert "resource-limit enforcement as `none`" in normalized
+    assert "one run per task/seed/arm" in normalized
+    assert "only nine distinct tasks constrain generalization" in normalized
+    assert "confidence intervals include zero for every paired arm difference" in normalized
+
+
+def test_published_report_matches_results():
+    report = RESULT_PATH.read_text(encoding="utf-8")
+    manifest = load_json_strict(RUN_MANIFEST_PATH.read_text(encoding="utf-8"))
+    protocol = load_protocol()
+    committed_raw_bytes = git_blob("HEAD", RAW_RUNS_PATH.relative_to(ROOT))
+    assert manifest["environment"]["os"] == "Win32NT"
+    assert b"\r" not in committed_raw_bytes
+    runtime_raw_bytes = committed_raw_bytes.replace(b"\n", b"\r\n")
+    raw_text = committed_raw_bytes.decode("utf-8")
+    runtime_raw_hash = sha256_bytes(runtime_raw_bytes)
+    committed_raw_hash = sha256_bytes(committed_raw_bytes)
+
+    assert runtime_raw_hash == manifest["pins"]["raw_jsonl_hash"]
+    assert runtime_raw_bytes.replace(b"\r\n", b"\n") == committed_raw_bytes
+    assert committed_raw_hash != runtime_raw_hash
+
+    assert_published_report_matches_results(
+        report, raw_text, manifest, protocol, committed_raw_hash
+    )
+
+    invalid_reports = [
+        report.replace("38 / 45", "37 / 45", 1),
+        report.replace("+8.9 percentage points", "+9.9 percentage points", 1),
+        report.replace("same task and seed", "same task inputs", 1),
+        report.replace(
+            "run-time generated `raw-runs.jsonl` artifact bytes",
+            "portable committed `raw-runs.jsonl` artifact bytes",
+            1,
+        ),
+        report.replace(committed_raw_hash, runtime_raw_hash, 1),
+        report.replace(
+            "## External-comparison evidence boundary", "## Historical correction", 1
+        ),
+        report.replace(
+            "do not archive the external comparison", "describe the external comparison", 1
+        ),
+        report.replace(
+            "no score-display correction is published",
+            "a score-display correction is published",
+            1,
+        ),
+        report.replace(
+            "An objective tie cannot be converted into an objective winner by subjective ordering.",
+            "Subjective ordering can break an objective tie.",
+            1,
+        ),
+        report.replace(
+            "resource-limit enforcement as `none`",
+            "resource limits were recorded",
+            1,
+        ),
+    ]
+    for invalid_report in invalid_reports:
+        with pytest.raises(AssertionError):
+            assert_published_report_matches_results(
+                invalid_report,
+                raw_text,
+                manifest,
+                protocol,
+                committed_raw_hash,
+            )
