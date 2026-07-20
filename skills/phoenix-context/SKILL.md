@@ -62,6 +62,13 @@ results as a **candidate list** and confirm a hit at its cited `file:line` befor
 risky change. For precision-critical impact analysis, escalate to the AST backend (`codegraph`). State
 this uncertainty when it matters.
 
+### Test-scope decisions fail closed
+Graph-derived test scopes are draft/exploration evidence only. Use a scoped set only when the graph is
+non-empty and every changed symbol is present with at least one mapped test. An empty graph, no changed
+symbols, an unknown symbol, or a symbol with no mapped tests requires the full acceptance suite; never
+run a known subset when coverage is incomplete. Ship and integration gates must always run the full
+acceptance suite, even when graph coverage appears complete.
+
 ## Consuming OKF knowledge bundles
 When the knowledge is shaped as an **OKF bundle** (a directory of markdown concepts — Phoenix's own
 exported code graph, or any external catalog of runbooks / datasets / decisions), route to

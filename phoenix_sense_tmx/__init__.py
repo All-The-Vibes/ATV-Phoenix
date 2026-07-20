@@ -1,27 +1,42 @@
 """phoenix_sense_tmx — scope helper for C1 Verify x Context (issue #2).
 
-get_scope(graph, changed_symbols) returns the UNION of test files mapped to
-each changed symbol in the code graph.  In production the graph is fetched
-from the TokenMasterX MCP server; tests pass the graph directly so the
-decision logic is independently verifiable without a live TMX instance.
+For complete draft and exploration scopes, ``get_scope`` returns the union of
+test files mapped to each changed symbol. All other decisions fail closed to
+the full suite. Tests pass the graph directly so the decision logic is
+independently verifiable without a live TMX instance.
 """
 
 from __future__ import annotations
 
-from typing import Dict, List
+from typing import Final, Literal, TypeAlias
+
+FULL_SUITE_REQUIRED: Final = "full_suite_required"
+ScopeMode: TypeAlias = Literal["draft", "exploration", "ship", "integration"]
+ScopeDecision: TypeAlias = list[str] | Literal["full_suite_required"]
 
 
-def get_scope(graph: Dict[str, List[str]], changed_symbols: List[str]) -> List[str]:
-    """Return the sorted, deduplicated list of test files that cover the
-    changed symbols, derived from *graph*.
+def get_scope(
+    graph: dict[str, list[str]],
+    changed_symbols: list[str],
+    *,
+    mode: ScopeMode = "draft",
+) -> ScopeDecision:
+    """Return a deterministic scoped test list, or require the full suite.
 
-    Rules enforced here (and checked by tests/test_verify_context.py):
-    - Scope = UNION of graph[sym] for each sym in changed_symbols.
-    - A symbol absent from the graph contributes nothing (empty, not full suite).
-    - A test file NOT in any impacted symbol's set is excluded.
-    - Result is deterministic (sorted) so callers can assert equality by value.
+    Scoped lists are evidence for complete draft and exploration queries only.
+    Missing graph coverage and ship or integration gates require the full suite.
     """
+    if mode not in ("draft", "exploration") or not graph or not changed_symbols:
+        return FULL_SUITE_REQUIRED
+
     scope: set[str] = set()
     for sym in changed_symbols:
-        scope.update(graph.get(sym, []))
+        tests = graph.get(sym)
+        if (
+            not isinstance(tests, list)
+            or not tests
+            or any(not isinstance(test, str) or not test.strip() for test in tests)
+        ):
+            return FULL_SUITE_REQUIRED
+        scope.update(tests)
     return sorted(scope)
