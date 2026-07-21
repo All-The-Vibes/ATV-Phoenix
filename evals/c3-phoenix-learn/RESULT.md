@@ -20,7 +20,7 @@ this same gate) is the next slice.
 | --- | --- |
 | `REJECT_GAMING_DETECTED` | any anti-gaming lint hit (short-circuits everything) |
 | `EXPERIMENTAL_SMOKE_TEST` | `private_n < 20` — too little held-out evidence to trust |
-| `ADOPT_ELIGIBLE` | `n ≥ 20` **and** `+10pp` (or `+2` net correct) **and** zero `right→wrong` **and** strictly better than baseline |
+| `ADOPT_ELIGIBLE` | `n ≥ 20` **and** `+10pp` **and** `+2` net correct **and** zero `right→wrong` **and** strictly better than baseline |
 | `REJECT` | everything else |
 
 The gate **decides eligibility; it never adopts** — adoption is a human-gated step (see `AGENTS.md`).
