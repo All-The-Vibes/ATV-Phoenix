@@ -13,6 +13,7 @@ pub mod accept;
 pub mod prompt_ledger;
 pub mod intent;
 pub mod monitor;
+pub mod execution_backend;
 pub mod supervisor;
 
 pub use doctor::{doctor, DoctorReport, integrity, fix as doctor_fix, resolve_home, InstallReport};
@@ -23,4 +24,5 @@ pub use trace::{Trace, TraceVerify};
 pub use accept::{verify_gate, GateResult};
 pub use prompt_ledger::{capture, verify_against, Manifest, Verdict};
 pub use intent::{verify_intent, IntentManifest, GoalSpec, CompositeAcceptResult, GoalAcceptResult, GoalKind, MAX_GOALS};
+pub use execution_backend::{BackendOutcome, BackendStatus, ExecutionBackend, Job, LocalBackend, LOCAL_BACKEND_NAME};
 pub use supervisor::{Admission, Supervisor};
