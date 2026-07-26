@@ -1,0 +1,138 @@
+name: Phoenix proof
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      acceptance_command:
+        description: Acceptance check command to prove red on base and green on head.
+        required: false
+        default: python -m pytest tests/test_phoenix_learn.py -q
+
+permissions:
+  contents: read
+
+env:
+  PHOENIX_ACCEPTANCE_COMMAND: ${{ inputs.acceptance_command || 'python -m pytest tests/test_phoenix_learn.py -q' }}
+
+jobs:
+  phoenix-proof:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - name: Detect acceptance contract
+        id: acceptance_contract
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            if [ -f .phoenix-ralph/done-check.json ]; then
+              echo "declared=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "declared=false" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "declared=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13.14"
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@1.94.1
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+      - name: Install Python dependencies
+        run: >-
+          python -m pip install --quiet --only-binary=:all:
+          pytest==9.0.2 PyYAML==6.0.3 iniconfig==2.3.0
+          packaging==24.2 pluggy==1.5.0 pygments==2.19.1
+      - name: Prepare proof inputs
+        if: ${{ steps.acceptance_contract.outputs.declared == 'true' }}
+        run: |
+          set -euo pipefail
+          HEAD_SHA="$(git rev-parse HEAD)"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch --no-tags origin "${{ github.base_ref }}"
+            BASE_SHA="$(git merge-base "$HEAD_SHA" "origin/${{ github.base_ref }}")"
+            cp .phoenix-ralph/done-check.json "$RUNNER_TEMP/phoenix-check.json"
+          else
+            BASE_SHA="$(git rev-parse HEAD^)"
+            python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          check = {
+              "kind": "command_exit",
+              "target": ["bash", "-lc", os.environ["PHOENIX_ACCEPTANCE_COMMAND"]],
+              "expect": "0",
+          }
+          Path(os.environ["RUNNER_TEMP"], "phoenix-check.json").write_text(
+              json.dumps(check, separators=(",", ":")),
+              encoding="utf-8",
+          )
+          PY
+          fi
+          {
+            echo "PHOENIX_BASE_SHA=$BASE_SHA"
+            echo "PHOENIX_HEAD_SHA=$HEAD_SHA"
+            echo "PHOENIX_CHECK_FILE=$RUNNER_TEMP/phoenix-check.json"
+            echo "PHOENIX_PROOF_FILE=$RUNNER_TEMP/phoenix-acceptance-proof.json"
+            echo "PHOENIX_MCP=$RUNNER_TEMP/phoenix-bin/phoenix-mcp"
+          } >> "$GITHUB_ENV"
+      - name: Build Phoenix MCP verifier
+        if: ${{ steps.acceptance_contract.outputs.declared == 'true' }}
+        run: |
+          set -euo pipefail
+          git checkout --force "$PHOENIX_BASE_SHA"
+          cargo build --release --locked --bin phoenix-mcp
+          mkdir -p "$RUNNER_TEMP/phoenix-bin"
+          cp target/release/phoenix-mcp "$PHOENIX_MCP"
+      - name: Require base acceptance RED
+        if: ${{ steps.acceptance_contract.outputs.declared == 'true' }}
+        run: |
+          set -euo pipefail
+          git checkout --force "$PHOENIX_BASE_SHA"
+          if "$PHOENIX_MCP" sense "@$PHOENIX_CHECK_FILE"; then
+            echo "Base acceptance check unexpectedly passed; proof is vacuous." >&2
+            exit 1
+          fi
+          echo "Base acceptance check is RED as required."
+      - name: Require head acceptance GREEN
+        if: ${{ steps.acceptance_contract.outputs.declared == 'true' }}
+        run: |
+          set -euo pipefail
+          git checkout --force "$PHOENIX_HEAD_SHA"
+          "$PHOENIX_MCP" sense "@$PHOENIX_CHECK_FILE"
+      - name: Prove Phoenix acceptance
+        if: ${{ steps.acceptance_contract.outputs.declared == 'true' }}
+        run: |
+          set -euo pipefail
+          "$PHOENIX_MCP" accept "@$PHOENIX_CHECK_FILE" > "$PHOENIX_PROOF_FILE"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          data = json.loads(Path(os.environ["PHOENIX_PROOF_FILE"]).read_text(encoding="utf-8"))
+          for key in ("saw_red", "green_after_red", "currently_green", "trace_intact"):
+              if data.get(key) is not True:
+                  raise SystemExit(f"phoenix-mcp accept did not prove {key}=true")
+          PY
+      - name: Verify Phoenix trace
+        if: ${{ steps.acceptance_contract.outputs.declared == 'true' }}
+        run: |
+          set -euo pipefail
+          "$PHOENIX_MCP" verify-trace
+      - name: Upload Phoenix proof artifacts
+        if: ${{ always() && steps.acceptance_contract.outputs.declared == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: phoenix-proof
+          path: |
+            .phoenix/trace.jsonl
+            ${{ env.PHOENIX_PROOF_FILE }}
