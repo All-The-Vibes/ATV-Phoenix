@@ -23,4 +23,4 @@ pub use trace::{Trace, TraceVerify};
 pub use accept::{verify_gate, GateResult};
 pub use prompt_ledger::{capture, verify_against, Manifest, Verdict};
 pub use intent::{verify_intent, IntentManifest, GoalSpec, CompositeAcceptResult, GoalAcceptResult, GoalKind, MAX_GOALS};
-pub use execution_backend::{BackendOutcome, BackendStatus, ExecutionBackend, Job, LocalBackend, LOCAL_BACKEND_NAME};
+pub use execution_backend::{BackendOutcome, BackendStatus, EmptyRefusals, ExecutionBackend, Job, LocalBackend, PreflightDimension, PreflightOutcome, PreflightRefusal, Refusals, LOCAL_BACKEND_NAME};

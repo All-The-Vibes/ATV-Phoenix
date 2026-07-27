@@ -6,8 +6,8 @@
 //! [`ExecutionBackend`] trait: hand it a [`Job`], get back a [`BackendOutcome`].
 //!
 //! This slice defines the contract and the `local` implementation only. The `copilot_cloud`
-//! and `auto` backends (cloud dispatch, polling, preflight, auto-selection, ledger
-//! persistence) are deliberately out of scope here and land in later slices of #80.
+//! and `auto` backends (cloud dispatch, polling, auto-selection, ledger persistence) are
+//! deliberately out of scope here and land in later slices of #80.
 //!
 //! `LocalBackend` is in-process and deterministic on purpose: no subprocess, no network,
 //! no clock. The same `Job` always yields the same `BackendOutcome`, so it is the honest
@@ -72,11 +72,154 @@ impl BackendOutcome {
     }
 }
 
+/// The part of preflight that refused dispatch.
+///
+/// This enum is non-exhaustive so later slices can add dimensions without forcing
+/// downstream exhaustive matches to lie about a safety gate they do not understand.
+///
+/// There is no `Internal` dimension today because empty refusal sets are rejected before
+/// an [`PreflightOutcome::Ineligible`] value can exist; the old fabricated fallback was
+/// removed instead of being reclassified.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum PreflightDimension {
+    RepositoryEligibility,
+    Authentication,
+    RunnerCompatibility,
+    TaskConstraints,
+}
+
+/// One explicit reason a backend refuses to accept a job before execution.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PreflightRefusal {
+    pub dimension: PreflightDimension,
+    pub reason: String,
+}
+
+impl PreflightRefusal {
+    pub fn new(dimension: PreflightDimension, reason: impl Into<String>) -> Self {
+        Self {
+            dimension,
+            reason: reason.into(),
+        }
+    }
+}
+
+/// Refusal reasons for an ineligible preflight.
+///
+/// The vector is private because "ineligible with no reason" is a fail-open shape:
+/// callers often treat an empty reason list as eligible. Use [`Refusals::try_new`] when
+/// collecting reasons dynamically, or [`Refusals::new`] when at least one reason is known.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Refusals {
+    reasons: Vec<PreflightRefusal>,
+}
+
+/// Attempted to construct an ineligible preflight without any refusal reason.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EmptyRefusals;
+
+impl std::fmt::Display for EmptyRefusals {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("empty refusal set rejected: a refusal with no reason is a fail-open shape")
+    }
+}
+
+impl std::error::Error for EmptyRefusals {}
+
+impl Refusals {
+    pub fn new(first: PreflightRefusal, rest: impl Into<Vec<PreflightRefusal>>) -> Self {
+        let mut reasons = vec![first];
+        reasons.extend(rest.into());
+        Self { reasons }
+    }
+
+    pub fn try_new(reasons: impl Into<Vec<PreflightRefusal>>) -> Result<Self, EmptyRefusals> {
+        let reasons = reasons.into();
+        if reasons.is_empty() {
+            Err(EmptyRefusals)
+        } else {
+            Ok(Self { reasons })
+        }
+    }
+
+    pub fn as_slice(&self) -> &[PreflightRefusal] {
+        &self.reasons
+    }
+}
+
+/// The pre-dispatch gate for a backend. There is no "maybe": if a backend cannot vouch
+/// for every required dimension, the job is ineligible with all known reasons attached.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PreflightOutcome {
+    Eligible,
+    Ineligible(Refusals),
+}
+
+impl PreflightOutcome {
+    pub fn eligible() -> Self {
+        Self::Eligible
+    }
+
+    pub fn ineligible(refusals: Refusals) -> Self {
+        Self::Ineligible(refusals)
+    }
+
+    pub fn refused(first: PreflightRefusal, rest: impl Into<Vec<PreflightRefusal>>) -> Self {
+        Self::Ineligible(Refusals::new(first, rest))
+    }
+
+    pub fn try_ineligible(
+        reasons: impl Into<Vec<PreflightRefusal>>,
+    ) -> Result<Self, EmptyRefusals> {
+        Refusals::try_new(reasons).map(Self::Ineligible)
+    }
+
+    pub fn is_eligible(&self) -> bool {
+        matches!(self, Self::Eligible)
+    }
+
+    pub fn reasons(&self) -> &[PreflightRefusal] {
+        match self {
+            Self::Eligible => &[],
+            Self::Ineligible(refusals) => refusals.as_slice(),
+        }
+    }
+}
+
 /// The single execution-backend contract. Object-safe on purpose: call sites hold a
 /// `&dyn ExecutionBackend` and stay ignorant of where the work actually runs.
 pub trait ExecutionBackend {
     /// Stable identifier for this backend, used in outcomes and (later) in selection.
     fn name(&self) -> &str;
+
+    /// Decide whether this backend may receive `job` at all.
+    ///
+    /// The default is deliberately fail-closed: a backend that has not implemented preflight
+    /// cannot vouch for repository eligibility, authentication, runner compatibility, or task
+    /// constraints. Treating that silence as eligible would make the gate useless.
+    fn preflight(&self, _job: &Job) -> PreflightOutcome {
+        PreflightOutcome::refused(
+            PreflightRefusal::new(
+                PreflightDimension::RepositoryEligibility,
+                format!("{} cannot vouch for repository eligibility", self.name()),
+            ),
+            vec![
+                PreflightRefusal::new(
+                    PreflightDimension::Authentication,
+                    format!("{} cannot vouch for authentication", self.name()),
+                ),
+                PreflightRefusal::new(
+                    PreflightDimension::RunnerCompatibility,
+                    format!("{} cannot vouch for runner compatibility", self.name()),
+                ),
+                PreflightRefusal::new(
+                    PreflightDimension::TaskConstraints,
+                    format!("{} cannot vouch for task constraints", self.name()),
+                ),
+            ],
+        )
+    }
 
     /// Run `job` to a terminal outcome. Implementations must not panic on bad input —
     /// an unrunnable job is reported as [`BackendStatus::Failed`].
@@ -93,6 +236,16 @@ pub struct LocalBackend;
 impl ExecutionBackend for LocalBackend {
     fn name(&self) -> &str {
         LOCAL_BACKEND_NAME
+    }
+
+    fn preflight(&self, job: &Job) -> PreflightOutcome {
+        if job.task.trim().is_empty() {
+            return PreflightOutcome::refused(
+                PreflightRefusal::new(PreflightDimension::TaskConstraints, "refused: empty task"),
+                vec![],
+            );
+        }
+        PreflightOutcome::eligible()
     }
 
     fn execute(&self, job: &Job) -> BackendOutcome {
