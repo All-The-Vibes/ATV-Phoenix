@@ -29,7 +29,11 @@ pub struct Supervisor {
 impl Supervisor {
     /// Build a supervisor that allows at most `capacity` tasks in flight at once.
     pub fn with_capacity(capacity: usize) -> Self {
-        Self { capacity, in_flight: Vec::new(), deferred: VecDeque::new() }
+        Self {
+            capacity,
+            in_flight: Vec::new(),
+            deferred: VecDeque::new(),
+        }
     }
 
     /// The bounded concurrency limit.
@@ -106,9 +110,15 @@ mod supervisor_tests {
     fn supervisor_frees_slot_on_complete() {
         let mut s = Supervisor::with_capacity(1);
         assert_eq!(s.admit("a"), Admission::Admitted);
-        assert!(s.complete("a"), "completing an in-flight task frees its slot");
+        assert!(
+            s.complete("a"),
+            "completing an in-flight task frees its slot"
+        );
         assert_eq!(s.in_flight(), 0);
-        assert!(!s.complete("a"), "completing twice must not free a phantom slot");
+        assert!(
+            !s.complete("a"),
+            "completing twice must not free a phantom slot"
+        );
         assert_eq!(s.admit("b"), Admission::Admitted);
     }
 
@@ -121,7 +131,11 @@ mod supervisor_tests {
         assert_eq!(s.next_ready(), None, "no slot is free while `a` runs");
 
         s.complete("a");
-        assert_eq!(s.next_ready(), Some("b".to_string()), "oldest deferred task runs first");
+        assert_eq!(
+            s.next_ready(),
+            Some("b".to_string()),
+            "oldest deferred task runs first"
+        );
         assert_eq!(s.in_flight(), 1);
         assert_eq!(s.next_ready(), None, "the single slot is taken again");
 
