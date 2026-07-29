@@ -5,6 +5,13 @@ All notable changes to ATV-Phoenix are documented here.
 ## [Unreleased]
 
 ### Added
+- **Supervisor ready queue — the bounded-concurrency scheduling spine** (`src/supervisor.rs`). A pure,
+  in-memory admission controller at the heart of the durable mission supervisor: it admits at most
+  `capacity` tasks concurrently and **defers** the rest in FIFO order, so the same sequence of calls
+  always produces the same schedule. No async runtime, git, filesystem, or network — those layers ride on
+  top of this decision. Keeping the ready queue pure is what makes the supervisor's scheduling testable and
+  reproducible. Exposes `Supervisor` (`with_capacity`, `admit`, `complete`, `next_ready`) and the
+  `Admission` verdict; covered by deterministic unit tests. (#98)
 - **Prompt-manifest drift sense — the "living prompt document"** (`src/prompt_ledger.rs` + a fourth
   `CheckKind::PromptManifest`). Captures Phoenix's own prompt surface (the 18 skills + `AGENTS.md`) into a
   content-addressed manifest, then SENSES drift against it: GREEN when the surface matches the blessed
