@@ -14,6 +14,7 @@ pub mod prompt_ledger;
 pub mod intent;
 pub mod monitor;
 pub mod execution_backend;
+pub mod backend_select;
 pub mod supervisor;
 pub mod lease;
 
@@ -28,3 +29,4 @@ pub use intent::{verify_intent, IntentManifest, GoalSpec, CompositeAcceptResult,
 pub use execution_backend::{BackendOutcome, BackendStatus, EmptyRefusals, ExecutionBackend, Job, LocalBackend, PreflightDimension, PreflightOutcome, PreflightRefusal, Refusals, LOCAL_BACKEND_NAME};
 pub use supervisor::{Admission, Supervisor};
 pub use lease::{Fence, Lease, LeaseDenied, LeaseRegistry, FIRST_TOKEN};
+pub use backend_select::{select_backend, BackendRejection, RejectionCause, Rejections, Selection, AUTO_BACKEND_NAME};
