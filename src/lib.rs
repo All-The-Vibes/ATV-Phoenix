@@ -14,6 +14,7 @@ pub mod prompt_ledger;
 pub mod intent;
 pub mod monitor;
 pub mod execution_backend;
+pub mod supervisor;
 
 pub use doctor::{doctor, DoctorReport, integrity, fix as doctor_fix, resolve_home, InstallReport};
 pub use heal::{heal, HealCtx, HealResult, Strategy};
@@ -24,3 +25,4 @@ pub use accept::{verify_gate, GateResult};
 pub use prompt_ledger::{capture, verify_against, Manifest, Verdict};
 pub use intent::{verify_intent, IntentManifest, GoalSpec, CompositeAcceptResult, GoalAcceptResult, GoalKind, MAX_GOALS};
 pub use execution_backend::{BackendOutcome, BackendStatus, EmptyRefusals, ExecutionBackend, Job, LocalBackend, PreflightDimension, PreflightOutcome, PreflightRefusal, Refusals, LOCAL_BACKEND_NAME};
+pub use supervisor::{Admission, Supervisor};
