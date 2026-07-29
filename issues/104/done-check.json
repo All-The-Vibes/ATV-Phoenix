@@ -1,0 +1,1 @@
+{"kind":"command_exit","target":["python","-m","pytest","tests/test_docs_algorithm_naming.py","-v"],"expect":0,"cwd":"."}
