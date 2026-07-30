@@ -14,6 +14,7 @@ pub mod prompt_ledger;
 pub mod intent;
 pub mod monitor;
 pub mod execution_backend;
+pub mod cloud_backend;
 pub mod backend_select;
 pub mod supervisor;
 pub mod lease;
@@ -30,3 +31,4 @@ pub use execution_backend::{BackendOutcome, BackendStatus, EmptyRefusals, Execut
 pub use supervisor::{Admission, Supervisor};
 pub use lease::{Fence, Lease, LeaseDenied, LeaseRegistry, FIRST_TOKEN};
 pub use backend_select::{select_backend, BackendRejection, RejectionCause, Rejections, Selection, AUTO_BACKEND_NAME};
+pub use cloud_backend::{CloudBackend, CloudClient, CloudError, TaskId, TaskState, CLOUD_BACKEND_NAME, DEFAULT_MAX_POLLS};
