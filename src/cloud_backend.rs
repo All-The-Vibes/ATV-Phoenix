@@ -17,6 +17,7 @@
 use crate::execution_backend::{
     BackendOutcome, ExecutionBackend, Job, PreflightDimension, PreflightOutcome, PreflightRefusal,
 };
+use crate::run_artifacts::RunArtifacts;
 
 /// Stable name of the Copilot cloud backend.
 pub const CLOUD_BACKEND_NAME: &str = "copilot_cloud";
@@ -115,6 +116,81 @@ impl<C: CloudClient> CloudBackend<C> {
     pub fn max_polls(&self) -> u32 {
         self.max_polls
     }
+
+    /// Dispatch `job` and return both the outcome and the structured record of what it produced.
+    ///
+    /// [`ExecutionBackend::execute`] delegates here rather than duplicating the logic, so the
+    /// human-facing outcome and the ledger-facing record can never drift apart and disagree about
+    /// the same run — a divergence would be silent and only visible long after the fact.
+    ///
+    /// Note what is deliberately NOT populated: `model` and `usage` stay unreported, because
+    /// [`CloudClient`] does not expose them yet. Filling them with plausible defaults would be
+    /// fabrication — [`crate::run_artifacts::Usage`] exists precisely so "the remote never told us"
+    /// stays distinguishable from a measured value. They become real when the client contract
+    /// carries them.
+    pub fn dispatch(&self, job: &Job) -> (BackendOutcome, RunArtifacts) {
+        let artifacts = RunArtifacts::none_for(CLOUD_BACKEND_NAME);
+
+        if job.task.trim().is_empty() {
+            let reason = "refused: empty task";
+            return (
+                BackendOutcome::failed(&job.id, CLOUD_BACKEND_NAME, reason),
+                artifacts.with_error(reason),
+            );
+        }
+
+        let task = match self.client.submit(job) {
+            Ok(task) => task,
+            Err(err) => {
+                let reason = format!("submit failed: {err}");
+                return (
+                    BackendOutcome::failed(&job.id, CLOUD_BACKEND_NAME, reason.clone()),
+                    artifacts.with_error(reason),
+                );
+            }
+        };
+        let artifacts = artifacts.with_task_id(task.as_str());
+
+        for _ in 0..self.max_polls {
+            match self.client.poll(&task) {
+                Ok(TaskState::Pending) => continue,
+                Ok(TaskState::Succeeded { branch }) => {
+                    return (
+                        BackendOutcome::completed(
+                            &job.id,
+                            CLOUD_BACKEND_NAME,
+                            format!("cloud task {} completed on branch {}", task.as_str(), branch),
+                        ),
+                        artifacts.with_branch(branch),
+                    )
+                }
+                Ok(TaskState::Failed { reason }) => {
+                    let detail = format!("cloud task {} failed: {}", task.as_str(), reason);
+                    return (
+                        BackendOutcome::failed(&job.id, CLOUD_BACKEND_NAME, detail),
+                        artifacts.with_error(reason),
+                    );
+                }
+                Err(err) => {
+                    let detail = format!("poll failed for task {}: {}", task.as_str(), err);
+                    return (
+                        BackendOutcome::failed(&job.id, CLOUD_BACKEND_NAME, detail.clone()),
+                        artifacts.with_error(detail),
+                    );
+                }
+            }
+        }
+
+        let detail = format!(
+            "cloud task {} did not settle within {} polls",
+            task.as_str(),
+            self.max_polls
+        );
+        (
+            BackendOutcome::failed(&job.id, CLOUD_BACKEND_NAME, detail.clone()),
+            artifacts.with_error(detail),
+        )
+    }
 }
 
 impl<C: CloudClient> ExecutionBackend for CloudBackend<C> {
@@ -133,56 +209,6 @@ impl<C: CloudClient> ExecutionBackend for CloudBackend<C> {
     }
 
     fn execute(&self, job: &Job) -> BackendOutcome {
-        if job.task.trim().is_empty() {
-            return BackendOutcome::failed(&job.id, CLOUD_BACKEND_NAME, "refused: empty task");
-        }
-
-        let task = match self.client.submit(job) {
-            Ok(task) => task,
-            Err(err) => {
-                return BackendOutcome::failed(
-                    &job.id,
-                    CLOUD_BACKEND_NAME,
-                    format!("submit failed: {err}"),
-                )
-            }
-        };
-
-        for _ in 0..self.max_polls {
-            match self.client.poll(&task) {
-                Ok(TaskState::Pending) => continue,
-                Ok(TaskState::Succeeded { branch }) => {
-                    return BackendOutcome::completed(
-                        &job.id,
-                        CLOUD_BACKEND_NAME,
-                        format!("cloud task {} completed on branch {}", task.as_str(), branch),
-                    )
-                }
-                Ok(TaskState::Failed { reason }) => {
-                    return BackendOutcome::failed(
-                        &job.id,
-                        CLOUD_BACKEND_NAME,
-                        format!("cloud task {} failed: {}", task.as_str(), reason),
-                    )
-                }
-                Err(err) => {
-                    return BackendOutcome::failed(
-                        &job.id,
-                        CLOUD_BACKEND_NAME,
-                        format!("poll failed for task {}: {}", task.as_str(), err),
-                    )
-                }
-            }
-        }
-
-        BackendOutcome::failed(
-            &job.id,
-            CLOUD_BACKEND_NAME,
-            format!(
-                "cloud task {} did not settle within {} polls",
-                task.as_str(),
-                self.max_polls
-            ),
-        )
+        self.dispatch(job).0
     }
 }
