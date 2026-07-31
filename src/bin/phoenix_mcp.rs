@@ -37,11 +37,30 @@ fn jdigest(s: &str) -> String {
     phoenix::trace::digest_str(s)
 }
 
+/// Accept a struct parameter supplied either as a JSON object OR as a JSON-encoded
+/// string, because some MCP clients do not resolve JSON-Schema `$ref`/`$defs` and
+/// therefore describe a nested struct to the model as a plain string.
+///
+/// Mirrors the existing `de_string_or_vec` / `de_string_or_number` tolerance in
+/// `sense.rs`. The emitted JSON Schema is unchanged; this only widens what the
+/// deserializer accepts, so callers that already send a real object are unaffected.
+fn de_struct_or_json_string<'de, D, T>(d: D) -> Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: serde::de::DeserializeOwned,
+{
+    match serde_json::Value::deserialize(d)? {
+        serde_json::Value::String(s) => serde_json::from_str(&s).map_err(serde::de::Error::custom),
+        other => serde_json::from_value(other).map_err(serde::de::Error::custom),
+    }
+}
+
 // ---- tool parameter types (JSON-schema'd for Copilot) ----
 
 #[derive(Serialize, Deserialize, JsonSchema)]
 pub struct SenseArgs {
     /// The objective check to run.
+    #[serde(deserialize_with = "de_struct_or_json_string")]
     pub check: Check,
 }
 
@@ -50,6 +69,7 @@ pub struct SnapshotArgs {
     /// Path to the file to snapshot as last-good (relative to the workspace).
     pub path: String,
     /// The check that must pass for the snapshot to be blessed.
+    #[serde(deserialize_with = "de_struct_or_json_string")]
     pub check: Check,
 }
 
@@ -58,6 +78,7 @@ pub struct HealArgs {
     /// "rollback" or "retry".
     pub strategy: Strategy,
     /// Recovery context (path+snap_id for rollback, command for retry) and the external recheck.
+    #[serde(deserialize_with = "de_struct_or_json_string")]
     pub ctx: HealCtx,
 }
 
