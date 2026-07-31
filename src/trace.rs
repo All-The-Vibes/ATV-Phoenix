@@ -104,25 +104,53 @@ impl Trace {
     }
 
     pub fn read_all(&self) -> Vec<TraceEvent> {
-        let Ok(content) = std::fs::read_to_string(&self.path) else { return vec![] };
-        content
-            .lines()
-            .filter(|l| !l.trim().is_empty())
-            .filter_map(|l| serde_json::from_str::<TraceEvent>(l).ok())
-            .collect()
+        self.read_checked().0
+    }
+
+    /// Parse every line, returning the events plus the 0-based indices that failed to parse.
+    ///
+    /// `read_all` discards the second half for callers that only want events. `verify` does not:
+    /// a line that cannot be parsed is evidence of tampering, and treating it as absent lets a
+    /// whole row be destroyed without breaking any hash link. See issue #111.
+    fn read_checked(&self) -> (Vec<TraceEvent>, Vec<usize>) {
+        let Ok(content) = std::fs::read_to_string(&self.path) else { return (vec![], vec![]) };
+        let mut events = Vec::new();
+        let mut unparsed = Vec::new();
+        for (i, line) in content.lines().filter(|l| !l.trim().is_empty()).enumerate() {
+            match serde_json::from_str::<TraceEvent>(line) {
+                Ok(ev) => events.push(ev),
+                Err(_) => unparsed.push(i),
+            }
+        }
+        (events, unparsed)
     }
 
     /// Recompute the chain; tamper-EVIDENT: any edited row breaks linkage or hash.
+    ///
+    /// An unparseable line is itself a break. Previously such a line was silently dropped, so
+    /// destroying a row's structure produced a shorter chain that verified clean — a corruption
+    /// class the circuit-breaker never fired on (#111). The first unparseable line is now reported
+    /// as the break point.
     pub fn verify(&self) -> TraceVerify {
-        let rows = self.read_all();
+        let (rows, unparsed) = self.read_checked();
+        let total = rows.len() + unparsed.len();
+        if let Some(&first_bad) = unparsed.first() {
+            let head = rows
+                .iter()
+                .take(first_bad)
+                .last()
+                .map(|e| e.hash.clone())
+                .unwrap_or_else(|| GENESIS.to_string());
+            return TraceVerify { ok: false, rows: total, head_hash: head, broken_at: Some(first_bad) };
+        }
         let mut prev = GENESIS.to_string();
         for (i, ev) in rows.iter().enumerate() {
             if ev.prev_hash != prev || row_hash(ev) != ev.hash {
-                return TraceVerify { ok: false, rows: rows.len(), head_hash: prev, broken_at: Some(i) };
+                return TraceVerify { ok: false, rows: total, head_hash: prev, broken_at: Some(i) };
             }
             prev = ev.hash.clone();
         }
-        TraceVerify { ok: true, rows: rows.len(), head_hash: prev, broken_at: None }
+        TraceVerify { ok: true, rows: total, head_hash: prev, broken_at: None }
     }
 }
 
