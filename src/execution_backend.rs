@@ -9,9 +9,8 @@
 //! and `auto` backends (cloud dispatch, polling, auto-selection, ledger persistence) are
 //! deliberately out of scope here and land in later slices of #80.
 //!
-//! `LocalBackend` is in-process and deterministic on purpose: no subprocess, no network,
-//! no clock. The same `Job` always yields the same `BackendOutcome`, so it is the honest
-//! baseline the other backends are compared against.
+//! `LocalBackend` executes commands directly on the local runner (argv, no shell) and
+//! reports captured process output in the outcome detail.
 
 /// A unit of work handed to an execution backend.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -229,7 +228,7 @@ pub trait ExecutionBackend {
 /// Stable name of the local backend.
 pub const LOCAL_BACKEND_NAME: &str = "local";
 
-/// Runs jobs in this process, deterministically. No subprocess, no network.
+/// Runs jobs on the local runner as child processes (argv, no shell).
 #[derive(Debug, Clone, Copy, Default)]
 pub struct LocalBackend;
 
@@ -252,11 +251,38 @@ impl ExecutionBackend for LocalBackend {
         if job.task.trim().is_empty() {
             return BackendOutcome::failed(&job.id, LOCAL_BACKEND_NAME, "refused: empty task");
         }
-        BackendOutcome::completed(
-            &job.id,
-            LOCAL_BACKEND_NAME,
-            format!("local executed: {}", job.task.trim()),
-        )
+
+        let mut argv = job.task.split_whitespace();
+        let program = match argv.next() {
+            Some(program) => program,
+            None => return BackendOutcome::failed(&job.id, LOCAL_BACKEND_NAME, "refused: empty task"),
+        };
+
+        let output = match std::process::Command::new(program).args(argv).output() {
+            Ok(output) => output,
+            Err(err) => {
+                return BackendOutcome::failed(
+                    &job.id,
+                    LOCAL_BACKEND_NAME,
+                    format!("failed to spawn `{}`: {}", program, err),
+                );
+            }
+        };
+
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let exit = output
+            .status
+            .code()
+            .map(|code| code.to_string())
+            .unwrap_or_else(|| "terminated by signal".to_string());
+        let detail = format!("exit={exit}; stdout={stdout:?}; stderr={stderr:?}");
+
+        if output.status.success() {
+            BackendOutcome::completed(&job.id, LOCAL_BACKEND_NAME, detail)
+        } else {
+            BackendOutcome::failed(&job.id, LOCAL_BACKEND_NAME, detail)
+        }
     }
 }
 
@@ -267,13 +293,14 @@ mod execution_backend_tests {
     #[test]
     fn execution_backend_local_dispatch_completes() {
         let backend = LocalBackend;
-        let out = backend.execute(&Job::new("job-1", "sum 2 and 2"));
+        let out = backend.execute(&Job::new("job-1", "rustc --version"));
 
         assert_eq!(out.status, BackendStatus::Completed, "local backend must complete a runnable job");
         assert!(out.is_completed());
         assert_eq!(out.job_id, "job-1", "outcome must echo the job id");
         assert_eq!(out.backend, LOCAL_BACKEND_NAME, "outcome must name the backend that ran it");
-        assert!(out.detail.contains("sum 2 and 2"), "detail must carry the executed task, got {:?}", out.detail);
+        assert!(out.detail.contains("exit=0"), "detail must carry exit status, got {:?}", out.detail);
+        assert!(out.detail.contains("stdout="), "detail must carry stdout, got {:?}", out.detail);
     }
 
     #[test]
@@ -291,7 +318,7 @@ mod execution_backend_tests {
     #[test]
     fn execution_backend_local_is_deterministic() {
         let backend = LocalBackend;
-        let job = Job::new("job-3", "same work");
+        let job = Job::new("job-3", "rustc --version");
 
         assert_eq!(backend.execute(&job), backend.execute(&job), "local backend must be deterministic");
     }
@@ -302,7 +329,7 @@ mod execution_backend_tests {
 
         assert_eq!(backend.name(), LOCAL_BACKEND_NAME);
         assert!(
-            backend.execute(&Job::new("job-4", "via trait object")).is_completed(),
+            backend.execute(&Job::new("job-4", "rustc --version")).is_completed(),
             "the contract must be usable behind a trait object"
         );
     }
