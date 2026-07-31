@@ -25,6 +25,7 @@ pub mod trace_chains;
 pub mod worktrees;
 pub mod run_ledger;
 pub mod lease;
+pub mod hybrid_dag;
 
 pub use doctor::{doctor, DoctorReport, integrity, fix as doctor_fix, resolve_home, InstallReport};
 pub use heal::{heal, HealCtx, HealResult, Strategy};
@@ -43,6 +44,7 @@ pub use trace_chains::{verify_mission, ChainStatus, MissionChains, MissionVerify
 pub use worktrees::{AssignmentDenied, WorktreeRegistry, WORKTREE_PREFIX};
 pub use run_ledger::{LedgerEntry, LedgerRead, RunLedger, LEDGER_FILE};
 pub use lease::{Fence, Lease, LeaseDenied, LeaseRegistry, FIRST_TOKEN};
+pub use hybrid_dag::{DagDenied, GoalDag, GoalOutcome};
 pub use backend_select::{select_backend, BackendRejection, RejectionCause, Rejections, Selection, AUTO_BACKEND_NAME};
 pub use cloud_backend::{CloudBackend, CloudClient, CloudError, TaskId, TaskReport, TaskState, CLOUD_BACKEND_NAME, DEFAULT_MAX_POLLS};
 pub use run_artifacts::{RunArtifacts, Usage};
