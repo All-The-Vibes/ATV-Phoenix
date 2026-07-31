@@ -16,6 +16,8 @@ pub enum Admission {
     Admitted,
     /// The supervisor is at capacity; the task was queued and will be released by `next_ready`.
     Deferred,
+    /// Refused because a zero-capacity supervisor can never run any admitted work.
+    RefusedZeroCapacity,
 }
 
 /// A deterministic, bounded-concurrency ready queue.
@@ -49,6 +51,15 @@ impl Supervisor {
 
     /// Request a slot for `task`. Admits while under capacity, otherwise defers in FIFO order.
     pub fn admit(&mut self, task: &str) -> Admission {
+        if self.capacity == 0 {
+            return Admission::RefusedZeroCapacity;
+        }
+        if self.in_flight.iter().any(|queued| queued == task) {
+            return Admission::Admitted;
+        }
+        if self.deferred.iter().any(|queued| queued == task) {
+            return Admission::Deferred;
+        }
         if self.in_flight.len() < self.capacity {
             self.in_flight.push(task.to_string());
             Admission::Admitted
@@ -67,6 +78,19 @@ impl Supervisor {
             }
             None => false,
         }
+    }
+
+    /// Remove `task` from either queue. Returns whether any queued state was withdrawn.
+    pub fn withdraw(&mut self, task: &str) -> bool {
+        if let Some(i) = self.in_flight.iter().position(|queued| queued == task) {
+            self.in_flight.remove(i);
+            return true;
+        }
+        if let Some(i) = self.deferred.iter().position(|queued| queued == task) {
+            self.deferred.remove(i);
+            return true;
+        }
+        false
     }
 
     /// Promote the oldest deferred task into a free slot, if there is one.
