@@ -67,7 +67,7 @@ must never seed an issue from this table.
 
 | Connector | Current verification |
 |---|---|
-| **`phoenix-learn`** — GEPA/SIA-H over the trace ledger | `python -m pytest tests/test_phoenix_learn.py -q` |
+| **`phoenix-learn`** — reflective hill-climb + SIA-H measured-gain gate over the trace ledger (the gate, not the search, is the contribution) | `python -m pytest tests/test_phoenix_learn.py -q` |
 | **Verify ⨯ Context** — TMX-scoped `phoenix_sense` | `python -m pytest tests/test_verify_context.py -q` |
 | **Nest → Obsidian** — `phoenix-okf` vault emission | `python -m pytest tests/test_nest_emit.py -q` |
 | **Scout adapter** (`dist/scout/`) | `python -m pytest tests/test_scout_install.py -q` |
