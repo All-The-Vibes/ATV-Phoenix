@@ -18,6 +18,8 @@ use crate::execution_backend::{
     BackendOutcome, ExecutionBackend, Job, PreflightDimension, PreflightOutcome, PreflightRefusal,
 };
 use crate::run_artifacts::{RunArtifacts, Usage};
+use serde::Deserialize;
+use serde_json::json;
 
 /// Stable name of the Copilot cloud backend.
 pub const CLOUD_BACKEND_NAME: &str = "copilot_cloud";
@@ -156,6 +158,126 @@ pub trait CloudClient {
     fn poll(&self, task: &TaskId) -> Result<TaskState, CloudError>;
 }
 
+const GITHUB_API_VERSION: &str = "2026-03-10";
+const DEFAULT_GITHUB_API_BASE: &str = "https://api.github.com";
+const DEFAULT_BRANCH: &str = "unknown";
+
+/// A production [`CloudClient`] that talks to GitHub Copilot's agent-tasks API over HTTP.
+#[derive(Clone)]
+pub struct HttpCloudClient {
+    api_base: String,
+    owner: String,
+    repo: String,
+    token: String,
+}
+
+impl std::fmt::Debug for HttpCloudClient {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HttpCloudClient")
+            .field("api_base", &self.api_base)
+            .field("owner", &self.owner)
+            .field("repo", &self.repo)
+            .field("token", &"<redacted>")
+            .finish()
+    }
+}
+
+impl HttpCloudClient {
+    /// Build a cloud client from environment variables:
+    /// - `GITHUB_TOKEN` (required)
+    /// - `GITHUB_REPOSITORY` as `owner/repo` (required)
+    /// - `GITHUB_API_URL` (optional; defaults to `https://api.github.com`)
+    pub fn from_env() -> Result<Self, CloudError> {
+        let token = std::env::var("GITHUB_TOKEN")
+            .map_err(|_| CloudError::new("GITHUB_TOKEN is not set"))?;
+        if token.trim().is_empty() {
+            return Err(CloudError::new("GITHUB_TOKEN is empty"));
+        }
+
+        let repository = std::env::var("GITHUB_REPOSITORY")
+            .map_err(|_| CloudError::new("GITHUB_REPOSITORY is not set"))?;
+        let (owner, repo) = repository
+            .split_once('/')
+            .ok_or_else(|| CloudError::new("GITHUB_REPOSITORY must be in owner/repo format"))?;
+
+        let api_base =
+            std::env::var("GITHUB_API_URL").unwrap_or_else(|_| DEFAULT_GITHUB_API_BASE.to_string());
+        Self::new(api_base, owner, repo, token)
+    }
+
+    pub fn new(
+        api_base: impl Into<String>,
+        owner: impl Into<String>,
+        repo: impl Into<String>,
+        token: impl Into<String>,
+    ) -> Result<Self, CloudError> {
+        let api_base = trim_trailing_slashes(api_base.into());
+        let owner = owner.into();
+        let repo = repo.into();
+        let token = token.into();
+
+        if api_base.is_empty() {
+            return Err(CloudError::new("api base must not be empty"));
+        }
+        if owner.trim().is_empty() {
+            return Err(CloudError::new("repository owner must not be empty"));
+        }
+        if repo.trim().is_empty() {
+            return Err(CloudError::new("repository name must not be empty"));
+        }
+        if token.trim().is_empty() {
+            return Err(CloudError::new("token must not be empty"));
+        }
+
+        Ok(Self { api_base, owner, repo, token })
+    }
+
+    fn tasks_url(&self) -> String {
+        format!("{}/agents/repos/{}/{}/tasks", self.api_base, self.owner, self.repo)
+    }
+
+    fn task_url(&self, task: &TaskId) -> String {
+        format!("{}/{}", self.tasks_url(), task.as_str())
+    }
+
+    fn request(&self, method: &str, url: &str) -> ureq::Request {
+        let authorization = "Bearer ".to_owned() + &self.token;
+        ureq::request(method, url)
+            .set("Accept", "application/vnd.github+json")
+            .set("X-GitHub-Api-Version", GITHUB_API_VERSION)
+            .set("User-Agent", "phoenix-cloud-client")
+            .set("Authorization", &authorization)
+    }
+}
+
+impl CloudClient for HttpCloudClient {
+    fn submit(&self, job: &Job) -> Result<TaskId, CloudError> {
+        let url = self.tasks_url();
+        let response = self
+            .request("POST", &url)
+            .send_json(json!({ "prompt": job.task }))
+            .map_err(|err| map_http_error("submit", err))?;
+        let submitted: RemoteTask = response
+            .into_json()
+            .map_err(|err| CloudError::new(format!("submit decode failed: {err}")))?;
+        if submitted.id.trim().is_empty() {
+            return Err(CloudError::new("submit decode failed: missing task id"));
+        }
+        Ok(TaskId::new(submitted.id))
+    }
+
+    fn poll(&self, task: &TaskId) -> Result<TaskState, CloudError> {
+        let response = self
+            .request("GET", &self.task_url(task))
+            .call()
+            .map_err(|err| map_http_error("poll", err))?;
+        let remote: RemoteTaskWithSessions = response
+            .into_json()
+            .map_err(|err| CloudError::new(format!("poll decode failed: {err}")))?;
+        Ok(remote.into_task_state())
+    }
+}
+
 /// Dispatches jobs to GitHub's Copilot cloud agent through a [`CloudClient`].
 #[derive(Debug, Clone)]
 pub struct CloudBackend<C: CloudClient> {
@@ -266,6 +388,185 @@ fn apply_report(mut artifacts: RunArtifacts, report: &TaskReport) -> RunArtifact
         artifacts = artifacts.with_usage(usage);
     }
     artifacts
+}
+
+fn trim_trailing_slashes(mut value: String) -> String {
+    while value.ends_with('/') {
+        value.pop();
+    }
+    value
+}
+
+fn map_http_error(operation: &str, error: ureq::Error) -> CloudError {
+    match error {
+        ureq::Error::Status(status, response) => {
+            let body = response.into_string().ok().unwrap_or_default();
+            let parsed =
+                serde_json::from_str::<RemoteErrorEnvelope>(&body).ok().and_then(|e| e.error_message());
+            let detail = parsed.unwrap_or_else(|| format!("HTTP {}", status));
+            CloudError::new(format!("{operation} request failed: {detail}"))
+        }
+        ureq::Error::Transport(inner) => {
+            CloudError::new(format!("{operation} request failed: {}", inner))
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct RemoteTask {
+    id: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct RemoteTaskWithSessions {
+    state: String,
+    #[serde(default)]
+    sessions: Vec<RemoteSession>,
+    #[serde(default)]
+    artifacts: Vec<RemoteArtifact>,
+    #[serde(default)]
+    error: Option<RemoteError>,
+    #[serde(default)]
+    model: Option<String>,
+    #[serde(default)]
+    input_tokens: Option<u64>,
+    #[serde(default)]
+    output_tokens: Option<u64>,
+    #[serde(default)]
+    cost_micros: Option<u64>,
+}
+
+impl RemoteTaskWithSessions {
+    fn into_task_state(self) -> TaskState {
+        let report = self.report();
+        match self.state.as_str() {
+            "queued" | "in_progress" | "idle" | "waiting_for_user" => TaskState::Pending,
+            "completed" => TaskState::Succeeded {
+                branch: self.branch().unwrap_or_else(|| DEFAULT_BRANCH.to_string()),
+                report,
+            },
+            "failed" | "timed_out" | "cancelled" => TaskState::Failed {
+                reason: self.failure_reason(),
+                report,
+            },
+            other => TaskState::Failed {
+                reason: format!("unexpected remote state: {other}"),
+                report,
+            },
+        }
+    }
+
+    fn latest_session(&self) -> Option<&RemoteSession> {
+        self.sessions.last()
+    }
+
+    fn branch(&self) -> Option<String> {
+        self.artifacts
+            .iter()
+            .find_map(RemoteArtifact::branch)
+            .or_else(|| self.latest_session().and_then(|session| session.head_ref.clone()))
+    }
+
+    fn failure_reason(&self) -> String {
+        self.error
+            .as_ref()
+            .and_then(|error| error.message.clone())
+            .or_else(|| {
+                self.latest_session()
+                    .and_then(|session| session.error.as_ref().and_then(|error| error.message.clone()))
+            })
+            .unwrap_or_else(|| format!("remote state {}", self.state))
+    }
+
+    fn report(&self) -> TaskReport {
+        let session = self.latest_session();
+        TaskReport {
+            model: self.model.clone().or_else(|| session.and_then(|s| s.model.clone())),
+            input_tokens: self
+                .input_tokens
+                .or_else(|| session.and_then(|s| s.input_tokens))
+                .or_else(|| session.and_then(|s| s.usage.as_ref().and_then(|u| u.input_tokens))),
+            output_tokens: self
+                .output_tokens
+                .or_else(|| session.and_then(|s| s.output_tokens))
+                .or_else(|| session.and_then(|s| s.usage.as_ref().and_then(|u| u.output_tokens))),
+            cost_micros: self
+                .cost_micros
+                .or_else(|| session.and_then(|s| s.cost_micros))
+                .or_else(|| session.and_then(|s| s.usage.as_ref().and_then(|u| u.cost_micros))),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct RemoteSession {
+    #[serde(default)]
+    model: Option<String>,
+    #[serde(default)]
+    head_ref: Option<String>,
+    #[serde(default)]
+    input_tokens: Option<u64>,
+    #[serde(default)]
+    output_tokens: Option<u64>,
+    #[serde(default)]
+    cost_micros: Option<u64>,
+    #[serde(default)]
+    usage: Option<RemoteUsage>,
+    #[serde(default)]
+    error: Option<RemoteError>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RemoteUsage {
+    #[serde(default)]
+    input_tokens: Option<u64>,
+    #[serde(default)]
+    output_tokens: Option<u64>,
+    #[serde(default)]
+    cost_micros: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RemoteArtifact {
+    #[serde(rename = "type")]
+    kind: String,
+    #[serde(default)]
+    data: Option<RemoteArtifactData>,
+}
+
+impl RemoteArtifact {
+    fn branch(&self) -> Option<String> {
+        match (&*self.kind, &self.data) {
+            ("branch", Some(RemoteArtifactData { head_ref: Some(head), .. })) => Some(head.clone()),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct RemoteArtifactData {
+    #[serde(default)]
+    head_ref: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RemoteError {
+    #[serde(default)]
+    message: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RemoteErrorEnvelope {
+    #[serde(default)]
+    message: Option<String>,
+    #[serde(default)]
+    error: Option<RemoteError>,
+}
+
+impl RemoteErrorEnvelope {
+    fn error_message(self) -> Option<String> {
+        self.error.and_then(|error| error.message).or(self.message)
+    }
 }
 
 impl<C: CloudClient> ExecutionBackend for CloudBackend<C> {
