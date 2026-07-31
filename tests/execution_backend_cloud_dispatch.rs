@@ -77,7 +77,7 @@ fn a_succeeded_task_completes_and_reports_its_branch() {
         "task-abc",
         vec![
             Ok(TaskState::Pending),
-            Ok(TaskState::Succeeded { branch: "copilot/fix-42".to_string() }),
+            Ok(TaskState::succeeded("copilot/fix-42")),
         ],
     );
     let out = CloudBackend::new(client).execute(&job());
@@ -99,8 +99,8 @@ fn polling_stops_at_the_first_terminal_state() {
         "task-abc",
         vec![
             Ok(TaskState::Pending),
-            Ok(TaskState::Succeeded { branch: "b".to_string() }),
-            Ok(TaskState::Failed { reason: "must never be read".to_string() }),
+            Ok(TaskState::succeeded("b")),
+            Ok(TaskState::failed("must never be read")),
         ],
     );
     let counter = client.counter();
@@ -115,7 +115,7 @@ fn polling_stops_at_the_first_terminal_state() {
 fn a_failed_task_reports_the_remote_reason() {
     let client = ScriptedClient::new(
         "task-def",
-        vec![Ok(TaskState::Failed { reason: "runner out of quota".to_string() })],
+        vec![Ok(TaskState::failed("runner out of quota"))],
     );
     let out = CloudBackend::new(client).execute(&job());
 
@@ -143,7 +143,7 @@ fn an_unsettled_task_fails_within_a_bounded_number_of_polls() {
 #[test]
 fn a_zero_poll_budget_is_coerced_to_one() {
     let client =
-        ScriptedClient::new("task-x", vec![Ok(TaskState::Succeeded { branch: "b".into() })]);
+        ScriptedClient::new("task-x", vec![Ok(TaskState::succeeded("b"))]);
     let counter = client.counter();
     let backend = CloudBackend::with_max_polls(client, 0);
 
@@ -212,7 +212,7 @@ fn preflight_refuses_an_empty_task_and_accepts_a_real_one() {
 fn the_cloud_backend_is_usable_behind_a_trait_object() {
     let concrete = CloudBackend::new(ScriptedClient::new(
         "task-obj",
-        vec![Ok(TaskState::Succeeded { branch: "b".into() })],
+        vec![Ok(TaskState::succeeded("b"))],
     ));
     let backend: &dyn ExecutionBackend = &concrete;
 
@@ -223,6 +223,7 @@ fn the_cloud_backend_is_usable_behind_a_trait_object() {
 #[test]
 fn task_state_terminality_is_explicit() {
     assert!(!TaskState::Pending.is_terminal(), "pending is the only non-terminal state");
-    assert!(TaskState::Succeeded { branch: "b".into() }.is_terminal());
-    assert!(TaskState::Failed { reason: "r".into() }.is_terminal());
+    assert!(TaskState::succeeded("b").is_terminal());
+    assert!(TaskState::failed("r").is_terminal());
 }
+
