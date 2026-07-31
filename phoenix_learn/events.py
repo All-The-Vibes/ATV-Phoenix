@@ -170,3 +170,25 @@ def read_projection(path: Path) -> Projection:
 
 def _iter_events(source: Projection | Iterable[Event]) -> Iterator[Event]:
     return iter(source.events if isinstance(source, Projection) else source)
+
+
+def sanitize_for_telemetry(event: Event) -> dict:
+    """Return a minimal telemetry payload safe for local/PostHog projection.
+
+    `detail` is intentionally omitted because it can contain raw backend error text. The goal of
+    this projection is mission-level observability, not log shipping.
+    """
+    payload = json.loads(event.to_json())
+    payload.pop("detail", None)
+    return payload
+
+
+def project_telemetry(
+    source: Projection | Iterable[Event], *, posthog_enabled: bool
+) -> dict[str, list[dict]]:
+    """Project sanitized events to local storage and optional PostHog sink."""
+    local = [sanitize_for_telemetry(event) for event in _iter_events(source)]
+    return {
+        "local": local,
+        "posthog": list(local) if posthog_enabled else [],
+    }
