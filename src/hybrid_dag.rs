@@ -15,6 +15,9 @@
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
+use crate::lease::{Fence, LeaseRegistry};
+use crate::supervisor::Supervisor;
+
 /// Where a goal stands in the mission.
 ///
 /// `Blocked` is deliberately distinct from `Failed`: a blocked goal never ran. Collapsing the two
@@ -56,6 +59,333 @@ pub enum DagDenied {
     AlreadyResolved { goal: String, state: GoalOutcome },
     /// Success was claimed while a prerequisite had not succeeded — a stale or out-of-order result.
     NotReady { goal: String, prerequisite: String },
+}
+
+/// Where a goal is currently running.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GoalBackend {
+    Local,
+    CopilotCloud,
+}
+
+impl GoalBackend {
+    fn holder(self) -> &'static str {
+        match self {
+            Self::Local => "local",
+            Self::CopilotCloud => "copilot_cloud",
+        }
+    }
+}
+
+/// One dispatch decision for a ready goal.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GoalDispatch {
+    pub goal: String,
+    pub backend: GoalBackend,
+    pub token: u64,
+}
+
+/// Explicit integration failures.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum IntegrationFailure {
+    Conflict { detail: String },
+    Error { detail: String },
+}
+
+impl std::fmt::Display for IntegrationFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Conflict { detail } => write!(f, "merge conflict: {detail}"),
+            Self::Error { detail } => f.write_str(detail),
+        }
+    }
+}
+
+impl std::error::Error for IntegrationFailure {}
+
+/// Merge seam: production performs git merges; tests drive this deterministically.
+pub trait IntegrationWorker {
+    fn merge(
+        &mut self,
+        integration_worktree: &str,
+        goal: &str,
+        branch: &str,
+    ) -> Result<(), IntegrationFailure>;
+}
+
+/// Why a hybrid mission step was refused.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HybridDenied {
+    UnknownGoal { goal: String },
+    NotRunning { goal: String },
+    WrongBackend {
+        goal: String,
+        expected: GoalBackend,
+        got: GoalBackend,
+    },
+    SlaNotExpired { goal: String, now: u64, expires_at: u64 },
+    StaleResult { goal: String, token: u64 },
+    AlreadyResolved { goal: String, state: GoalOutcome },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RunningGoal {
+    backend: GoalBackend,
+    token: u64,
+    expires_at: u64,
+}
+
+/// Dedicated integration workspace for merging proven goal branches.
+pub const INTEGRATION_WORKTREE: &str = "integration";
+
+/// Runtime state for mixed local/cloud goal execution with fenced fallback.
+#[derive(Debug, Clone)]
+pub struct HybridMission {
+    dag: GoalDag,
+    local: Supervisor,
+    leases: LeaseRegistry,
+    cloud_queue_sla: u64,
+    running: BTreeMap<String, RunningGoal>,
+    proven_branches: BTreeMap<String, String>,
+    integration_worktree: String,
+    failures: BTreeMap<String, String>,
+}
+
+impl HybridMission {
+    pub fn new(local_capacity: usize, cloud_queue_sla: u64) -> Self {
+        Self {
+            dag: GoalDag::new(),
+            local: Supervisor::with_capacity(local_capacity),
+            leases: LeaseRegistry::new(),
+            cloud_queue_sla: cloud_queue_sla.max(1),
+            running: BTreeMap::new(),
+            proven_branches: BTreeMap::new(),
+            integration_worktree: INTEGRATION_WORKTREE.to_string(),
+            failures: BTreeMap::new(),
+        }
+    }
+
+    pub fn add_goal(&mut self, goal: &str, prerequisites: &[&str]) -> Result<(), DagDenied> {
+        self.dag.add_goal(goal, prerequisites)
+    }
+
+    pub fn ready(&self) -> Vec<String> {
+        self.dag.ready()
+    }
+
+    pub fn state(&self, goal: &str) -> Option<GoalOutcome> {
+        self.dag.state(goal)
+    }
+
+    pub fn blocked(&self) -> Vec<String> {
+        self.dag.blocked()
+    }
+
+    pub fn failed(&self) -> Vec<String> {
+        self.dag.failed()
+    }
+
+    pub fn failure_reason(&self, goal: &str) -> Option<&str> {
+        self.failures.get(goal).map(String::as_str)
+    }
+
+    pub fn integration_worktree(&self) -> &str {
+        &self.integration_worktree
+    }
+
+    pub fn watermark(&self, goal: &str) -> Option<u64> {
+        self.leases.watermark(goal)
+    }
+
+    pub fn dispatch_ready(&mut self, now: u64) -> Vec<GoalDispatch> {
+        let mut out = Vec::new();
+        for goal in self.dag.ready() {
+            if self.running.contains_key(&goal) || self.proven_branches.contains_key(&goal) {
+                continue;
+            }
+            if let Some(dispatch) = self.dispatch_goal(&goal, now) {
+                out.push(dispatch);
+            }
+        }
+        out
+    }
+
+    /// Re-dispatch cloud goals whose queue wait exceeded SLA, advancing fencing on every retry.
+    pub fn advance_expired_cloud_fences(&mut self, now: u64) -> Result<Vec<GoalDispatch>, HybridDenied> {
+        let expired: Vec<String> = self
+            .running
+            .iter()
+            .filter(|(_, run)| run.backend == GoalBackend::CopilotCloud && now >= run.expires_at)
+            .map(|(g, _)| g.clone())
+            .collect();
+
+        let mut out = Vec::new();
+        for goal in expired {
+            self.running.remove(&goal);
+            if let Some(dispatch) = self.dispatch_goal(&goal, now) {
+                out.push(dispatch);
+            }
+        }
+        Ok(out)
+    }
+
+    pub fn expire_cloud_goal(
+        &mut self,
+        goal: &str,
+        now: u64,
+    ) -> Result<Option<GoalDispatch>, HybridDenied> {
+        let Some(run) = self.running.get(goal).cloned() else {
+            return Err(HybridDenied::NotRunning { goal: goal.to_string() });
+        };
+        if run.backend != GoalBackend::CopilotCloud {
+            return Err(HybridDenied::WrongBackend {
+                goal: goal.to_string(),
+                expected: GoalBackend::CopilotCloud,
+                got: run.backend,
+            });
+        }
+        if now < run.expires_at {
+            return Err(HybridDenied::SlaNotExpired {
+                goal: goal.to_string(),
+                now,
+                expires_at: run.expires_at,
+            });
+        }
+
+        self.running.remove(goal);
+        Ok(self.dispatch_goal(goal, now))
+    }
+
+    pub fn report_success(
+        &mut self,
+        goal: &str,
+        backend: GoalBackend,
+        token: u64,
+        branch: &str,
+        now: u64,
+        integration: &mut dyn IntegrationWorker,
+    ) -> Result<(), HybridDenied> {
+        if let Some(run) = self.running.get(goal) {
+            if run.backend != backend {
+                return Err(HybridDenied::WrongBackend {
+                    goal: goal.to_string(),
+                    expected: run.backend,
+                    got: backend,
+                });
+            }
+        }
+
+        if self.leases.commit(goal, token, now) == Fence::Fenced {
+            return Err(HybridDenied::StaleResult { goal: goal.to_string(), token });
+        }
+
+        if let Some(run) = self.running.remove(goal) {
+            if run.backend == GoalBackend::Local {
+                self.local.complete(goal);
+                while let Some(next) = self.local.next_ready() {
+                    self.local.complete(&next);
+                }
+            }
+        }
+        self.leases.release(goal, token);
+        self.proven_branches.insert(goal.to_string(), branch.to_string());
+        self.integrate_proven(integration)
+    }
+
+    pub fn report_failure(
+        &mut self,
+        goal: &str,
+        backend: GoalBackend,
+        token: u64,
+        reason: &str,
+        now: u64,
+    ) -> Result<Vec<String>, HybridDenied> {
+        let Some(run) = self.running.get(goal).cloned() else {
+            return Err(HybridDenied::NotRunning { goal: goal.to_string() });
+        };
+        if run.backend != backend {
+            return Err(HybridDenied::WrongBackend {
+                goal: goal.to_string(),
+                expected: run.backend,
+                got: backend,
+            });
+        }
+        if self.leases.commit(goal, token, now) == Fence::Fenced {
+            return Err(HybridDenied::StaleResult { goal: goal.to_string(), token });
+        }
+
+        self.running.remove(goal);
+        if backend == GoalBackend::Local {
+            self.local.complete(goal);
+            while let Some(next) = self.local.next_ready() {
+                self.local.complete(&next);
+            }
+        }
+        self.leases.release(goal, token);
+        self.failures.insert(goal.to_string(), reason.to_string());
+        self.dag.mark_failed(goal).map_err(|e| map_dag_denied(goal, e))
+    }
+
+    fn dispatch_goal(&mut self, goal: &str, now: u64) -> Option<GoalDispatch> {
+        if self.dag.state(goal) != Some(GoalOutcome::Pending) {
+            return None;
+        }
+
+        let backend = if self.local.in_flight() < self.local.capacity() {
+            self.local.admit(goal);
+            GoalBackend::Local
+        } else {
+            GoalBackend::CopilotCloud
+        };
+        let ttl = if backend == GoalBackend::CopilotCloud {
+            self.cloud_queue_sla
+        } else {
+            u64::MAX / 2
+        };
+        let lease = self.leases.acquire(goal, backend.holder(), now, ttl).ok()?;
+        let run = RunningGoal {
+            backend,
+            token: lease.token,
+            expires_at: lease.expires_at,
+        };
+        self.running.insert(goal.to_string(), run);
+        Some(GoalDispatch { goal: goal.to_string(), backend, token: lease.token })
+    }
+
+    fn integrate_proven(&mut self, integration: &mut dyn IntegrationWorker) -> Result<(), HybridDenied> {
+        loop {
+            let mut progressed = false;
+            for goal in self.dag.ready() {
+                let Some(branch) = self.proven_branches.get(&goal).cloned() else {
+                    continue;
+                };
+                match integration.merge(&self.integration_worktree, &goal, &branch) {
+                    Ok(()) => {
+                        self.proven_branches.remove(&goal);
+                        self.dag.mark_succeeded(&goal).map_err(|e| map_dag_denied(&goal, e))?;
+                    }
+                    Err(err) => {
+                        self.proven_branches.remove(&goal);
+                        self.failures.insert(goal.clone(), err.to_string());
+                        self.dag.mark_failed(&goal).map_err(|e| map_dag_denied(&goal, e))?;
+                    }
+                }
+                progressed = true;
+                break;
+            }
+            if !progressed {
+                return Ok(());
+            }
+        }
+    }
+}
+
+fn map_dag_denied(goal: &str, denied: DagDenied) -> HybridDenied {
+    match denied {
+        DagDenied::UnknownGoal { .. } => HybridDenied::UnknownGoal { goal: goal.to_string() },
+        DagDenied::AlreadyResolved { goal, state } => HybridDenied::AlreadyResolved { goal, state },
+        _ => HybridDenied::NotRunning { goal: goal.to_string() },
+    }
 }
 
 /// A mission's goal graph: acyclic *by construction*, deterministic in every ordering it returns.
@@ -139,6 +469,11 @@ impl GoalDag {
     /// Goals that ran and failed, in declaration order.
     pub fn failed(&self) -> Vec<String> {
         self.with_state(GoalOutcome::Failed)
+    }
+
+    /// Every declared goal, in declaration order.
+    pub fn goals(&self) -> Vec<String> {
+        self.order.clone()
     }
 
     /// True once no goal is pending — the mission can be concluded.
