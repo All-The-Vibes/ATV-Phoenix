@@ -22,6 +22,7 @@ pub mod budget;
 pub mod lifecycle;
 pub mod reconcile;
 pub mod trace_chains;
+pub mod worktrees;
 pub mod lease;
 
 pub use doctor::{doctor, DoctorReport, integrity, fix as doctor_fix, resolve_home, InstallReport};
@@ -38,6 +39,7 @@ pub use budget::{BudgetExceeded, BudgetLedger, Limits, Resource, Scope, Spend};
 pub use lifecycle::{GoalState, Lifecycle, TransitionDenied};
 pub use reconcile::{reconcile, reconcile_with_audit, ReclaimedLease, Reconciliation};
 pub use trace_chains::{verify_mission, ChainStatus, MissionChains, MissionVerify};
+pub use worktrees::{AssignmentDenied, WorktreeRegistry, WORKTREE_PREFIX};
 pub use lease::{Fence, Lease, LeaseDenied, LeaseRegistry, FIRST_TOKEN};
 pub use backend_select::{select_backend, BackendRejection, RejectionCause, Rejections, Selection, AUTO_BACKEND_NAME};
 pub use cloud_backend::{CloudBackend, CloudClient, CloudError, TaskId, TaskState, CLOUD_BACKEND_NAME, DEFAULT_MAX_POLLS};
