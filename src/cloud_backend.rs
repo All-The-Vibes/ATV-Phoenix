@@ -17,7 +17,7 @@
 use crate::execution_backend::{
     BackendOutcome, ExecutionBackend, Job, PreflightDimension, PreflightOutcome, PreflightRefusal,
 };
-use crate::run_artifacts::RunArtifacts;
+use crate::run_artifacts::{RunArtifacts, Usage};
 
 /// Stable name of the Copilot cloud backend.
 pub const CLOUD_BACKEND_NAME: &str = "copilot_cloud";
@@ -39,19 +39,85 @@ impl TaskId {
     }
 }
 
+/// What a completed remote task reports about how it ran.
+///
+/// Every field is optional because a remote may report some, all, or none of them. `None` means
+/// "not reported", which is a different fact from a measured zero — the same distinction
+/// [`crate::run_artifacts::Usage`] exists to preserve, carried all the way from the wire.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TaskReport {
+    pub model: Option<String>,
+    pub input_tokens: Option<u64>,
+    pub output_tokens: Option<u64>,
+    pub cost_micros: Option<u64>,
+}
+
+impl TaskReport {
+    /// A completion the remote gave no accounting for.
+    pub fn unreported() -> Self {
+        Self::default()
+    }
+
+    pub fn with_model(mut self, model: impl Into<String>) -> Self {
+        self.model = Some(model.into());
+        self
+    }
+
+    pub fn with_tokens(mut self, input: u64, output: u64) -> Self {
+        self.input_tokens = Some(input);
+        self.output_tokens = Some(output);
+        self
+    }
+
+    pub fn with_cost(mut self, cost_micros: u64) -> Self {
+        self.cost_micros = Some(cost_micros);
+        self
+    }
+
+    /// The usage half of this report, in the ledger's own type.
+    pub fn usage(&self) -> Usage {
+        Usage {
+            input_tokens: self.input_tokens,
+            output_tokens: self.output_tokens,
+            cost_micros: self.cost_micros,
+        }
+    }
+}
+
 /// Remote-side state of a dispatched task.
 ///
 /// `Pending` is the only non-terminal variant; the poll loop keeps going only while it sees one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TaskState {
     Pending,
-    Succeeded { branch: String },
-    Failed { reason: String },
+    Succeeded { branch: String, report: TaskReport },
+    Failed { reason: String, report: TaskReport },
 }
 
 impl TaskState {
     pub fn is_terminal(&self) -> bool {
         !matches!(self, Self::Pending)
+    }
+
+    /// Succeeded with no usage accounting from the remote.
+    pub fn succeeded(branch: impl Into<String>) -> Self {
+        Self::Succeeded { branch: branch.into(), report: TaskReport::unreported() }
+    }
+
+    /// Failed with no usage accounting from the remote.
+    pub fn failed(reason: impl Into<String>) -> Self {
+        Self::Failed { reason: reason.into(), report: TaskReport::unreported() }
+    }
+
+    /// What this state reports about how it ran, if it is terminal.
+    ///
+    /// A failed task still carries a report: tokens burned before the failure are real spend, and a
+    /// ledger that drops them under-reports cost precisely on the runs that went wrong.
+    pub fn report(&self) -> Option<&TaskReport> {
+        match self {
+            Self::Pending => None,
+            Self::Succeeded { report, .. } | Self::Failed { report, .. } => Some(report),
+        }
     }
 }
 
@@ -123,11 +189,8 @@ impl<C: CloudClient> CloudBackend<C> {
     /// human-facing outcome and the ledger-facing record can never drift apart and disagree about
     /// the same run — a divergence would be silent and only visible long after the fact.
     ///
-    /// Note what is deliberately NOT populated: `model` and `usage` stay unreported, because
-    /// [`CloudClient`] does not expose them yet. Filling them with plausible defaults would be
-    /// fabrication — [`crate::run_artifacts::Usage`] exists precisely so "the remote never told us"
-    /// stays distinguishable from a measured value. They become real when the client contract
-    /// carries them.
+    /// Model and usage come from the remote's own [`TaskReport`]. A field the remote did not report
+    /// stays `None` all the way to the ledger: "we were not told" must never become "it was free".
     pub fn dispatch(&self, job: &Job) -> (BackendOutcome, RunArtifacts) {
         let artifacts = RunArtifacts::none_for(CLOUD_BACKEND_NAME);
 
@@ -154,21 +217,21 @@ impl<C: CloudClient> CloudBackend<C> {
         for _ in 0..self.max_polls {
             match self.client.poll(&task) {
                 Ok(TaskState::Pending) => continue,
-                Ok(TaskState::Succeeded { branch }) => {
+                Ok(TaskState::Succeeded { branch, report }) => {
                     return (
                         BackendOutcome::completed(
                             &job.id,
                             CLOUD_BACKEND_NAME,
                             format!("cloud task {} completed on branch {}", task.as_str(), branch),
                         ),
-                        artifacts.with_branch(branch),
+                        apply_report(artifacts.with_branch(branch), &report),
                     )
                 }
-                Ok(TaskState::Failed { reason }) => {
+                Ok(TaskState::Failed { reason, report }) => {
                     let detail = format!("cloud task {} failed: {}", task.as_str(), reason);
                     return (
                         BackendOutcome::failed(&job.id, CLOUD_BACKEND_NAME, detail),
-                        artifacts.with_error(reason),
+                        apply_report(artifacts.with_error(reason), &report),
                     );
                 }
                 Err(err) => {
@@ -191,6 +254,18 @@ impl<C: CloudClient> CloudBackend<C> {
             artifacts.with_error(detail),
         )
     }
+}
+
+/// Fold a remote report into the artifact record, preserving unreported-vs-zero.
+fn apply_report(mut artifacts: RunArtifacts, report: &TaskReport) -> RunArtifacts {
+    if let Some(model) = &report.model {
+        artifacts = artifacts.with_model(model.clone());
+    }
+    let usage = report.usage();
+    if usage.is_reported() {
+        artifacts = artifacts.with_usage(usage);
+    }
+    artifacts
 }
 
 impl<C: CloudClient> ExecutionBackend for CloudBackend<C> {

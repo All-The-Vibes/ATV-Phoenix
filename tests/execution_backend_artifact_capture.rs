@@ -48,7 +48,7 @@ fn job() -> Job {
 fn a_successful_dispatch_records_task_and_branch_as_fields() {
     let client = ScriptedClient::new(
         "task-abc",
-        vec![Ok(TaskState::Pending), Ok(TaskState::Succeeded { branch: "copilot/fix-42".into() })],
+        vec![Ok(TaskState::Pending), Ok(TaskState::succeeded("copilot/fix-42"))],
     );
     let (outcome, artifacts) = CloudBackend::new(client).dispatch(&job());
 
@@ -63,7 +63,7 @@ fn a_successful_dispatch_records_task_and_branch_as_fields() {
 #[test]
 fn unreported_facts_are_absent_rather_than_invented() {
     let client =
-        ScriptedClient::new("task-abc", vec![Ok(TaskState::Succeeded { branch: "b".into() })]);
+        ScriptedClient::new("task-abc", vec![Ok(TaskState::succeeded("b"))]);
     let (_, artifacts) = CloudBackend::new(client).dispatch(&job());
 
     assert_eq!(artifacts.model, None, "the client contract does not expose a model yet");
@@ -78,7 +78,7 @@ fn unreported_facts_are_absent_rather_than_invented() {
 fn a_remote_task_failure_records_the_reason_and_keeps_the_task_id() {
     let client = ScriptedClient::new(
         "task-def",
-        vec![Ok(TaskState::Failed { reason: "runner out of quota".into() })],
+        vec![Ok(TaskState::failed("runner out of quota"))],
     );
     let (outcome, artifacts) = CloudBackend::new(client).dispatch(&job());
 
@@ -144,8 +144,8 @@ fn a_poll_transport_error_is_recorded_distinctly_from_a_task_failure() {
 fn execute_and_dispatch_never_disagree_about_the_same_run() {
     // Every terminal path, checked pairwise: the trait method must be exactly dispatch's outcome.
     let cases: Vec<(&str, Vec<Result<TaskState, CloudError>>, Job)> = vec![
-        ("task-1", vec![Ok(TaskState::Succeeded { branch: "b".into() })], job()),
-        ("task-2", vec![Ok(TaskState::Failed { reason: "nope".into() })], job()),
+        ("task-1", vec![Ok(TaskState::succeeded("b"))], job()),
+        ("task-2", vec![Ok(TaskState::failed("nope"))], job()),
         ("task-3", vec![Err(CloudError::new("boom"))], job()),
         ("task-4", vec![], Job::new("job-blank", "  ")),
     ];
@@ -169,7 +169,7 @@ fn execute_and_dispatch_never_disagree_about_the_same_run() {
 #[test]
 fn the_artifact_summary_surfaces_the_recorded_facts() {
     let client =
-        ScriptedClient::new("task-sum", vec![Ok(TaskState::Succeeded { branch: "copilot/x".into() })]);
+        ScriptedClient::new("task-sum", vec![Ok(TaskState::succeeded("copilot/x"))]);
     let (_, artifacts) = CloudBackend::new(client).dispatch(&job());
 
     let summary = artifacts.summary();
@@ -179,3 +179,4 @@ fn the_artifact_summary_surfaces_the_recorded_facts() {
     assert!(!summary.contains("tokens="), "unreported usage must not appear in the summary");
     assert!(!summary.contains("model="), "an unreported model must not appear either");
 }
+
