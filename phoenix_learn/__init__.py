@@ -38,6 +38,18 @@ from .graded import (
     is_accept,
     summary,
 )
+from .signal_report import (
+    MetricDirection,
+    PostMergeOutcome,
+    ProposedIssue,
+    Report,
+    Signal,
+    SignalSource,
+    adoption_allowed,
+    build_reports,
+    measure_post_merge_outcome,
+    propose_issue_from_report,
+)
 
 __all__ = [
     "decide",
@@ -58,4 +70,14 @@ __all__ = [
     "ACCEPT",
     "REVIEW",
     "REJECT",
+    "Signal",
+    "Report",
+    "SignalSource",
+    "MetricDirection",
+    "ProposedIssue",
+    "PostMergeOutcome",
+    "build_reports",
+    "propose_issue_from_report",
+    "measure_post_merge_outcome",
+    "adoption_allowed",
 ]
