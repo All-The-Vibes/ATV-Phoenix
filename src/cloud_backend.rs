@@ -270,6 +270,17 @@ impl HttpCloudClient {
         format!("{}/{}", self.tasks_url(), task.as_str())
     }
 
+    /// The Copilot CAPI host is NOT the REST API: it rejects `X-GitHub-Api-Version` and expects the
+    /// preview Accept types the official client sends.
+    fn submit_request(&self, url: &str) -> ureq::Request {
+        let authorization = "Bearer ".to_owned() + &self.token;
+        ureq::request("POST", url)
+            .set("Accept", "application/vnd.github.merge-info-preview+json, application/vnd.github.nebula-preview")
+            .set("Content-Type", "application/json")
+            .set("User-Agent", "phoenix-cloud-client")
+            .set("Authorization", &authorization)
+    }
+
     fn request(&self, method: &str, url: &str) -> ureq::Request {
         let authorization = "Bearer ".to_owned() + &self.token;
         ureq::request(method, url)
@@ -284,11 +295,11 @@ impl CloudClient for HttpCloudClient {
     fn submit(&self, job: &Job) -> Result<TaskId, CloudError> {
         let url = self.submit_url();
         let response = self
-            .request("POST", &url)
+            .submit_request(&url)
             .send_json(json!({
                 "problem_statement": job.task,
                 "event_type": SUBMIT_EVENT_TYPE,
-                "pull_request": {}
+                "pull_request": { "id": 0, "number": 0 }
             }))
             .map_err(|err| map_http_error("submit", err))?;
         let submitted: RemoteTask = response
