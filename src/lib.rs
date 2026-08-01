@@ -26,6 +26,7 @@ pub mod worktrees;
 pub mod run_ledger;
 pub mod lease;
 pub mod hybrid_dag;
+pub mod mission;
 
 pub use doctor::{doctor, DoctorReport, integrity, fix as doctor_fix, resolve_home, InstallReport};
 pub use heal::{heal, HealCtx, HealResult, Strategy};
@@ -51,3 +52,4 @@ pub use hybrid_dag::{
 pub use backend_select::{select_backend, BackendRejection, RejectionCause, Rejections, Selection, AUTO_BACKEND_NAME};
 pub use cloud_backend::{CloudBackend, CloudClient, CloudError, TaskId, TaskReport, TaskState, CLOUD_BACKEND_NAME, DEFAULT_MAX_POLLS};
 pub use run_artifacts::{RunArtifacts, Usage};
+pub use mission::{run_mission, GoalRecord, MissionConfig, MissionReport};
