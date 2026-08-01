@@ -118,7 +118,7 @@ fn client(base_url: &str) -> HttpCloudClient {
 fn submit_posts_prompt_with_bearer_auth_and_returns_task_id() {
     let server = StubServer::spawn(vec![PlannedResponse {
         status: 201,
-        body: r#"{"id":"task-123","state":"queued"}"#.into(),
+        body: r#"{"job_id":"task-123","status":"queued"}"#.into(),
     }]);
     let task = client(server.base_url())
         .submit(&Job::new("job-1", "fix issue 82"))
@@ -130,12 +130,12 @@ fn submit_posts_prompt_with_bearer_auth_and_returns_task_id() {
     assert_eq!(requests[0].method, "POST");
     assert_eq!(
         requests[0].path,
-        "/agents/repos/All-The-Vibes/ATV-Phoenix/tasks"
+        "/agents/swe/v1/jobs/All-The-Vibes/ATV-Phoenix"
     );
     let authorization = requests[0].authorization.as_deref().unwrap_or_default();
     assert!(authorization.starts_with("Bearer "));
     assert!(authorization.ends_with("test-token"));
-    assert!(requests[0].body.contains(r#""prompt":"fix issue 82""#));
+    assert!(requests[0].body.contains(r#""problem_statement":"fix issue 82""#));
 }
 
 #[test]

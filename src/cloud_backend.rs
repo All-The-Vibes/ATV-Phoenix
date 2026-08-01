@@ -160,11 +160,22 @@ pub trait CloudClient {
 
 const GITHUB_API_VERSION: &str = "2026-03-10";
 const DEFAULT_GITHUB_API_BASE: &str = "https://api.github.com";
+/// Submitting a job is NOT served by the REST API host. Verified against the live service on
+/// 2026-07-31: `gh agent-task create` issues `POST api.githubcopilot.com/agents/swe/v1/jobs/{owner}/{repo}`,
+/// while reading a task is `GET api.github.com/agents/repos/{owner}/{repo}/tasks/{id}`. Two hosts, two
+/// path shapes. Pointing submit at the REST host returns 403 forbidden.
+const DEFAULT_COPILOT_API_BASE: &str = "https://api.githubcopilot.com";
+/// The create-job payload is `problem_statement` + `event_type` + `pull_request`, NOT `prompt`.
+/// Taken from the official client's own `CreateJob` (cli/cli `pkg/cmd/agent-task/capi/job.go`);
+/// sending `{"prompt": ...}` to the correct URL returns HTTP 400. `gh_cli` is the only event type
+/// observed to be accepted, so it is what we send rather than a value we have not seen work.
+const SUBMIT_EVENT_TYPE: &str = "gh_cli";
 const DEFAULT_BRANCH: &str = "unknown";
 
 /// A production [`CloudClient`] that talks to GitHub Copilot's agent-tasks API over HTTP.
 #[derive(Clone)]
 pub struct HttpCloudClient {
+    submit_base: String,
     api_base: String,
     owner: String,
     repo: String,
@@ -175,6 +186,7 @@ impl std::fmt::Debug for HttpCloudClient {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("HttpCloudClient")
             .field("api_base", &self.api_base)
+            .field("submit_base", &self.submit_base)
             .field("owner", &self.owner)
             .field("repo", &self.repo)
             .field("token", &"<redacted>")
@@ -202,8 +214,21 @@ impl HttpCloudClient {
 
         let api_base =
             std::env::var("GITHUB_API_URL").unwrap_or_else(|_| DEFAULT_GITHUB_API_BASE.to_string());
-        Self::new(api_base, owner, repo, token)
+        let submit_base = std::env::var("COPILOT_API_URL")
+            .unwrap_or_else(|_| DEFAULT_COPILOT_API_BASE.to_string());
+        Self::new(api_base, owner, repo, token).map(|c| c.with_submit_base(submit_base))
     }
+
+    /// Override the host used to CREATE jobs. Reads and writes are served by different hosts.
+
+    pub fn with_submit_base(mut self, base: impl Into<String>) -> Self {
+
+        self.submit_base = trim_trailing_slashes(base.into());
+
+        self
+
+    }
+
 
     pub fn new(
         api_base: impl Into<String>,
@@ -229,7 +254,12 @@ impl HttpCloudClient {
             return Err(CloudError::new("token must not be empty"));
         }
 
-        Ok(Self { api_base, owner, repo, token })
+        Ok(Self { submit_base: api_base.clone(), api_base, owner, repo, token })
+    }
+
+    /// Where a NEW job is created. Different host and different path shape from `tasks_url`.
+    fn submit_url(&self) -> String {
+        format!("{}/agents/swe/v1/jobs/{}/{}", self.submit_base, self.owner, self.repo)
     }
 
     fn tasks_url(&self) -> String {
@@ -252,18 +282,23 @@ impl HttpCloudClient {
 
 impl CloudClient for HttpCloudClient {
     fn submit(&self, job: &Job) -> Result<TaskId, CloudError> {
-        let url = self.tasks_url();
+        let url = self.submit_url();
         let response = self
             .request("POST", &url)
-            .send_json(json!({ "prompt": job.task }))
+            .send_json(json!({
+                "problem_statement": job.task,
+                "event_type": SUBMIT_EVENT_TYPE,
+                "pull_request": {}
+            }))
             .map_err(|err| map_http_error("submit", err))?;
         let submitted: RemoteTask = response
             .into_json()
             .map_err(|err| CloudError::new(format!("submit decode failed: {err}")))?;
-        if submitted.id.trim().is_empty() {
+        let identifier = submitted.identifier().to_string();
+        if identifier.trim().is_empty() {
             return Err(CloudError::new("submit decode failed: missing task id"));
         }
-        Ok(TaskId::new(submitted.id))
+        Ok(TaskId::new(identifier))
     }
 
     fn poll(&self, task: &TaskId) -> Result<TaskState, CloudError> {
@@ -414,7 +449,22 @@ fn map_http_error(operation: &str, error: ureq::Error) -> CloudError {
 
 #[derive(Debug, Deserialize)]
 struct RemoteTask {
+    /// The v1 jobs API returns `job_id`. Other shapes return `id`; accept either rather than
+    /// failing to decode a task that the service did in fact create.
+    #[serde(default)]
+    job_id: String,
+    #[serde(default)]
     id: String,
+}
+
+impl RemoteTask {
+    fn identifier(&self) -> &str {
+        if !self.job_id.trim().is_empty() {
+            &self.job_id
+        } else {
+            &self.id
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
