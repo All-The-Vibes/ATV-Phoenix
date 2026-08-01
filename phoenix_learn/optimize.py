@@ -1,7 +1,9 @@
 """phoenix_learn.optimize — the candidate-proposing optimizer behind the measured-gain gate.
 
 Ported from the live Goose continuous-learning loop (goose/tools/sia_h_run.py:run). This is the
-*proposer* that feeds the gate shipped in issue #7: a GEPA-style generational loop that
+*proposer* that feeds the gate shipped in issue #7: a single-lineage reflective hill-climb
+(whole-document rewrite from PUBLIC failures, argmax selection on DEV) — reflective mutation in
+the spirit of GEPA, without GEPA's genetic population or Pareto frontier — that
 
   1. synthesizes a gen_0 instruction from PUBLIC prompts only (or takes a hand `seed`),
   2. reflect/mutates it against PUBLIC failures across generations,
