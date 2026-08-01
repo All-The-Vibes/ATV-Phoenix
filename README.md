@@ -146,7 +146,7 @@ For a full first project walkthrough, see the
 | **1. Intent engineering** | `phoenix-goal`, `phoenix-intent`, and `phoenix-plan` convert direction into checked contracts and backlogs before implementation starts. |
 | **2. Objective checks** | `phoenix_sense` evaluates command exits, file hashes, regexes, prompt manifests, and UI behavior without asking an LLM to grade itself. |
 | **3. Self-healing** | `phoenix_snapshot` saves only passing state. `phoenix_heal` performs bounded rollback or retry, then confirms recovery with an external recheck. |
-| **4. Proven completion** | `phoenix_accept` rejects vacuous checks and returns success only when an intact trace proves failure first and success now. |
+| **4. Proven completion** | `phoenix_accept` refuses any check never observed failing, and returns success only when an intact trace proves failure first and success now. |
 
 ### Beyond the core loop
 
@@ -204,6 +204,8 @@ verifier, and raw-run hashes. Inspect
 ## Honest limits
 
 - Phoenix proves the check you give it. A weak check can still prove the wrong outcome.
+- A check can go red for the wrong reason. RED from a missing test file is not RED from a failing property, and the trace cannot tell the two apart. `tests/test_e2e_proof_is_not_vacuous.py` guards the end-to-end proof against that shape after it happened once.
+- The swe-bench-style gate has no headroom left. Phoenix resolves 9 of 9 on the constructed set and its own recorded baseline is also 9 of 9, so the gate can catch a regression and cannot show an improvement.
 - Recovery is bounded rollback and retry, not general autonomous repair.
 - Command timeouts are represented in checks but are not yet enforced in-process.
 - The published evaluations use small constructed task sets and single models. Treat the deltas as evidence for these conditions, not as a universal ranking.
