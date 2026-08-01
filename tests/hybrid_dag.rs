@@ -3,7 +3,12 @@
 //! Named test target on purpose: `cargo test --test hybrid_dag` fails hard (exit 101) when the
 //! target is absent, so this gate cannot pass vacuously the way a name *filter* would.
 
-use phoenix::hybrid_dag::{DagDenied, GoalDag, GoalOutcome};
+use std::collections::BTreeMap;
+
+use phoenix::hybrid_dag::{
+    DagDenied, GoalBackend, GoalDag, GoalOutcome, HybridDenied, HybridMission, IntegrationFailure,
+    IntegrationWorker, INTEGRATION_WORKTREE,
+};
 
 /// `a -> b -> c` plus an unrelated `x`.
 fn mission() -> GoalDag {
@@ -175,4 +180,186 @@ fn terminal_states_report_themselves_as_terminal() {
     for s in [GoalOutcome::Succeeded, GoalOutcome::Failed, GoalOutcome::Blocked] {
         assert!(s.is_terminal());
     }
+}
+
+#[derive(Default)]
+struct ScriptedIntegration {
+    merges: Vec<(String, String, String)>,
+    outcomes: BTreeMap<String, Result<(), IntegrationFailure>>,
+}
+
+impl ScriptedIntegration {
+    fn conflict_on(mut self, goal: &str) -> Self {
+        self.outcomes.insert(
+            goal.to_string(),
+            Err(IntegrationFailure::Conflict { detail: format!("{goal} conflicts") }),
+        );
+        self
+    }
+}
+
+impl IntegrationWorker for ScriptedIntegration {
+    fn merge(&mut self, worktree: &str, goal: &str, branch: &str) -> Result<(), IntegrationFailure> {
+        self.merges.push((worktree.to_string(), goal.to_string(), branch.to_string()));
+        self.outcomes.remove(goal).unwrap_or(Ok(()))
+    }
+}
+
+fn mixed_mission() -> HybridMission {
+    let mut mission = HybridMission::new(1, 5);
+    mission.add_goal("a", &[]).unwrap();
+    mission.add_goal("x", &[]).unwrap();
+    mission.add_goal("b", &["a"]).unwrap();
+    mission
+}
+
+#[test]
+fn ready_goals_dispatch_concurrently_across_local_and_cloud() {
+    let mut mission = mixed_mission();
+    let dispatches = mission.dispatch_ready(0);
+
+    assert_eq!(dispatches.len(), 2, "both independent roots dispatch in one scheduling step");
+    assert_eq!(dispatches[0].goal, "a");
+    assert_eq!(dispatches[0].backend, GoalBackend::Local);
+    assert_eq!(dispatches[1].goal, "x");
+    assert_eq!(dispatches[1].backend, GoalBackend::CopilotCloud);
+}
+
+#[test]
+fn cloud_sla_expiry_advances_fencing_and_falls_back_without_halting_other_work() {
+    let mut mission = mixed_mission();
+    let dispatches = mission.dispatch_ready(0);
+    let cloud = dispatches
+        .iter()
+        .find(|d| d.backend == GoalBackend::CopilotCloud)
+        .expect("one root should overflow to cloud");
+    let old_token = cloud.token;
+
+    // Time has passed the cloud queue SLA.
+    let retry = mission.expire_cloud_goal(&cloud.goal, 5).unwrap().expect("expired cloud goal must be re-dispatched");
+    assert!(retry.token > old_token, "fence token must advance on fallback/re-dispatch");
+}
+
+#[test]
+fn stale_cloud_result_is_rejected_without_merging() {
+    let mut mission = mixed_mission();
+    let dispatches = mission.dispatch_ready(0);
+    let cloud = dispatches
+        .iter()
+        .find(|d| d.backend == GoalBackend::CopilotCloud)
+        .expect("one root should overflow to cloud")
+        .clone();
+    let fresh = mission.expire_cloud_goal(&cloud.goal, 5).unwrap().expect("expired cloud goal must be re-dispatched");
+
+    let mut integration = ScriptedIntegration::default();
+    let denied = mission
+        .report_success(
+            &cloud.goal,
+            GoalBackend::CopilotCloud,
+            cloud.token,
+            "copilot/stale",
+            6,
+            &mut integration,
+        )
+        .unwrap_err();
+    assert_eq!(denied, HybridDenied::StaleResult { goal: cloud.goal.clone(), token: cloud.token });
+    assert!(
+        integration.merges.is_empty(),
+        "stale branch must be fenced out before integration is attempted"
+    );
+
+    mission
+        .report_success(
+            &fresh.goal,
+            fresh.backend,
+            fresh.token,
+            "copilot/fresh",
+            6,
+            &mut integration,
+        )
+        .unwrap();
+}
+
+#[test]
+fn integration_merges_only_proven_goals_in_dependency_order_using_dedicated_worktree() {
+    let mut mission = mixed_mission();
+    let dispatches = mission.dispatch_ready(0);
+    let local = dispatches
+        .iter()
+        .find(|d| d.backend == GoalBackend::Local)
+        .expect("local root")
+        .clone();
+    let cloud = dispatches
+        .iter()
+        .find(|d| d.backend == GoalBackend::CopilotCloud)
+        .expect("cloud root")
+        .clone();
+    let mut integration = ScriptedIntegration::default();
+
+    // Cloud root proves first; dependent `b` is still blocked on `a`.
+    mission
+        .report_success(
+            &cloud.goal,
+            cloud.backend,
+            cloud.token,
+            "copilot/x",
+            1,
+            &mut integration,
+        )
+        .unwrap();
+    // Local root proves next; now `b` can dispatch.
+    mission
+        .report_success(&local.goal, local.backend, local.token, "local/a", 1, &mut integration)
+        .unwrap();
+
+    let b = mission
+        .dispatch_ready(2)
+        .into_iter()
+        .find(|d| d.goal == "b")
+        .expect("dependent should dispatch after prerequisite integrates");
+    mission
+        .report_success(&b.goal, b.backend, b.token, "local/b", 3, &mut integration)
+        .unwrap();
+
+    assert_eq!(
+        integration.merges,
+        vec![
+            (INTEGRATION_WORKTREE.to_string(), "x".to_string(), "copilot/x".to_string()),
+            (INTEGRATION_WORKTREE.to_string(), "a".to_string(), "local/a".to_string()),
+            (INTEGRATION_WORKTREE.to_string(), "b".to_string(), "local/b".to_string()),
+        ],
+        "every proven branch must merge only through the dedicated integration worktree"
+    );
+}
+
+#[test]
+fn merge_conflicts_surface_as_explicit_failures_and_block_dependents_while_unrelated_branches_continue() {
+    let mut mission = HybridMission::new(1, 5);
+    mission.add_goal("a", &[]).unwrap();
+    mission.add_goal("b", &["a"]).unwrap();
+    mission.add_goal("x", &[]).unwrap();
+
+    let dispatches = mission.dispatch_ready(0);
+    let a = dispatches.iter().find(|d| d.goal == "a").unwrap().clone();
+    let x = dispatches.iter().find(|d| d.goal == "x").unwrap().clone();
+    let mut integration = ScriptedIntegration::default().conflict_on("a");
+
+    mission
+        .report_success(&a.goal, a.backend, a.token, "branch/a", 1, &mut integration)
+        .unwrap();
+    assert_eq!(mission.state("a"), Some(GoalOutcome::Failed), "conflict should fail the goal");
+    assert_eq!(mission.state("b"), Some(GoalOutcome::Blocked), "dependent must be blocked");
+    assert!(
+        mission
+            .failure_reason("a")
+            .expect("failure reason")
+            .contains("merge conflict"),
+        "conflict must surface as an explicit failure"
+    );
+
+    // Unrelated root still progresses.
+    mission
+        .report_success(&x.goal, x.backend, x.token, "branch/x", 1, &mut integration)
+        .unwrap();
+    assert_eq!(mission.state("x"), Some(GoalOutcome::Succeeded));
 }
