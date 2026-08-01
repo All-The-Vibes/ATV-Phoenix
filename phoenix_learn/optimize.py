@@ -12,9 +12,9 @@ Ported from the live Goose continuous-learning loop (goose/tools/sia_h_run.py:ru
 
 It PROPOSES; it never adopts. The verdict is advisory — adoption stays a human-gated step behind a
 `phoenix_accept` red->green trace (see AGENTS.md). Every model touch point is an injected callable
-(`call_fn` / `meta_fn` / `feedback_fn` / `grade_fn`), so the orchestration is deterministic, offline,
-and zero-LLM under test; wiring real LLM defaults is a separate (CLI) concern, intentionally out of
-this module so the library never reaches the network on import.
+(`call_fn` / `meta_fn` / `edit_fn` / `grade_fn`), so the orchestration is deterministic, offline, and
+zero-LLM under test; wiring real LLM defaults is a separate (CLI) concern, intentionally out of this
+module so the library never reaches the network on import.
 """
 from __future__ import annotations
 
@@ -74,16 +74,91 @@ def score(target, rows, call_fn, grade_fn):
     return {"acc": acc, "correct": correct, "n": len(rows), "results": results}
 
 
+# --------------------------------------------------------------------------- bounded edits (SkillOpt-style proposer)
+def _normalize_edit(edit):
+    if not isinstance(edit, dict):
+        raise ValueError("edits must be dicts")
+    op = edit.get("op")
+    anchor = edit.get("anchor")
+    text = edit.get("text", "")
+    if op not in {"add", "delete", "replace"}:
+        raise ValueError(f"unknown edit op: {op!r}")
+    if not isinstance(anchor, str) or not anchor:
+        raise ValueError("edit anchor must be a non-empty string")
+    if op in {"add", "replace"} and not isinstance(text, str):
+        raise ValueError("edit text must be a string")
+    if op == "delete":
+        text = ""
+    return {"op": op, "anchor": anchor, "text": text}
+
+
+def _edit_fingerprint(edit):
+    return (edit["op"], edit["anchor"], edit["text"])
+
+
+def _edit_cost(edit):
+    if edit["op"] == "add":
+        return len(edit["text"])
+    if edit["op"] == "delete":
+        return len(edit["anchor"])
+    return max(len(edit["anchor"]), len(edit["text"]))  # replace
+
+
+def _apply_single_edit(target, edit):
+    idx = target.find(edit["anchor"])
+    if idx < 0:
+        raise ValueError(f"edit anchor not found: {edit['anchor']!r}")
+    left = target[:idx]
+    right = target[idx + len(edit["anchor"]):]
+    if edit["op"] == "add":
+        return target[:idx + len(edit["anchor"])] + edit["text"] + right
+    if edit["op"] == "delete":
+        return left + right
+    return left + edit["text"] + right
+
+
+def apply_edits(target, edits, *, lr_budget, rejected_fingerprints=None):
+    """Apply bounded edits with a textual learning-rate budget.
+
+    - `lr_budget` limits total edit-cost per epoch.
+    - edits over budget are rejected (not silently applied).
+    - malformed edits fail closed via ValueError.
+    """
+    if lr_budget < 0:
+        raise ValueError("lr_budget must be non-negative")
+    if rejected_fingerprints is None:
+        rejected_fingerprints = set()
+    candidate = target
+    used = 0
+    applied, rejected = [], []
+    for raw in edits or []:
+        edit = _normalize_edit(raw)
+        fp = _edit_fingerprint(edit)
+        if fp in rejected_fingerprints:
+            continue
+        cost = _edit_cost(edit)
+        if used + cost > lr_budget:
+            rejected.append(edit)
+            rejected_fingerprints.add(fp)
+            continue
+        candidate = _apply_single_edit(candidate, edit)
+        applied.append(edit)
+        used += cost
+    return candidate, applied, rejected, used
+
+
 # --------------------------------------------------------------------------- the generational loop
 def optimize(rows, *, max_gen=3, salt=0, seed=None, name="fixture",
-             call_fn=None, meta_fn=None, feedback_fn=None, grade_fn=None):
+             call_fn=None, meta_fn=None, edit_fn=None, grade_fn=None,
+             lr_budget=120, feedback_fn=None):
     """Run the generational propose->select->measure loop and return an advisory gate verdict.
 
     `rows` is a list of fixture dicts ({"intent", "grader", "task_id"?}). All LLM touch points are
     injected: `call_fn(prompt)->(text, cost)` (required), `grade_fn(row, text)->(ok, got)` (required),
     `meta_fn(public_rows)->(target, cost)` (required unless `seed` is given), and
-    `feedback_fn(target, public_results)->(target, cost)` (required when `max_gen > 1`). The PRIVATE
-    split is scored exactly once and never used for selection.
+    `edit_fn(target, public_results, rejected_buffer, lr_budget)->(edits, cost)` (required when
+    `max_gen > 1`; if absent, legacy `feedback_fn` is still accepted). The PRIVATE split is scored
+    exactly once and never used for selection.
     """
     if call_fn is None or grade_fn is None:
         raise ValueError("optimize() requires call_fn and grade_fn (no implicit LLM is wired)")
@@ -104,18 +179,35 @@ def optimize(rows, *, max_gen=3, salt=0, seed=None, name="fixture",
 
     gens = []           # selection metadata per generation (PUBLIC + DEV only -- never PRIVATE)
     targets = [target]
+    rejected_buffer = []
+    rejected_fingerprints = set()
     for g in range(max_gen):
         ps = score(target, pub, call_fn, grade_fn)
         ds = score(target, dev, call_fn, grade_fn)
         cost += sum(r["cost"] for r in ps["results"]) + sum(r["cost"] for r in ds["results"])
-        gens.append({"gen": g, "public_acc": ps["acc"], "dev_acc": ds["acc"],
-                     "public_correct": ps["correct"], "dev_correct": ds["correct"]})
+        gen_row = {"gen": g, "public_acc": ps["acc"], "dev_acc": ds["acc"],
+                   "public_correct": ps["correct"], "dev_correct": ds["correct"]}
         if g < max_gen - 1:
-            if feedback_fn is None:
-                raise ValueError("optimize() requires feedback_fn when max_gen > 1")
-            target, c = feedback_fn(target, ps["results"])   # PUBLIC failures only
-            cost += c
+            if edit_fn is not None:
+                epoch_budget = max(1, int(lr_budget * (max_gen - g - 1) / max(1, max_gen - 1)))
+                edits, c = edit_fn(target, ps["results"], list(rejected_buffer), epoch_budget)
+                cost += c
+                target, applied, rejected, used = apply_edits(
+                    target, edits, lr_budget=epoch_budget, rejected_fingerprints=rejected_fingerprints)
+                rejected_buffer.extend(rejected)
+                gen_row.update({
+                    "lr_budget": epoch_budget,
+                    "edit_budget_used": used,
+                    "applied_edits": len(applied),
+                    "rejected_edits": len(rejected),
+                })
+            elif feedback_fn is not None:  # legacy whole-document fallback
+                target, c = feedback_fn(target, ps["results"])   # PUBLIC failures only
+                cost += c
+            else:
+                raise ValueError("optimize() requires edit_fn when max_gen > 1")
             targets.append(target)
+        gens.append(gen_row)
 
     # SELECT the best generation by DEV (fallback PUBLIC when no dev rows) -- NEVER by PRIVATE.
     sel_key = "dev_acc" if dev else "public_acc"
@@ -146,6 +238,7 @@ def optimize(rows, *, max_gen=3, salt=0, seed=None, name="fixture",
         "private_n": len(priv),
         "private_transitions": trans,
         "gaming_hits": gaming_hits,
+        "rejected_edits": rejected_buffer,
         "decision": decision,                  # advisory: the gate decides eligibility, not adoption
         "cost_usd": round(cost, 4),
     }
