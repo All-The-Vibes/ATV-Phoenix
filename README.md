@@ -146,7 +146,7 @@ For a full first project walkthrough, see the
 | **1. Intent engineering** | `phoenix-goal`, `phoenix-intent`, and `phoenix-plan` convert direction into checked contracts and backlogs before implementation starts. |
 | **2. Objective checks** | `phoenix_sense` evaluates command exits, file hashes, regexes, prompt manifests, and UI behavior without asking an LLM to grade itself. |
 | **3. Self-healing** | `phoenix_snapshot` saves only passing state. `phoenix_heal` performs bounded rollback or retry, then confirms recovery with an external recheck. |
-| **4. Proven completion** | `phoenix_accept` rejects vacuous checks and returns success only when an intact trace proves failure first and success now. |
+| **4. Proven completion** | `phoenix_accept` refuses any check never observed failing, and returns success only when an intact trace proves failure first and success now. |
 
 ### Beyond the core loop
 
@@ -189,6 +189,7 @@ not universal claims.
 | [SWE-bench-style evaluation](evals/swe-bench-lite/RESULT.md) | Overall resolved rate **78% to 100%**; underspecified tier **50% to 100%** | 9 constructed tasks, one repetition, explicit test gate in the Phoenix arm; not the official SWE-bench dataset |
 | [OKF evaluation](evals/m4-okf/RESULT.md) | Index-first retrieval used **31x fewer tokens** than raw `graph.json` | 50-file bundle; benefit is strongest across repeated and larger-context work |
 | [Measured-learning gate](evals/c3-phoenix-learn/RESULT.md) | Candidates need **n >= 20**, **+10 percentage points**, **+2 net correct**, and **zero regressions** | Deterministic offline gate; it decides eligibility and never auto-adopts |
+| [North star paired run](eval/scoreboard.json) | Phoenix **0.25** resolved vs control **0.35**. Phoenix scored **below** control here | 20 instances, one repetition, `gpt-5.1`, recorded 2026-07-03 under the `north_star` key. The harder task set, and the one published result that cuts against the thesis |
 
 The paired harness stores the exact source commit, model, runner, environment, task-set, seed,
 verifier, and raw-run hashes. Inspect
@@ -204,6 +205,8 @@ verifier, and raw-run hashes. Inspect
 ## Honest limits
 
 - Phoenix proves the check you give it. A weak check can still prove the wrong outcome.
+- A check can go red for the wrong reason. RED from a missing test file is not RED from a failing property, and the trace cannot tell the two apart. `tests/test_e2e_proof_is_not_vacuous.py` guards the end-to-end proof against that shape after it happened once.
+- The swe-bench-style gate runs at its ceiling. Phoenix scores 1.0 against a baseline of 1.0 on nine constructed tasks, so it can detect a regression and cannot detect an improvement.
 - Recovery is bounded rollback and retry, not general autonomous repair.
 - Command timeouts are represented in checks but are not yet enforced in-process.
 - The published evaluations use small constructed task sets and single models. Treat the deltas as evidence for these conditions, not as a universal ranking.
