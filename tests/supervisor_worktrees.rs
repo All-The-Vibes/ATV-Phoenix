@@ -131,7 +131,7 @@ fn a_release_does_not_disturb_other_goals() {
 
 #[test]
 fn hostile_goal_ids_cannot_escape_the_root() {
-    let mut r = registry();
+    let r = registry();
 
     for hostile in ["../../etc", "a/b", "..", ".hidden", "", "C:\\Windows"] {
         let path = r.path_for(hostile);
