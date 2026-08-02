@@ -2,29 +2,124 @@
 
 All notable changes to ATV-Phoenix are documented here.
 
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
+follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.5.0] - 2026-08-01
+
+**The mission runtime.** 0.4.0 proved Phoenix could build one connector under its own verify-heal
+loop. 0.5.0 is what runs many of them: a supervisor that schedules goals under bounded concurrency,
+executes them against either a local process or a GitHub Copilot cloud agent, fences stale holders
+with leases, and records every run in an append-only ledger with a trace chain per goal. Alongside
+it, the measurement stack that decides whether any of this is actually better than not having it.
+
+94 commits since v0.4.0.
+
 ### Added
-- **Supervisor ready queue — the bounded-concurrency scheduling spine** (`src/supervisor.rs`). A pure,
-  in-memory admission controller at the heart of the durable mission supervisor: it admits at most
-  `capacity` tasks concurrently and **defers** the rest in FIFO order, so the same sequence of calls
-  always produces the same schedule. No async runtime, git, filesystem, or network — those layers ride on
-  top of this decision. Keeping the ready queue pure is what makes the supervisor's scheduling testable and
-  reproducible. Exposes `Supervisor` (`with_capacity`, `admit`, `complete`, `next_ready`) and the
-  `Admission` verdict; covered by deterministic unit tests. (#98)
-- **Prompt-manifest drift sense — the "living prompt document"** (`src/prompt_ledger.rs` + a fourth
-  `CheckKind::PromptManifest`). Captures Phoenix's own prompt surface (the 18 skills + `AGENTS.md`) into a
-  content-addressed manifest, then SENSES drift against it: GREEN when the surface matches the blessed
-  baseline, RED — naming the added/removed/changed files — on any edit. Because it is an ordinary `Check`,
-  it inherits the whole spine: `phoenix_accept` proves a prompt check went **red → green**, the trace audits
-  it. The self-owned, verification-gated analog of a "living system-prompt document" — Phoenix refuses to
-  silently accept edits to what steers it. Built failure-first through the real `phoenix-mcp` binary:
-  `cargo test --locked prompt_ledger` sensed **red → green**, `phoenix_accept` returned ok=true (trace
-  intact, `check_digest 4fa0e55c`). Committed living document: `docs/prompt-ledger/phoenix-prompts.json`
-  (regenerate with `cargo run --example capture_prompts`). (#27)
 
-## [0.4.0] — 2026-06-20
+**Mission runtime.** The execution-backend contract (`src/execution_backend.rs`) with a local
+backend that runs real argv processes rather than a placeholder dispatch (#97, #120), and a cloud
+backend that submits jobs to the Copilot Agent Tasks API over a real HTTP client (#105, #121, #132,
+#135). Backend selection reaches for cloud only when local is full and the goal is eligible (#102),
+and preflight fails closed rather than dispatching into a backend that is not there (#99).
 
+A bounded-concurrency supervisor ready queue admits at most `capacity` goals and defers the rest in
+FIFO order, so the same sequence of calls always produces the same schedule (#98). Task identity
+survives admission, deferral, and withdrawal (#124), and the done-check carries end-to-end
+acceptance coverage rather than unit coverage alone (#126).
+
+Leases fence stale goal holders with tokens (#101) and are reclaimed when a goal reaches a terminal
+state (#110). Worktree isolation is mandatory for parallel workers (#113). Cancellation and
+supersession are irreversible (#109). Per-goal and mission-wide budgets are enforced (#108).
+
+Runs are durable: an append-only run ledger (#114), typed artifact fields instead of prose (#106),
+structured artifacts captured during cloud dispatch (#107), and the model and usage the cloud remote
+reports (#116). The supervisor and each goal get their own trace chain (#112).
+
+Dependency-aware DAG readiness contains failure to the affected subtree (#118), and the hybrid
+mission executor runs mixed local and cloud DAGs with SLA fencing and ordered integration (#127).
+`phoenix::mission::run_mission` is the single composition root (#133), and the `phoenix_mission`
+binary calls it rather than carrying a private second wiring (#137).
+
+**Observability.** Derived run events and mission SLOs (#117), plus an optional privacy-safe PostHog
+sink for that derived telemetry (#128).
+
+**Learning.** The `phoenix-learn` optimizer proposes candidates behind the measured-gain gate that
+0.4.0 shipped (#1), now using SkillOpt-style bounded edits with the gate itself unchanged (#131). A
+graded Bayesian acceptance gate handles generative output where exact match does not apply (#18). A
+typed signal to report pipeline dedupes incoming signals and measures post-merge outcomes (#129).
+
+**Connectors.** The TMX scope interface (#2), Nest to Obsidian via `phoenix_nest.emit` (#3), and the
+Scout adapter installer (#4).
+
+**Sense.** Two new check kinds: prompt-manifest drift, which senses edits to the 18 skills and
+`AGENTS.md` against a content-addressed baseline (#27), and `UiBehavior` for behavioural UI
+acceptance (#15).
+
+**Intent.** The `/intent` command decomposes one vague intent into N goals and accepts only on a
+composite `phoenix_accept` across all of them (#25).
+
+**Evaluation.** A SWE-bench-lite score tracker with a recorded baseline (#37), the Tier 3 auto-merge
+gate `scripts/eval-gate.ps1` (#35), and an Azure north-star runner with a full inference and eval
+pipeline (#36) using a repo-aware agent (#50). Dream traces are harvested into labeled eval
+datapoints (#38). The paired harness protocol is preregistered (#76) with a pinned trial runner
+(#87), evidence pins frozen before runs (#88), and failed model calls recorded rather than dropped
+(#89).
+
+**Ralph.** `phoenix-ralph-monitor.ps1` and the `phoenix-mcp monitor` subcommand give an objective
+snapshot of a run (#10). Phase-aware proof bundles land as `completed.<digest>.json` (#11), with
+`verify-live.mjs` and `verify-ui.mjs` gate templates (#11, #15) and a negative-assertion surface-scan
+template (#13).
+
+**CI.** Copilot cloud worker setup (#95) with a base-red head-green proof in CI (#96), and connector
+proof integrity enforcement (#61).
+
+### Changed
+
+- Goal acceptance contracts are frozen, so a check cannot be edited into passing after the fact
+  (#74).
+- An incomplete TMX scope now requires the full test suite instead of a narrowed one (#93).
+- `phoenix_learn` algorithm naming corrected, with qualified GEPA references enforced by a test
+  (#125).
+- README focused on verified core features (#91), with the Phoenix intent journey restored (#94) and
+  the `phoenix_accept` claim corrected alongside two stated limits (#148).
+- Formatting policy recorded: `cargo fmt` stays ungated (#6).
+
+### Fixed
+
+- The gate script's sha256 is folded into `canonical_digest`, so editing the script invalidates the
+  check (#14).
+- An unparseable trace row is treated as a broken chain rather than skipped (#115).
+- Phoenix runtime state is isolated from git (#75).
+- MCP struct tool arguments supplied as JSON strings are accepted (#149).
+- `scripts/update-scoreboard.ps1` resolves its scoreboard path against the repository root instead of
+  the caller's working directory, so Tier 3 results stop being discarded (#140).
+- Ralph on PowerShell 5.1: guard, stdin prompt, and fail-fast spawn detection (#8); live-gate
+  template with Windows stdio and case-insensitive matching fixes (#12); a warning when the
+  done-check greens while backlog items remain unfinished (#13).
+- North-star runner hardened with try/finally VM teardown, preflight, and an auto-shutdown net.
+- `eval-gate.ps1` no longer passes `-Append:$False` across the `powershell -File` boundary, and the
+  scoreboard preserves the north-star row on re-run.
+
+### Removed
+
+- The hybrid-mission end-to-end proof merged in #130, reverted in #143. It asserted its own
+  hand-built fixtures and executed none of `src/mission.rs`, `src/lease.rs`, or the binary.
+  `tests/test_e2e_proof_is_not_vacuous.py` now guards against its return. The lesson is recorded in
+  the issue: RED from a missing file is not RED from a failing assertion, and the harness cannot tell
+  them apart.
+- The Score Tracker section in the README.
+
+### Security and privacy
+
+- Third-party PII scrubbed from `BUILDLOG` and `MISSION`, with verbatim channel quotes paraphrased.
+- A non-negotiable PII and privacy rule added to the build charter, outranking the build loop.
+
+## [0.4.0] - 2026-06-20
 **The factory turns on itself.** Phoenix builds its first *connector* — and builds it *with* Phoenix: the
 change was driven failure-first through the shipped `phoenix-mcp` binary and merges only behind a
 tamper-evident **red → green** `phoenix_accept` trace. Plus the governance + **local-first CI** that lets
@@ -59,8 +154,7 @@ the factory run on ~zero GitHub Action credits.
   above. The credit constraint is met without giving up the gate.
 - `scripts/ci-local.{sh,ps1}` broadened to run the C3 `phoenix-learn` test as a first-class gate step.
 
-## [0.3.1] — 2026-06-19
-
+## [0.3.1] - 2026-06-19
 Self-maintenance: Phoenix now verifies and repairs its **own install** with the same objective discipline
 it gives the agent — plus the fix for the agent that silently wouldn't load.
 
@@ -116,8 +210,7 @@ it gives the agent — plus the fix for the agent that silently wouldn't load.
 - Docs updated **16 → 18 skills** (README, `docs/skills.md`, the `phoenix` router decision tree, and the
   installer's summary line).
 
-## [0.3.0] — 2026-06-10
-
+## [0.3.0] - 2026-06-10
 Autonomous workflows — the same capabilities as Claude Code's ralph/autopilot, but gated by objective,
 tamper-evident proof instead of an LLM's opinion. Grounded in researched primary sources
 (`research/autonomous-workflows-research.md`).
@@ -144,8 +237,7 @@ tamper-evident proof instead of an LLM's opinion. Grounded in researched primary
 - Docs: `docs/autonomous-workflows.md` (design) + `research/autonomous-workflows-research.md` (sourced).
   Eval + screenshot: `evals/autonomous-workflows/`.
 
-## [0.2.0] — 2026-06-10
-
+## [0.2.0] - 2026-06-10
 The "everything composes" release: a comprehensive bundled skill pack, vendored TokenMasterX, a
 real end-to-end build, and a SWE-bench-style benchmark.
 
@@ -174,8 +266,7 @@ real end-to-end build, and a SWE-bench-style benchmark.
   honest bundled-vs-companion stack, hero + loop imagery.
 - `dist/install.ps1` now registers the MCP server (was agent-only).
 
-## [0.1.0] — 2026-06-09
-
+## [0.1.0] - 2026-06-09
 First shippable release. A self-healing harness for AI coding agents, multi-host (GitHub Copilot + Microsoft Scout).
 
 ### Added
@@ -217,3 +308,11 @@ First shippable release. A self-healing harness for AI coding agents, multi-host
   ship + phoenix-self-heal — every stage gated by an objective phoenix_sense check.
 - phoenix-mcp doctor + src/doctor.rs: Phoenix validates its own bundled skills (self-maintenance);
   cargo test fails on skill drift. setup.py installs all bundled skills and runs the self-check.
+
+[Unreleased]: https://github.com/All-The-Vibes/ATV-Phoenix/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/All-The-Vibes/ATV-Phoenix/compare/v0.4.0...v0.5.0
+[0.4.0]: https://github.com/All-The-Vibes/ATV-Phoenix/compare/v0.3.1...v0.4.0
+[0.3.1]: https://github.com/All-The-Vibes/ATV-Phoenix/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/All-The-Vibes/ATV-Phoenix/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/All-The-Vibes/ATV-Phoenix/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/All-The-Vibes/ATV-Phoenix/releases/tag/v0.1.0
