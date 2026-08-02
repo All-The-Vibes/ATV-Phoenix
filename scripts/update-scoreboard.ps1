@@ -1,7 +1,7 @@
 # scripts/update-scoreboard.ps1
 param(
   [string]$ResultsFile = "evals\swe-bench-lite\results.jsonl",
-  [string]$ScoreboardFile = "eval\scoreboard.json",
+  [string]$ScoreboardFile = (Join-Path (Split-Path $PSScriptRoot -Parent) "eval\scoreboard.json"),
   [string]$Trigger = "pr",
   [string]$PR = "",
   [string]$Model = "GitHub Copilot CLI"
