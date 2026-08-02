@@ -7,7 +7,14 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- The `phoenix_mission` binary now runs a distinct task per goal instead of one constant for all
+  four. A `FixedTaskBackend` rewrote every job to a single `MISSION_TASK` string, so the diamond
+  DAG's four goals all executed the same command; under `--backend cloud` that one string became
+  the problem statement handed to four separate Copilot coding agents. `GOALS` now carries a task
+  for each goal, and a `GoalTaskBackend` adapter looks up each job's task by id before forwarding
+  to the inner backend (#141).
 
 ## [0.5.0] - 2026-08-01
 
