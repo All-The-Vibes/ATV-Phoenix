@@ -7,6 +7,24 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Release-metadata enforcement in the local gate.** `scripts/release_drift.py` exits 1 when commits
+  have landed since the version was cut and `## [Unreleased]` documents none of them. It anchors to the
+  commit that last changed the version line in `Cargo.toml` rather than to a git tag, so the window
+  between merging a release and pushing its tag is not red, and a shallow clone reports `unknown` rather
+  than a failure it cannot justify. It runs git with every `GIT_*` variable stripped from the
+  environment, because a git hook exports `GIT_DIR` and an inherited one makes `git -C <path>` answer
+  for the hook's repository instead of the path it was given. Wired into both `scripts/ci-local.sh` and `scripts/ci-local.ps1`,
+  along with `tests/test_version_consistency.py`, which shipped in 0.5.0 and which nothing was running.
+- **`tests/test_release_drift.py`** covers the drift detection against throwaway git repositories and
+  asserts the wiring itself: both ci-local entry points must invoke both release checks, and the two
+  must gate the same targets. Its fixtures also run git with `GIT_*` stripped, and a regression test
+  proves a fixture cannot commit into an inherited repository. An earlier version of the file lacked
+  that isolation and committed its own fixtures onto the branch under test when the pre-push hook ran
+  it.
+- ORIGINAL_TAIL_MARKER
+
 ### Fixed
 
 - The `phoenix_mission` binary now runs a distinct task per goal instead of one constant for all
@@ -15,6 +33,8 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the problem statement handed to four separate Copilot coding agents. `GOALS` now carries a task
   for each goal, and a `GoalTaskBackend` adapter looks up each job's task by id before forwarding
   to the inner backend (#141).
+- `scripts/ci-local.ps1` claimed identical checks to `scripts/ci-local.sh` while omitting the cloud
+  workflow contract suite. Both now run the same eight stages.
 
 ## [0.5.0] - 2026-08-01
 
