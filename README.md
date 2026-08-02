@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.4.0-E07000" alt="Version 0.4.0"></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.5.0-E07000" alt="Version 0.5.0"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-00B4D8" alt="MIT license"></a>
   <a href="Cargo.toml"><img src="https://img.shields.io/badge/core-Rust-E07000" alt="Rust core"></a>
   <a href=".github/workflows/connector-proof.yml"><img src="https://img.shields.io/badge/proof-failure--first-00B4D8" alt="Failure-first proof"></a>
