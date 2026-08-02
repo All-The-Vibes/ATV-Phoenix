@@ -198,6 +198,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// Usage-error shape for `sense`. `phoenix::sense::SenseResult` has no `reason` field, and the
+/// loop driver parses a machine-readable `reason` from a failed subcommand. This local struct
+/// emits the SenseResult keys (ok, signal, evidence) plus `reason`, so a caller parsing either
+/// shape still works, without touching src/sense.rs. See issue #145.
+#[derive(serde::Serialize)]
+struct SenseUsageError {
+    ok: bool,
+    signal: String,
+    evidence: String,
+    reason: String,
+}
+
 fn run_cli(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     let ws = workspace();
     let exit = |ok: bool| -> ! { std::process::exit(if ok { 0 } else { 1 }) };
@@ -213,6 +225,16 @@ fn run_cli(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     };
     match args[1].as_str() {
         "sense" => {
+            if args.len() < 3 {
+                let result = SenseUsageError {
+                    ok: false,
+                    signal: String::new(),
+                    evidence: String::new(),
+                    reason: format!("usage: {} sense '<check-json|@check-file>'", args[0]),
+                };
+                println!("{}", serde_json::to_string(&result)?);
+                exit(false);
+            }
             let check: Check = serde_json::from_str(&jarg(&args[2])?)?;
             let r = sense(&check);
             let _ = trace().append("sense", &canonical_digest(&check), r.ok, &r.signal, &r.evidence);
@@ -223,6 +245,19 @@ fn run_cli(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
             // Gate ledger: is this check a SATISFIED acceptance gate, proven from the trace?
             // ok=true only if the trace shows it red→green (failure-first) and it is green now.
             // The driver — not the agent — calls this to decide completion.
+            if args.len() < 3 {
+                let result = phoenix::accept::GateResult {
+                    ok: false,
+                    check_digest: String::new(),
+                    trace_intact: false,
+                    saw_red: false,
+                    green_after_red: false,
+                    currently_green: false,
+                    reason: format!("usage: {} accept '<check-json|@check-file>'", args[0]),
+                };
+                println!("{}", serde_json::to_string(&result)?);
+                exit(false);
+            }
             let check: Check = serde_json::from_str(&jarg(&args[2])?)?;
             let g = phoenix::accept::verify_gate(&ws, &check);
             println!("{}", serde_json::to_string(&g)?);

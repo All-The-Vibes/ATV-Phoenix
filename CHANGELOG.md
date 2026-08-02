@@ -7,7 +7,11 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- `phoenix-mcp sense` and `phoenix-mcp accept` print a JSON usage error with `ok:false` and a
+  `reason` and exit non-zero when called with no check argument, instead of panicking on an
+  out-of-bounds index (#145).
 
 ## [0.5.0] - 2026-08-01
 
