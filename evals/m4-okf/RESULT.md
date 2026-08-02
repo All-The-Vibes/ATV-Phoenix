@@ -76,6 +76,18 @@ re-reads explode, and (c) multi-turn area-under-curve, where grep re-reads compo
 does not. Against the opaque graph and the whole-bundle dump, index-first wins decisively in every
 framing — and uniquely yields a stable, navigable, any-tool-readable artifact grep never produces.
 
+**Honest limit — what this eval does not measure (reported, per Phoenix ethos):** this is a
+*cost* measurement, not a quality one. Every number above is tokens-to-load. The eval contains no
+check that any strategy actually answers the question correctly. Each question declares a `needed`
+set — "the concept(s) that actually answer it" — and that set is written by hand, then the cost of
+retrieving exactly it is measured. **Retrieval sufficiency is assumed here, never measured.** If
+index-first
+would miss a concept that genuinely matters, this eval cannot detect it, because `needed` is the
+index-first answer treated as ground truth. Read **31x** as "31x cheaper, assuming it retrieves
+enough", never as "31x better". Closing that gap needs per-question ground truth and a comparison
+of derived answers, not of token counts; guarded by
+`tests/test_okf_claim_discloses_its_limit.py`.
+
 ## Reproduce
 ```
 python skills/phoenix-okf/scripts/okf_freshness.py examples/okf-code-graph

@@ -187,7 +187,7 @@ not universal claims.
 | [Pinned paired harness](evals/harness-eval/results/run-manifest.json) | Phoenix **38/45** objective passes vs control **34/45**; silent failures **7/45** vs **11/45** | 90 real `gpt-5.6-sol` calls, 9 tasks, 5 seeds, paired arms, independent sealed and adversarial checks |
 | [Silent-failure experiment](evals/h2-experiment/RESULT.md) | Silent failures **40% to 0%**, with zero regressions | 20 live Copilot sessions, one older model/CLI configuration, deterministic checkers |
 | [SWE-bench-style evaluation](evals/swe-bench-lite/RESULT.md) | Overall resolved rate **78% to 100%**; underspecified tier **50% to 100%** | 9 constructed tasks, one repetition, explicit test gate in the Phoenix arm; not the official SWE-bench dataset |
-| [OKF evaluation](evals/m4-okf/RESULT.md) | Index-first retrieval used **31x fewer tokens** than raw `graph.json` | 50-file bundle; benefit is strongest across repeated and larger-context work |
+| [OKF evaluation](evals/m4-okf/RESULT.md) | Index-first retrieval used **31x fewer tokens** than raw `graph.json` | 50-file bundle. A cost measurement only: the eval counts tokens and assumes each strategy retrieves enough to answer. Sufficiency is not measured. Benefit is strongest across repeated and larger-context work |
 | [Measured-learning gate](evals/c3-phoenix-learn/RESULT.md) | Candidates need **n >= 20**, **+10 percentage points**, **+2 net correct**, and **zero regressions** | Deterministic offline gate; it decides eligibility and never auto-adopts |
 
 The paired harness stores the exact source commit, model, runner, environment, task-set, seed,
