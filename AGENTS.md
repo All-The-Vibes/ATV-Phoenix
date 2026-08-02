@@ -44,7 +44,7 @@ breach, not progress — this rule outranks "compound knowledge" and the build l
    model). **Never advance on red.** Escalate only when stuck.
 7. **COMPLETION = PROOF** (`phoenix_accept`). A task is done **only when the hash-chained trace proves a
    check went red → green (failure-first) and is green now.** Never report "done" from the model's opinion.
-8. **SHIP via PR + AUTO-MERGE GATE** (`phoenix-ship`). Attach the `phoenix_verify_trace` / `phoenix_accept` result as
+8. **SHIP via PR + AUTO-MERGE GATE** (`phoenix-ship`). Add the `CHANGELOG.md` `[Unreleased]` entry in the same PR when shipped behaviour changed. Attach the `phoenix_verify_trace` / `phoenix_accept` result as
    evidence. Run `scripts/eval-gate.ps1` after push: exit 0 → merge (gh pr ready + gh pr merge --squash), exit 1 → leave draft + notify (regression), exit 2 → leave draft + notify (error). Docs/test-only: -Exempt flag. Never auto-merge: AGENTS.md/charter/prompts or blast-radius >3 files.
 9. **REMEMBER** (`phoenix-okf`). Promote the verified outcome into the OKF / Phoenix's-Nest bundle,
    indexed by TMX structural signature, so the next run retrieves it as cheap context.
@@ -110,7 +110,15 @@ the previously documented enforcement gap after the first connector landed.
 - **No-op bias:** default to no durable change when there's no objective task — no busy-work churn.
 - **Last-known-good:** keep a controller LKG (`phoenix_snapshot`) for one-step rollback.
 - **Release hygiene:** conventional commits · `git pull --rebase` · never force-push. Backlog = GitHub issues with a label state machine (`ready` / `proposed` / `controller-proposal`+`human-gated`).
-
+- **Release metadata is gated, not remembered.** Any PR that changes shipped behaviour adds its entry
+  to `CHANGELOG.md` under `## [Unreleased]` in the same PR. Cutting a release moves those entries into
+  a `## [X.Y.Z] - YYYY-MM-DD` section, bumps `Cargo.toml`, `Cargo.lock`, and the README badge together,
+  and tags `vX.Y.Z` on the merge commit. Two checks in `scripts/ci-local.{sh,ps1}` enforce it:
+  `tests/test_version_consistency.py` (manifest, badge, and newest changelog section agree; headings and
+  compare links well formed) and `scripts/release_drift.py` (exit 1 when commits landed since the version
+  bump and `[Unreleased]` documents none of them). This rule exists because between 2026-06-21 and
+  2026-08-01, 94 commits landed on main while `Cargo.toml` stayed at 0.4.0 and `[Unreleased]` documented
+  two of them. Every commit was individually gated. Nothing watched the metadata.
 ---
 
 ## Build vs. run (don't confuse them)
