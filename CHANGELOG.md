@@ -29,6 +29,16 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - `scripts/ci-local.ps1` claimed identical checks to `scripts/ci-local.sh` while omitting the cloud
   workflow contract suite. Both now run the same eight stages.
+- Gate-script integrity (issue #146) now folds the sha256 of every `target` element that names an
+  existing file into a `command_exit` check identity, tagged by its position in the argument list,
+  instead of only `target[0]`. The common check shape `["python","-m","pytest","tests/test_x.py"]`
+  left the test file outside the digest, so a strict test could be recorded red, have its assertions
+  gutted, and still chain to a later green because the check identity never moved. Files named
+  directly in `target` are now pinned; files they import are not. Migration cost: this changes the
+  digest of every existing `command_exit` check whose target names a file, so trace events recorded
+  under the old digest stop matching and any in-flight red-to-green chain has to be observed again.
+  Anyone mid-goal when this lands will see `accept` return `saw_red:false` on a check they believe
+  they already drove red.
 
 ## [0.5.0] - 2026-08-01
 
