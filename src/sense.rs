@@ -139,17 +139,43 @@ pub fn canonical_digest(check: &Check) -> String {
         (CheckKind::CommandExit, None) => Some("0".to_string()),
         (_, e) => e.clone(),
     };
-    // Gate-script integrity (issue #14): for command_exit where target[0] is an existing file
-    // (a gate script like "node scripts/verify.mjs" or "python verify.py"), fold the file's
-    // sha256 into the digest. Any edit to the script changes the digest, so old trace events
-    // (red observations) no longer match the new check, and accept correctly rejects it.
-    // Bare binary names on PATH (e.g. "python", "cargo") are not files in cwd — unaffected.
-    let script_hash: Option<String> = match check.kind {
-        CheckKind::CommandExit if !check.target.is_empty() => {
-            let p = std::path::Path::new(&check.target[0]);
-            if p.is_file() { sha256_file(p).ok() } else { None }
-        }
-        _ => None,
+    // Gate integrity (issues #14, #146): for command_exit, fold the sha256 of every target
+    // element that is an existing file into the digest, in target order and tagged with its
+    // argv position. This pins the files named directly in the check: a gate script at
+    // target[0] like "python verify.py", and test or script files named later in argv, so
+    // ["python","-m","pytest","tests/test_x.py"] pins tests/test_x.py and
+    // ["node","scripts/verify.mjs"] pins scripts/verify.mjs. Editing any pinned file changes
+    // the digest, so old trace events (red observations) no longer match the new check and
+    // accept correctly rejects it. What is pinned is exactly the files named in target;
+    // anything they import, such as a helper module a test pulls in, is not pinned. Bare
+    // binary names on PATH ("python", "cargo") and flags ("-q", "--locked") are not files, so
+    // they contribute nothing. A check that names no files digests as it did before this change.
+    let file_hashes: Vec<serde_json::Value> = match check.kind {
+        CheckKind::CommandExit => check
+            .target
+            .iter()
+            .enumerate()
+            .filter_map(|(index, argument)| {
+                let p = std::path::Path::new(argument);
+                if p.is_file() {
+                    // Tolerant like the pre-#146 code: an unreadable file folds nothing
+                    // rather than panicking. The argv index is part of the folded value so
+                    // moving a filename to a different position changes the digest.
+                    sha256_file(p).ok().map(|h| serde_json::json!([index, h]))
+                } else {
+                    None
+                }
+            })
+            .collect(),
+        _ => Vec::new(),
+    };
+    // An empty collection serializes to null, identical to the pre-#146 no-file digest, so a
+    // check that names no files keeps its old identity. A non-empty list of [position, sha256]
+    // pairs makes both the file bytes and the argv position part of the check identity.
+    let script_hash = if file_hashes.is_empty() {
+        serde_json::Value::Null
+    } else {
+        serde_json::Value::Array(file_hashes)
     };
     let canonical = serde_json::json!({
         "kind": check.kind,
