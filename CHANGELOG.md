@@ -27,6 +27,9 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- `phoenix-mcp sense` and `phoenix-mcp accept` print a JSON usage error with `ok:false` and a
+  `reason` and exit non-zero when called with no check argument, instead of panicking on an
+  out-of-bounds index (#145).
 - The `phoenix_mission` binary now runs a distinct task per goal instead of one constant for all
   four. A `FixedTaskBackend` rewrote every job to a single `MISSION_TASK` string, so the diamond
   DAG's four goals all executed the same command; under `--backend cloud` that one string became
