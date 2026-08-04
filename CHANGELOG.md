@@ -27,6 +27,12 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- The `phoenix_mission` binary now runs a distinct task per goal instead of one constant for all
+  four. A `FixedTaskBackend` rewrote every job to a single `MISSION_TASK` string, so the diamond
+  DAG's four goals all executed the same command; under `--backend cloud` that one string became
+  the problem statement handed to four separate Copilot coding agents. `GOALS` now carries a task
+  for each goal, and a `GoalTaskBackend` adapter looks up each job's task by id before forwarding
+  to the inner backend (#141).
 - `scripts/ci-local.ps1` claimed identical checks to `scripts/ci-local.sh` while omitting the cloud
   workflow contract suite. Both now run the same eight stages.
 - Gate-script integrity (issue #146) now folds the sha256 of every `target` element that names an
