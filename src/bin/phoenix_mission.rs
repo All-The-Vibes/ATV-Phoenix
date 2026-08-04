@@ -6,32 +6,62 @@ use phoenix::execution_backend::{ExecutionBackend, Job, LocalBackend};
 use phoenix::mission::{MissionConfig, run_mission};
 use phoenix::run_ledger::RunLedger;
 
-const GOALS: [(&str, &[&str]); 4] = [
-    ("a", &[]),
-    ("b", &["a"]),
-    ("c", &["a"]),
-    ("d", &["b", "c"]),
+// Each goal carries its own task alongside its prerequisites: (goal_id, prereqs, task).
+// The four tasks are genuinely distinct so the diamond DAG runs four different commands, and each
+// is a rustc/cargo subcommand that is present wherever `cargo test` runs, so every goal exits 0 and
+// the run ledger records four verifiable chains. See issue #141.
+const GOALS: [(&str, &[&str], &str); 4] = [
+    ("a", &[], "rustc --version"),
+    ("b", &["a"], "cargo --version"),
+    ("c", &["a"], "rustc --print sysroot"),
+    ("d", &["b", "c"], "rustc --print target-libdir"),
 ];
-const MISSION_TASK: &str = "rustc --version";
 
-struct FixedTaskBackend<'a> {
+/// Attaches each goal its own task, looked up by job id against [`GOALS`], then forwards to `inner`.
+///
+/// `run_mission` builds every job as `Job::new(goal_id, goal_id)`, so the incoming `job.task` is
+/// only the goal id, not real work. This adapter replaces it with the task declared for that id.
+/// An id that is not in `GOALS` is forwarded UNCHANGED (its task stays equal to the id) so the
+/// mismatch surfaces as a failed job in the ledger rather than being hidden behind a silent default.
+/// Handing every goal one constant task was the defect in issue #141.
+struct GoalTaskBackend<'a> {
     inner: &'a dyn ExecutionBackend,
-    task: &'a str,
+    goals: &'a [(&'a str, &'a [&'a str], &'a str)],
 }
 
-impl ExecutionBackend for FixedTaskBackend<'_> {
+impl<'a> GoalTaskBackend<'a> {
+    fn new(inner: &'a dyn ExecutionBackend, goals: &'a [(&'a str, &'a [&'a str], &'a str)]) -> Self {
+        Self { inner, goals }
+    }
+
+    fn task_for(&self, id: &str) -> Option<&'a str> {
+        for &(goal, _, task) in self.goals {
+            if goal == id {
+                return Some(task);
+            }
+        }
+        None
+    }
+
+    fn map_job(&self, job: &Job) -> Job {
+        match self.task_for(&job.id) {
+            Some(task) => Job::new(job.id.clone(), task),
+            None => job.clone(),
+        }
+    }
+}
+
+impl ExecutionBackend for GoalTaskBackend<'_> {
     fn name(&self) -> &str {
         self.inner.name()
     }
 
     fn preflight(&self, job: &Job) -> phoenix::execution_backend::PreflightOutcome {
-        let mapped = Job::new(job.id.clone(), self.task);
-        self.inner.preflight(&mapped)
+        self.inner.preflight(&self.map_job(job))
     }
 
     fn execute(&self, job: &Job) -> phoenix::execution_backend::BackendOutcome {
-        let mapped = Job::new(job.id.clone(), self.task);
-        self.inner.execute(&mapped)
+        self.inner.execute(&self.map_job(job))
     }
 }
 
@@ -70,8 +100,9 @@ fn parse_args() -> Result<(String, PathBuf), String> {
 }
 
 fn run_with_backend(backend: &dyn ExecutionBackend, workspace: &Path) -> Result<(), String> {
-    let mission_backend = FixedTaskBackend { inner: backend, task: MISSION_TASK };
-    let report = run_mission(&GOALS, MissionConfig::new(2), workspace, &mission_backend);
+    let mission_backend = GoalTaskBackend::new(backend, &GOALS);
+    let dag: Vec<(&str, &[&str])> = GOALS.iter().map(|(goal, prereqs, _)| (*goal, *prereqs)).collect();
+    let report = run_mission(&dag, MissionConfig::new(2), workspace, &mission_backend);
 
     let ledger = RunLedger::at(report.workspace.join("run-ledger.jsonl")).read();
 
