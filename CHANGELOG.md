@@ -7,6 +7,21 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Tier 3 scope is derived from the diff instead of asserted by the caller.** `scripts/eval-gate.ps1`
+  previously waived the gate whenever a caller passed `-Exempt`, so whoever invoked the gate decided
+  whether the gate applied. It now classifies the changed-file set and picks one of three outcomes
+  already handled by charter STEP 7: exit 0 with `AUTO-EXEMPT` and the classified file list when no
+  changed file is on the scored path, the normal eval run when any file is, and exit 2 with
+  `NEEDS-HUMAN` when the diff changes `scripts/eval-gate.ps1`, `scripts/update-scoreboard.ps1`, or
+  `eval/scoreboard.json`. Classification is fail-closed, so a path matching neither list is measured
+  rather than exempted by omission. `-Exempt` survives as a human override and now logs that the
+  waiver was asserted rather than derived. Issue #163.
+- **`skills/**` is now scored.** AGENTS.md line 48 and charter STEP 7 both list `skills/**/*.md` as
+  docs-exempt, which waved through the one class of change most likely to move the Arm B resolved
+  rate, since skills are the agent's instructions. The derived classifier refuses to exempt them. The
+  written policy still says otherwise and needs an owner edit to match.
 ### Added
 
 - **Release-metadata enforcement in the local gate.** `scripts/release_drift.py` exits 1 when commits

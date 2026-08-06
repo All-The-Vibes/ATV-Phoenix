@@ -79,3 +79,64 @@ def test_gate_fails_on_regression(tmp_path):
         capture_output=True, text=True, timeout=30, cwd=str(tmp_path))
     assert r.returncode == 1, f"{r.stdout}\n{r.stderr}"
     assert "REGRESSION" in r.stdout or "REGRESSION" in r.stderr
+
+
+# --- issue #163: scope is derived from the diff, not asserted by the caller ---
+
+def run_with_scope(tmp_path, changed, arm_b=1.0):
+    results = gate_env(tmp_path, arm_b=arm_b)
+    return subprocess.run(["powershell","-ExecutionPolicy","Bypass","-File",
+        str(tmp_path/"scripts"/"eval-gate.ps1"),
+        "-ChangedFiles", changed,
+        "-PrebuiltResults", str(results),
+        "-ResultsOut", str(tmp_path/"out.jsonl")],
+        capture_output=True, text=True, timeout=60, cwd=str(tmp_path))
+
+
+def test_derived_scope_auto_exempts_off_path_change(tmp_path):
+    """Nothing in this diff runs inside run_swe.ps1, so Arm B cannot move."""
+    if not pwsh_ok(): import pytest; pytest.skip("pwsh unavailable")
+    r = run_with_scope(tmp_path, "scripts/harvest-datapoint.ps1,tests/test_harvest_datapoint.py,CHANGELOG.md")
+    assert r.returncode == 0, f"{r.stdout}\n{r.stderr}"
+    assert "AUTO-EXEMPT" in r.stdout, r.stdout
+    assert "unscored: scripts/harvest-datapoint.ps1" in r.stdout, r.stdout
+
+
+def test_derived_scope_measures_skill_changes(tmp_path):
+    """Skills are the agent's instructions. AGENTS.md waives them today; that is the hole."""
+    if not pwsh_ok(): import pytest; pytest.skip("pwsh unavailable")
+    r = run_with_scope(tmp_path, "skills/phoenix-build/SKILL.md")
+    assert "AUTO-EXEMPT" not in r.stdout, f"skill change must not be waived\n{r.stdout}"
+    assert "scored: skills/phoenix-build/SKILL.md" in r.stdout, r.stdout
+
+
+def test_derived_scope_routes_gate_changes_to_a_human(tmp_path):
+    """Measuring a change to the meter with the meter is circular; exempting it hides a disabled gate."""
+    if not pwsh_ok(): import pytest; pytest.skip("pwsh unavailable")
+    r = run_with_scope(tmp_path, "scripts/eval-gate.ps1,CHANGELOG.md")
+    assert r.returncode == 2, f"expected exit 2 (needs-human)\n{r.stdout}\n{r.stderr}"
+    assert "NEEDS-HUMAN" in r.stdout, r.stdout
+
+
+def test_derived_scope_fails_closed_on_unknown_path(tmp_path):
+    """A path matching neither list is measured, so a new directory is not exempted by omission."""
+    if not pwsh_ok(): import pytest; pytest.skip("pwsh unavailable")
+    r = run_with_scope(tmp_path, "some-new-dir/thing.rs")
+    assert "AUTO-EXEMPT" not in r.stdout, f"unknown path must be treated as scored\n{r.stdout}"
+    assert "scored: some-new-dir/thing.rs" in r.stdout, r.stdout
+
+
+def test_derived_scope_marks_the_manual_waiver_as_asserted(tmp_path):
+    """-Exempt survives as a human override, and says so rather than reading as derived evidence."""
+    if not pwsh_ok(): import pytest; pytest.skip("pwsh unavailable")
+    r = pwsh(["-Exempt"])
+    assert r.returncode == 0, f"{r.stdout}\n{r.stderr}"
+    assert "ASSERTED" in r.stdout, r.stdout
+
+
+def test_derived_scope_normalizes_windows_separators(tmp_path):
+    """git reports forward slashes; a caller pasting from PowerShell will not."""
+    if not pwsh_ok(): import pytest; pytest.skip("pwsh unavailable")
+    r = run_with_scope(tmp_path, r"docs\autonomous-workflows.md,tests\test_x.py")
+    assert r.returncode == 0, f"{r.stdout}\n{r.stderr}"
+    assert "AUTO-EXEMPT" in r.stdout, r.stdout
