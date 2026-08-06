@@ -22,6 +22,9 @@ if ($rawBytes[0] -eq 0xEF) { $rawBytes = $rawBytes[3..($rawBytes.Length-1)] }
 $board = [System.Text.Encoding]::UTF8.GetString($rawBytes) | ConvertFrom-Json
 $baselineB = $board.baseline.swe_bench_lite.arm_b_phoenix_resolved
 Write-Output "[eval-gate] Baseline Arm B: $baselineB"
+if ($baselineB -ge 1.0) {
+  Write-Output "[eval-gate] SATURATED: the baseline is $baselineB, which is the highest a resolved-rate can reach. This gate can detect a regression and cannot detect an improvement, so a tie at $baselineB is not evidence that the harness got better. Tracked in issue #142."
+}
 
 if ($PrebuiltResults -and (Test-Path $PrebuiltResults)) {
   Write-Output "[eval-gate] Using pre-built results (test mode)"
