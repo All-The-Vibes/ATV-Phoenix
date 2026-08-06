@@ -9,6 +9,15 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **A validity marker on `eval/scoreboard.json` baseline blocks (#147).** Every result block under
+  `baseline` now carries an explicit `valid` boolean, and a void block carries `invalidated_reason`.
+  The 2026-07-03 `north_star` block is marked `valid: false`, because that run was broken and its
+  results were never published. The numbers stay in the file so the history is still readable, and
+  `_doc` says what the marker means. `tests/test_scoreboard_marks_invalid_runs.py` guards the schema
+  and asserts `swe_bench_lite` is still `valid: true`, so marking the whole file void cannot satisfy
+  the check. Before this, an agent read the orphan `north_star` block as evidence and wrote it into
+  the README, which is the failure the marker exists to prevent.
+
 - **Release-metadata enforcement in the local gate.** `scripts/release_drift.py` exits 1 when commits
   have landed since the version was cut and `## [Unreleased]` documents none of them. It anchors to the
   commit that last changed the version line in `Cargo.toml` rather than to a git tag, so the window
