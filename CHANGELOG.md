@@ -9,6 +9,19 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Red-before-fix gate on the dogfood harvester.** `scripts/harvest-datapoint.ps1` now replays
+  `run_swe.ps1`'s scoring contract against the pre-fix task before writing it, and rejects the task
+  unless `test_f2p` fails and `test_p2p` passes. Both failure modes were silent and both corrupt the
+  Tier 3 baseline that gates merges: an f2p that already passes scores `resolved` with no fix applied,
+  and a p2p that cannot pass makes the task unresolvable forever. The p2p arm also catches a solution
+  in a language `run_swe.ps1` cannot score, since it scores every task with pytest. The gate runs after
+  the PII lint so a rejected task still never touches disk. Issue #161.
+- **`tests/test_harvest_datapoint.py` fixtures are now a real fail-to-pass task.** The suite previously
+  harvested `def test_fix_passes(): assert True` against a `def broken(): return None` stub, so all
+  eight tests proved file copying and nothing about whether a harvested task runs. The fixture is now a
+  genuine off-by-one bug with an f2p that fails against it and a p2p that passes, and
+  `test_red_before_fix_emitted_task_is_executable` replays the full resolved contract on the emitted
+  directory: red before the fix, green after, with no p2p regression.
 - **Release-metadata enforcement in the local gate.** `scripts/release_drift.py` exits 1 when commits
   have landed since the version was cut and `## [Unreleased]` documents none of them. It anchors to the
   commit that last changed the version line in `Cargo.toml` rather than to a git tag, so the window
