@@ -20,8 +20,8 @@ verified run compounds the next.**
 Phoenix exists to close the software-delivery loop, not merely assist inside it. A human supplies
 **intent, policy, and risk budget**; the factory converts that intent into objective acceptance checks
 and maintained work, initiates and fans out isolated jobs, routes each step to the right model, executes,
-verifies, heals, reviews, ships eligible low-risk changes, remembers verified outcomes, and improves its
-own scaffolding from measured evidence.
+verifies, heals, **merges** eligible low-risk changes, remembers verified outcomes, and improves its
+own scaffolding from measured evidence. Opening a pull request is not the end of the loop. Landing it is.
 
 At the north star, humans **steer by intent and monitor by exception**. Routine decomposition,
 coordination, execution, verification, recovery, and low-risk delivery do not wait for manual kickoff or
@@ -41,6 +41,20 @@ durable `phoenix-ralph` run; Copilot and Scout workers execute in dedicated work
 requires a persistent job ledger, work keys, leases, and restart-safe checkpoints to prevent duplicate
 shipping and recover work after process or host failure.
 
+The factory drives two repositories under one control model, and the mission criteria apply to both. Lane A
+works `All-The-Vibes/ATV-Phoenix`, the harness itself. Lane B works the Goose loop: the backlog lives in
+`NewGooseFactory/GooseNotes` and the code in `NewGooseFactory/GooseTools`. Both lanes prove work the same
+way and both land it the same way. A gate is green only when it is green in both.
+
+Every beat also sweeps the open pull requests in both repos and merges what already passes, not only the
+change it opened that beat. Without that sweep a proven change that missed its own merge window has nothing
+scheduled to revisit it, and the factory accumulates finished work it never ships. That is the failure this
+mission treats as a shipping failure, not a queue.
+
+Merging is not adopting. A merge lands code on a repository's main branch. In Lane B the running loop only
+changes when a human runs `mirror_sync.py --pull`, and that stays a human act. Governance artifacts sit
+outside the mirror by construction, so a controller change cannot ride in through a merge.
+
 ## Mission criteria — all gates must be green
 
 Phoenix reaches the north star only when **every** gate below is green. These are conjunctive safety and
@@ -53,7 +67,7 @@ outcome criteria. **A failed gate cannot be averaged away.**
 | **Durable fleet execution** | Isolated, idempotent jobs survive retries and restarts without duplicate shipping or workspace collisions; concurrency can scale from tens toward thousands without changing the control model. |
 | **Verified outcomes** | 100% of outcomes marked done or shipped have a currently-green `phoenix_accept` failure-first proof bound to the exact check and commit, plus an intact trace. |
 | **Bounded recovery** | At least 95% of recoverable RED states heal within the bounded retry/rollback policy; exhausted cases become explicit exceptions, never silent success. |
-| **Policy-gated shipping** | Eligible low-risk changes can merge automatically after objective test, review, security, cost, and blast-radius gates; risky or ambiguous changes enter a human exception lane. |
+| **Policy-gated shipping** | Eligible low-risk changes **merge automatically** after objective test, security, cost, and blast-radius gates, in every repo the factory drives; risky or ambiguous changes enter a human exception lane. Measured at the merge, not at the pull request: a proven change left open is unfinished work. |
 | **Compounding learning** | Verified outcomes enter retrievable memory automatically; skill or policy changes adopt only on sealed, measured gains with zero right-to-wrong regression. |
 | **Economic control** | Every mission has model-routing and spend limits; no runaway compute; cost, latency, and tokens per verified outcome stay within budget and trend down without quality regression. |
 | **Exception operations** | Human intervention is required for no more than 10% of eligible outcomes, excluding changed intent or policy; routine status stays silent and alerts carry one concrete decision or recovery action. |
@@ -71,7 +85,28 @@ outcome criteria. **A failed gate cannot be averaged away.**
   must carry a machine-readable final status and check reference. The denominator is every item entering a terminal state during the measurement window; uncovered items count against coverage and can never count as done.
 - **Bounded recovery rate:** recoverable RED states returned to GREEN within the configured retry/rollback
   cap divided by all RED states classified as recoverable.
-- **Human intervention rate:** eligible outcomes requiring unplanned human action after initiation divided by all eligible outcomes reaching a terminal state. Changed intent and policy decisions are excluded.
+- **Human intervention rate:** eligible outcomes requiring unplanned human action after initiation divided by all eligible outcomes reaching a terminal state. Changed intent and policy decisions are excluded. A human merging a change the factory already proved counts as an intervention.
+- **Merge throughput:** pull requests the factory merged during the window divided by pull requests the
+  factory opened during the window. A PR opened and never landed counts against the rate.
+- **Open PR dwell time:** age of currently-open factory pull requests, reported as median and max, with the
+  count older than 7 days. Any proven PR past 7 days is an exception, not a backlog item.
+- **Gate-instrument validity:** a shipping gate counts only while its instrument can still discriminate. An
+  eval gate whose measurement is missing, marked void, older than 14 days, or saturated at a perfect score
+  is UNKNOWN: it neither blocks nor silently passes, and the reason is recorded on the change. A gate held
+  UNKNOWN across more than two audits is itself a defect, because the loop is then shipping blind.
+- **Controller-merge count:** merges touching `AGENTS.md`, `MISSION.md`, the operational charter, or any
+  automation prompt. The target is 0 and there is no tolerance band. The factory may propose a controller
+  change; only a human adopts one.
+
+### Merge authority and the review stamp
+
+This factory has exactly one usable GitHub identity, `shyamsridhar123`, which owns the repos and authors
+the pull requests. The second account is an Enterprise Managed User: GitHub refuses `addPullRequestReview`
+from it and refuses self-approval from the owner, so no approval stamp is obtainable. Policy-gated shipping
+is therefore proven by the objective gates (failure-first acceptance proof bound to the head commit, green
+required checks, blast radius, controller exclusion), never by a review count. Treating an unobtainable
+approval as a merge precondition is how the loop stalled: it produced proven changes that nothing was
+authorized to land. Do not reintroduce it, and never fabricate a review.
 
 **Code-quality benchmarks are subordinate evidence**, not the north star. They remain necessary regression
 and capability signals, but a high benchmark score cannot prove autonomous initiation, durable

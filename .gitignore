@@ -41,3 +41,9 @@ vendor/**/*.pyc
 # python bytecode (phoenix-okf scripts etc.)
 __pycache__/
 *.pyc
+
+# Python build artifacts. tests/test_packaging.py builds a wheel from the repo
+# root, and pip writes these into the source tree while it does.
+build/
+*.egg-info/
+*.whl
