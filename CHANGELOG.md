@@ -7,7 +7,46 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Tier 3 scope is derived from the diff instead of asserted by the caller.** `scripts/eval-gate.ps1`
+  previously waived the gate whenever a caller passed `-Exempt`, so whoever invoked the gate decided
+  whether the gate applied. It now classifies the changed-file set and picks one of three outcomes
+  already handled by charter STEP 7: exit 0 with `AUTO-EXEMPT` and the classified file list when no
+  changed file is on the scored path, the normal eval run when any file is, and exit 2 with
+  `NEEDS-HUMAN` when the diff changes `scripts/eval-gate.ps1`, `scripts/update-scoreboard.ps1`, or
+  `eval/scoreboard.json`. Classification is fail-closed, so a path matching neither list is measured
+  rather than exempted by omission. `-Exempt` survives as a human override and now logs that the
+  waiver was asserted rather than derived. Issue #163.
+- **`skills/**` is classified as behaviour, disclosed rather than blocked.** Skills are the agent's
+  instructions, so a skill edit is the change most likely to move the Arm B resolved rate, and
+  AGENTS.md line 48 currently waives it as docs. It no longer falls into `AUTO-EXEMPT`. Whether it
+  blocks is decided by whether the meter can discriminate: while `baseline.swe_bench_lite.arm_b_phoenix_resolved`
+  sits at 1.0 the gate prints `UNMEASURED`, names issue #142, and does not block, because a
+  resolved-rate cannot exceed 1.0 and with n=9 a single stochastic failure reads as a regression.
+  Once the baseline drops below the ceiling the same file is scored with no further edit. A skill
+  change riding alongside a scored path does not drag that path into the waiver.
 ### Added
+- **`pyproject.toml`, so the Python half installs with pip.** `pip install git+https://github.com/All-The-Vibes/ATV-Phoenix`
+  failed with "neither 'setup.py' nor 'pyproject.toml' found", so a consumer of `phoenix_learn` had to add an
+  absolute `sys.path` entry, which is machine-specific and breaks in CI, or vendor the whole repository as a
+  submodule and then exclude roughly 300 upstream tests from its own collection root. The file declares the three
+  existing packages, `phoenix_learn`, `phoenix_nest` and `phoenix_sense_tmx`, by name, because the repository root
+  holds 17 top-level directories and setuptools flat-layout discovery refuses to guess among them. It declares no
+  dependencies, because every import across the nine `phoenix_learn` modules is stdlib.
+- **`tests/test_packaging.py`** compares the declared package list against the packages on disk, so a new root
+  package that nobody declared fails the suite instead of silently missing from the wheel. It also checks the
+  `pyproject.toml` version against `Cargo.toml`, which stops a second version source drifting unwatched, and builds
+  a real wheel to confirm all three packages reach the artifact.
+
+- **A validity marker on `eval/scoreboard.json` baseline blocks (#147).** Every result block under
+  `baseline` now carries an explicit `valid` boolean, and a void block carries `invalidated_reason`.
+  The 2026-07-03 `north_star` block is marked `valid: false`, because that run was broken and its
+  results were never published. The numbers stay in the file so the history is still readable, and
+  `_doc` says what the marker means. `tests/test_scoreboard_marks_invalid_runs.py` guards the schema
+  and asserts `swe_bench_lite` is still `valid: true`, so marking the whole file void cannot satisfy
+  the check. Before this, an agent read the orphan `north_star` block as evidence and wrote it into
+  the README, which is the failure the marker exists to prevent.
 
 - **`scripts/proof_status.py` answers whether a pull request's proofs actually ran (#138).**
   GitHub holds Actions runs at conclusion `action_required` on pull requests authored by the
