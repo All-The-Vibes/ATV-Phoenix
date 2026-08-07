@@ -36,8 +36,9 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   then-open pull requests: all six reported `phoenix-proof COMPLETED SUCCESS` with every proof step skipped.
   A new `Require an acceptance contract` step now exits 1 on a pull request that declares no contract. The
   four proof steps keep their existing condition, so a run with no check file still does not try to read one.
-  `tests/test_phoenix_proof_fails_closed.py` asserts the guard exists, is scoped to `pull_request`, and that
-  stripping it makes the same assertion fail. Issue #169.
+  `tests/test_cloud_proof_workflow.py` asserts the guard exists, is scoped to `pull_request`, runs before
+  the Rust build so a contract-less run stops early, and that removing it or pointing it at the wrong case
+  makes the same validator fail. Issue #169.
 - **`pyproject.toml`, so the Python half installs with pip.** `pip install git+https://github.com/All-The-Vibes/ATV-Phoenix`
   failed with "neither 'setup.py' nor 'pyproject.toml' found", so a consumer of `phoenix_learn` had to add an
   absolute `sys.path` entry, which is machine-specific and breaks in CI, or vendor the whole repository as a

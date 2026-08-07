@@ -382,3 +382,76 @@ def test_workflow_validator_rejects_unpinned_toolchain_mutation(
 
     with pytest.raises(AssertionError):
         validate_cloud_proof_workflow(workflow)
+
+
+# --- issue #169: the workflow must fail when it has nothing to prove -----------------
+#
+# Every gated step below is conditioned on the acceptance contract existing on the head.
+# With `.phoenix-ralph/done-check.json` absent, all four skipped and the job still concluded
+# SUCCESS, so a merge gate reading statusCheckRollup counted a run that proved nothing.
+# Measured 2026-08-07 across PRs #159, #160, #162, #164, #166 and #167: all six reported
+# phoenix-proof COMPLETED SUCCESS with every proof step skipped.
+
+FAIL_CLOSED_STEP = "Require an acceptance contract"
+
+
+def fail_closed_guards(workflow):
+    """Steps that run when no contract was declared and exit non-zero."""
+    guards = []
+    for step in workflow["jobs"]["phoenix-proof"]["steps"]:
+        condition = str(step.get("if") or "")
+        if "declared" not in condition:
+            continue
+        if "!= 'true'" not in condition and "== 'false'" not in condition:
+            continue
+        if "exit 1" in str(step.get("run") or ""):
+            guards.append(step)
+    return guards
+
+
+def validate_fails_closed(workflow):
+    guards = fail_closed_guards(workflow)
+    assert guards, (
+        "no step fails the run when .phoenix-ralph/done-check.json is absent, so "
+        "phoenix-proof reports SUCCESS having skipped every proof step"
+    )
+    for guard in guards:
+        assert "pull_request" in str(guard.get("if")), (
+            f"guard {guard.get('name')!r} is not scoped to pull_request, so "
+            "workflow_dispatch runs would fail too"
+        )
+
+
+def test_proof_workflow_fails_when_no_contract_is_declared():
+    validate_fails_closed(load_workflow(PROOF_WORKFLOW_PATH))
+
+
+def test_fail_closed_guard_runs_before_the_toolchain_setup():
+    """A contract-less run should stop before paying for a Rust build."""
+    steps = load_workflow(PROOF_WORKFLOW_PATH)["jobs"]["phoenix-proof"]["steps"]
+    names = [step.get("name") for step in steps]
+    assert names.index(FAIL_CLOSED_STEP) < names.index("Install Rust")
+
+
+def test_validator_rejects_a_workflow_with_the_guard_removed():
+    workflow = deepcopy(load_workflow(PROOF_WORKFLOW_PATH))
+    job = workflow["jobs"]["phoenix-proof"]
+    job["steps"] = [s for s in job["steps"] if s not in fail_closed_guards(workflow)]
+    with pytest.raises(AssertionError):
+        validate_fails_closed(workflow)
+
+
+def test_validator_rejects_a_guard_that_fires_on_the_wrong_case():
+    workflow = deepcopy(load_workflow(PROOF_WORKFLOW_PATH))
+    guard = step_by_name(workflow, FAIL_CLOSED_STEP)
+    guard["if"] = str(guard["if"]).replace("!= 'true'", "== 'true'")
+    with pytest.raises(AssertionError):
+        validate_fails_closed(workflow)
+
+
+def test_validator_rejects_a_guard_that_is_not_scoped_to_pull_requests():
+    workflow = deepcopy(load_workflow(PROOF_WORKFLOW_PATH))
+    guard = step_by_name(workflow, FAIL_CLOSED_STEP)
+    guard["if"] = "${{ steps.acceptance_contract.outputs.declared != 'true' }}"
+    with pytest.raises(AssertionError):
+        validate_fails_closed(workflow)
