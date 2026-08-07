@@ -27,6 +27,17 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Once the baseline drops below the ceiling the same file is scored with no further edit. A skill
   change riding alongside a scored path does not drag that path into the waiver.
 ### Added
+- **`pyproject.toml`, so the Python half installs with pip.** `pip install git+https://github.com/All-The-Vibes/ATV-Phoenix`
+  failed with "neither 'setup.py' nor 'pyproject.toml' found", so a consumer of `phoenix_learn` had to add an
+  absolute `sys.path` entry, which is machine-specific and breaks in CI, or vendor the whole repository as a
+  submodule and then exclude roughly 300 upstream tests from its own collection root. The file declares the three
+  existing packages, `phoenix_learn`, `phoenix_nest` and `phoenix_sense_tmx`, by name, because the repository root
+  holds 17 top-level directories and setuptools flat-layout discovery refuses to guess among them. It declares no
+  dependencies, because every import across the nine `phoenix_learn` modules is stdlib.
+- **`tests/test_packaging.py`** compares the declared package list against the packages on disk, so a new root
+  package that nobody declared fails the suite instead of silently missing from the wheel. It also checks the
+  `pyproject.toml` version against `Cargo.toml`, which stops a second version source drifting unwatched, and builds
+  a real wheel to confirm all three packages reach the artifact.
 
 - **A validity marker on `eval/scoreboard.json` baseline blocks (#147).** Every result block under
   `baseline` now carries an explicit `valid` boolean, and a void block carries `invalidated_reason`.
