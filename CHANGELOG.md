@@ -61,6 +61,15 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   genuine off-by-one bug with an f2p that fails against it and a p2p that passes, and
   `test_red_before_fix_emitted_task_is_executable` replays the full resolved contract on the emitted
   directory: red before the fix, green after, with no p2p regression.
+- **The Tier 3 gate discloses when its baseline is at the ceiling (#142).** `eval/scoreboard.json`
+  records `arm_b_phoenix_resolved: 1.0` for swe-bench-lite, and `scripts/eval-gate.ps1` passes when
+  the measured score is at least the baseline. A resolved-rate cannot exceed 1.0, so at that baseline
+  the delta can never be positive: the gate detects a regression and cannot detect an improvement.
+  Every run recorded since 2026-07-03 sat at exactly 1.0 with delta 0.0 and printed a bare
+  `PASS: Arm B 1 >= baseline 1`. The gate now prints a `SATURATED` line naming the limit. Exit codes
+  do not change, because the limitation is in what the number can show rather than in what should
+  merge. `tests/test_eval_gate_discloses_ceiling.py` covers it, and asserts the line stays absent
+  when the baseline has headroom, so an unconditional print cannot satisfy the guard.
 - **Release-metadata enforcement in the local gate.** `scripts/release_drift.py` exits 1 when commits
   have landed since the version was cut and `## [Unreleased]` documents none of them. It anchors to the
   commit that last changed the version line in `Cargo.toml` rather than to a git tag, so the window
