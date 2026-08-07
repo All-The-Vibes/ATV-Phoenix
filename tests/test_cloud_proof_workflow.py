@@ -146,6 +146,9 @@ def validate_cloud_proof_workflow(workflow, setup=None):
     base_gate = step_by_name(workflow, "Require base acceptance RED")["run"]
     assert 'git checkout --force "$PHOENIX_BASE_SHA"' in base_gate, "base checkout"
     assert 'if "$PHOENIX_MCP" sense "@$PHOENIX_CHECK_FILE"; then' in base_gate, "base RED"
+    assert (
+        'git checkout "$PHOENIX_HEAD_SHA" -- "$test_file"' in base_gate
+    ), "head acceptance test preservation"
     assert "proof is vacuous" in base_gate and "exit 1" in base_gate, "base RED"
 
     head_gate = step_by_name(workflow, "Require head acceptance GREEN")["run"]

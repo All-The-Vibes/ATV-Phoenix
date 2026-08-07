@@ -105,7 +105,31 @@ jobs:
         if: ${{ steps.acceptance_contract.outputs.declared == 'true' }}
         run: |
           set -euo pipefail
+          mapfile -t acceptance_tests < <(
+            python - "$PHOENIX_CHECK_FILE" <<'PY'
+          import json
+          import sys
+          from pathlib import PurePosixPath
+
+          check = json.load(open(sys.argv[1], encoding="utf-8"))
+          for argument in check.get("target", []):
+              if not isinstance(argument, str):
+                  continue
+              candidate = argument.split("::", 1)[0]
+              path = PurePosixPath(candidate)
+              if (
+                  path.parts
+                  and path.parts[0] == "tests"
+                  and path.suffix == ".py"
+                  and ".." not in path.parts
+              ):
+                  print(candidate)
+          PY
+          )
           git checkout --force "$PHOENIX_BASE_SHA"
+          for test_file in "${acceptance_tests[@]}"; do
+            git checkout "$PHOENIX_HEAD_SHA" -- "$test_file"
+          done
           if "$PHOENIX_MCP" sense "@$PHOENIX_CHECK_FILE"; then
             echo "Base acceptance check unexpectedly passed; proof is vacuous." >&2
             exit 1
