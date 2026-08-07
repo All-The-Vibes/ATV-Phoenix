@@ -111,7 +111,8 @@ jobs:
           import sys
           from pathlib import PurePosixPath
 
-          check = json.load(open(sys.argv[1], encoding="utf-8"))
+          with open(sys.argv[1], encoding="utf-8") as check_file:
+              check = json.load(check_file)
           for argument in check.get("target", []):
               if not isinstance(argument, str):
                   continue
