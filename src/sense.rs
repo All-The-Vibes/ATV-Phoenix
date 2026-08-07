@@ -51,6 +51,7 @@ where
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
+#[schemars(inline)]
 pub enum CheckKind {
     /// Run `target` as argv (no shell); pass iff exit code == expect (default 0).
     CommandExit,
@@ -67,6 +68,7 @@ pub enum CheckKind {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[schemars(inline)]
 pub struct Check {
     pub kind: CheckKind,
     /// For CommandExit: argv (first element is the program). For file checks: a single path.

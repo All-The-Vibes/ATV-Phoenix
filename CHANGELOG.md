@@ -61,6 +61,18 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   genuine off-by-one bug with an f2p that fails against it and a p2p that passes, and
   `test_red_before_fix_emitted_task_is_executable` replays the full resolved contract on the emitted
   directory: red before the fix, green after, with no p2p regression.
+- **`scripts/proof_status.py` answers whether a pull request's proofs actually ran (#138).**
+  GitHub holds Actions runs at conclusion `action_required` on pull requests authored by the
+  Copilot coding agent, so they queue and never execute. Ten pull requests merged on 2026-07-31
+  and 2026-08-01 took that path. They were verified by hand in a scratch worktree, which is real
+  verification that depends on a person remembering to do it. The script reads the check-run
+  payload for a head SHA plus the changed-file list and exits 1 when a required proof is missing,
+  held, or failed. `Phoenix proof` is required on every pull request because its workflow has no
+  path filter. `Connector proof` is required only when a changed file matches the `paths:` block
+  of `.github/workflows/connector-proof.yml`, so a docs change does not trip it.
+  `tests/test_proof_status.py` covers it, including a test that fails when the path table drifts
+  from the workflow file. This does not decide between the three fixes #138 lists; it makes the
+  condition detectable either way.
 - **The Tier 3 gate discloses when its baseline is at the ceiling (#142).** `eval/scoreboard.json`
   records `arm_b_phoenix_resolved: 1.0` for swe-bench-lite, and `scripts/eval-gate.ps1` passes when
   the measured score is at least the baseline. A resolved-rate cannot exceed 1.0, so at that baseline
