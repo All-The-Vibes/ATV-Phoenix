@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "phoenix-learn"
+version = "0.5.0"
+description = "Python half of ATV-Phoenix: the learning loop, nest, and sense adapters"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/All-The-Vibes/ATV-Phoenix"
+Source = "https://github.com/All-The-Vibes/ATV-Phoenix"
+
+# The repository root holds 17 top-level directories, so setuptools flat-layout
+# auto-discovery refuses to guess. The three importable packages are named here.
+# Adding a package to the repo does not add it to the wheel until it is listed.
+[tool.setuptools]
+packages = ["phoenix_learn", "phoenix_nest", "phoenix_sense_tmx"]

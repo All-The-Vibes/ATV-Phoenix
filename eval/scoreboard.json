@@ -1,10 +1,11 @@
 {
     "_schema":  "1.0",
-    "_doc":  "Canonical score tracker. baseline block written once from first scored run on main. Runs array is append-only. Never auto-update baseline downward.",
+    "_doc":  "Canonical score tracker. baseline block written once from first scored run on main. Runs array is append-only. Never auto-update baseline downward. Every result block under baseline carries a valid boolean; valid false means the measurement is void and kept only for history, and it must not be read as evidence. A void block also carries invalidated_reason.",
     "baseline":  {
                      "date":  "2026-07-03",
                      "commit":  "c0687cb27127e87a5f5d04c7d20b47d3bd9cb267",
                      "swe_bench_lite":  {
+                                            "valid":  true,
                                             "arm_a_vanilla_resolved":  0.778,
                                             "arm_a_vanilla_resolved_n":  7,
                                             "arm_b_phoenix_resolved":  1.0,
@@ -15,6 +16,8 @@
                                             "results_file":  "evals/swe-bench-lite/results.jsonl"
                                         },
                      "north_star":  {
+                                        "valid":  false,
+                                        "invalidated_reason":  "broken run, results not representative, never published",
                                         "date":  "2026-07-03",
                                         "arm_a_resolved":  0.35,
                                         "arm_b_resolved":  0.25,
