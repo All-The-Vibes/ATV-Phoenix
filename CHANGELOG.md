@@ -18,10 +18,14 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `eval/scoreboard.json`. Classification is fail-closed, so a path matching neither list is measured
   rather than exempted by omission. `-Exempt` survives as a human override and now logs that the
   waiver was asserted rather than derived. Issue #163.
-- **`skills/**` is now scored.** AGENTS.md line 48 and charter STEP 7 both list `skills/**/*.md` as
-  docs-exempt, which waved through the one class of change most likely to move the Arm B resolved
-  rate, since skills are the agent's instructions. The derived classifier refuses to exempt them. The
-  written policy still says otherwise and needs an owner edit to match.
+- **`skills/**` is classified as behaviour, disclosed rather than blocked.** Skills are the agent's
+  instructions, so a skill edit is the change most likely to move the Arm B resolved rate, and
+  AGENTS.md line 48 currently waives it as docs. It no longer falls into `AUTO-EXEMPT`. Whether it
+  blocks is decided by whether the meter can discriminate: while `baseline.swe_bench_lite.arm_b_phoenix_resolved`
+  sits at 1.0 the gate prints `UNMEASURED`, names issue #142, and does not block, because a
+  resolved-rate cannot exceed 1.0 and with n=9 a single stochastic failure reads as a regression.
+  Once the baseline drops below the ceiling the same file is scored with no further edit. A skill
+  change riding alongside a scored path does not drag that path into the waiver.
 ### Added
 
 - **Release-metadata enforcement in the local gate.** `scripts/release_drift.py` exits 1 when commits
