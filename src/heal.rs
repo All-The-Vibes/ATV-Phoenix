@@ -11,12 +11,14 @@ pub const MAX_RETRIES: u32 = 3;
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
+#[schemars(inline)]
 pub enum Strategy {
     Retry,
     Rollback,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[schemars(inline)]
 pub struct HealCtx {
     /// Retry: argv to re-run between rechecks.
     #[serde(default)]
