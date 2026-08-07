@@ -37,6 +37,15 @@ jobs:
           else
             echo "declared=true" >> "$GITHUB_OUTPUT"
           fi
+      - name: Require an acceptance contract
+        if: ${{ github.event_name == 'pull_request' && steps.acceptance_contract.outputs.declared != 'true' }}
+        run: |
+          set -euo pipefail
+          echo "This head has no .phoenix-ralph/done-check.json." >&2
+          echo "Every proof step below is gated on that file, so this run would skip all of them" >&2
+          echo "and still report SUCCESS. Failing instead, because a green that proved nothing is" >&2
+          echo "worse than a red: any merge gate reading statusCheckRollup would count it as Tier 2." >&2
+          exit 1
       - name: Set up Python
         uses: actions/setup-python@v6
         with:

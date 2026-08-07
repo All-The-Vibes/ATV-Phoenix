@@ -1,0 +1,1 @@
+{"kind":"command_exit","target":["python","-m","pytest","tests/test_phoenix_proof_fails_closed.py","-q"],"expect":0,"cwd":"."}
