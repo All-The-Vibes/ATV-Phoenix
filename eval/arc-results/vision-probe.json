@@ -1,0 +1,66 @@
+{
+  "agent": "gpt-5.6-sol",
+  "auth": "managed_identity",
+  "vision": true,
+  "games": 6,
+  "levels_completed": 1,
+  "levels_available": 40,
+  "tokens": 165252,
+  "wall_clock_s": 689.5,
+  "runs": [
+    {
+      "game": "ft09",
+      "agent": "gpt-5.6-sol",
+      "levels_completed": 0,
+      "win_levels": 6,
+      "actions_spent": 12,
+      "tokens": 25340,
+      "elapsed_s": 99.4
+    },
+    {
+      "game": "cd82",
+      "agent": "gpt-5.6-sol",
+      "levels_completed": 0,
+      "win_levels": 6,
+      "actions_spent": 151,
+      "tokens": 26661,
+      "elapsed_s": 119.5
+    },
+    {
+      "game": "tn36",
+      "agent": "gpt-5.6-sol",
+      "levels_completed": 0,
+      "win_levels": 7,
+      "actions_spent": 16,
+      "tokens": 25571,
+      "elapsed_s": 85.8
+    },
+    {
+      "game": "r11l",
+      "agent": "gpt-5.6-sol",
+      "levels_completed": 0,
+      "win_levels": 6,
+      "actions_spent": 265,
+      "tokens": 31484,
+      "elapsed_s": 136.0
+    },
+    {
+      "game": "sb26",
+      "agent": "gpt-5.6-sol",
+      "levels_completed": 1,
+      "win_levels": 8,
+      "actions_spent": 50,
+      "tokens": 27286,
+      "elapsed_s": 100.5
+    },
+    {
+      "game": "vc33",
+      "agent": "gpt-5.6-sol",
+      "levels_completed": 0,
+      "win_levels": 7,
+      "actions_spent": 142,
+      "tokens": 28910,
+      "elapsed_s": 139.6
+    }
+  ]
+}
