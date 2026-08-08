@@ -122,6 +122,17 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The PowerShell availability probe in `tests/test_harvest_datapoint.py` no longer turns an
+  environment failure into a skip.** `_pwsh_available` caught every exception and returned False, so a
+  `subprocess.TimeoutExpired` from a loaded machine read as "PowerShell is not installed" and eleven
+  tests skipped themselves while the suite exited 0. Observed on 2026-08-07: five identical runs on one
+  machine gave 13 passed, 13 passed, 8 passed with 5 skipped, 13 passed, 13 passed, with no code change
+  between them. The probe now returns False only for a genuine absence, raises `RuntimeError` on a
+  timeout, and lets anything else propagate. Reproduced both ways by forcing the probe to time out: the
+  old code reported `1 passed, 12 skipped` and exit 0, the new code reports `13 failed, 4 passed` and
+  exit 1. Four tests pin the behaviour, including one that fails if the probe ever claims PowerShell is
+  absent on a machine where `shutil.which` finds it. The same probe is copied in
+  `tests/test_auto_merge_gate.py` and `tests/test_north_star_runner.py` and is not touched here (#170).
 - `phoenix-mcp sense` and `phoenix-mcp accept` print a JSON usage error with `ok:false` and a
   `reason` and exit non-zero when called with no check argument, instead of panicking on an
   out-of-bounds index (#145).
