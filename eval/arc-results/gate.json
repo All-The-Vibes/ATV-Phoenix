@@ -1,0 +1,71 @@
+{
+  "budget": 1200,
+  "seeds": 5,
+  "salt": 0,
+  "split": {
+    "public": [
+      "bp35",
+      "cd82",
+      "cn04",
+      "dc22",
+      "ft09",
+      "ls20",
+      "m0r0",
+      "re86",
+      "s5i5",
+      "sb26",
+      "sc25",
+      "sp80",
+      "tn36",
+      "tr87"
+    ],
+    "dev": [
+      "ar25",
+      "g50t",
+      "sk48",
+      "vc33"
+    ],
+    "private": [
+      "ka59",
+      "lf52",
+      "lp85",
+      "r11l",
+      "su15",
+      "tu93",
+      "wa30"
+    ]
+  },
+  "split_sizes": {
+    "public": 14,
+    "dev": 4,
+    "private": 7
+  },
+  "dev_selection": {
+    "gen0_count_grid8": {
+      "acc": 0.0,
+      "levels": 0
+    },
+    "cand_count_grid4": {
+      "acc": 0.0,
+      "levels": 0
+    },
+    "cand_change_grid8": {
+      "acc": 0.15,
+      "levels": 3
+    }
+  },
+  "selected": "cand_change_grid8",
+  "baseline": "gen0_count_grid8",
+  "private_n": 35,
+  "gen0_private_acc": 0.0,
+  "gen0_private_correct": 0,
+  "selected_private_acc": 0.0,
+  "selected_private_correct": 0,
+  "private_transitions": {
+    "right_to_right": 0,
+    "right_to_wrong": 0,
+    "wrong_to_right": 0
+  },
+  "decision": "REJECT",
+  "wall_clock_s": 191.0
+}

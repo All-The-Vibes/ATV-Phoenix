@@ -1,16 +1,6 @@
 {
   "kind": "command_exit",
-  "target": [
-    "cargo",
-    "test",
-    "--locked",
-    "--test",
-    "mcp_mission_tool",
-    "--test",
-    "mission_concurrency",
-    "--test",
-    "doctor_stale_skills"
-  ],
+  "target": ["python", "-m", "pytest", "tests/test_arc_meter.py", "-q"],
   "expect": 0,
   "cwd": "."
 }
