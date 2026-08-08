@@ -1,9 +1,15 @@
 {
   "kind": "command_exit",
   "target": [
-    "python",
-    "-c",
-    "import sys, subprocess, importlib.util\nspec = importlib.util.spec_from_file_location('egdc', 'tests/test_eval_gate_discloses_ceiling.py')\nm = importlib.util.module_from_spec(spec)\nspec.loader.exec_module(m)\ndef boom(*a, **k):\n    raise subprocess.TimeoutExpired(cmd='powershell', timeout=30)\nm.subprocess.run = boom\ntry:\n    r = m._pwsh_available()\nexcept RuntimeError as e:\n    print('PASS: probe raised RuntimeError on a timed-out probe:', e)\n    sys.exit(0)\nprint('FAIL: probe returned', r, 'on a timeout, so the Tier 3 regression observation can vanish while the suite exits 0')\nsys.exit(1)"
+    "cargo",
+    "test",
+    "--locked",
+    "--test",
+    "mcp_mission_tool",
+    "--test",
+    "mission_concurrency",
+    "--test",
+    "doctor_stale_skills"
   ],
   "expect": 0,
   "cwd": "."
