@@ -51,6 +51,9 @@ completion work, route to the autonomous family instead:
     │                                                          acceptance check, then drive it)
     ├── Have a backlog, grind until objectively done? ──────→ phoenix-ralph (persistence loop;
     │                                                          the DRIVER proves done, not the agent)
+    ├── Goals with prerequisites / need isolation, a ledger,
+    │   or execution on Copilot cloud agents? ──────────────→ phoenix-mission (supervised DAG:
+    │                                                          order, worktrees, leases, budgets)
     └── Next step depends on results, pick as you go? ──────→ phoenix-auto  (dynamic state-sensing router)
 ```
 

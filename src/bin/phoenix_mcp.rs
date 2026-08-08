@@ -12,6 +12,12 @@ use phoenix::sense::{canonical_digest, sense, Check};
 use phoenix::snapshot::snapshot;
 use phoenix::{heal, HealCtx, Strategy, Trace};
 use phoenix::intent::{verify_intent, IntentManifest};
+use phoenix::cloud_backend::{CloudBackend, HttpCloudClient};
+use phoenix::execution_backend::LocalBackend;
+use phoenix::hybrid_dag::GoalOutcome;
+use phoenix::mission::MissionConfig;
+use phoenix::mission_plan::{plan, GoalSpec};
+use phoenix::run_ledger::RunLedger;
 
 use rmcp::{
     ServerHandler, ServiceExt,
@@ -35,6 +41,14 @@ fn trace() -> Trace {
 
 fn jdigest(s: &str) -> String {
     phoenix::trace::digest_str(s)
+}
+
+/// A refusal the caller can read, in the same `{ok:false, ...}` shape the tools return on success.
+///
+/// Refusals are values, never panics: this process serves every Phoenix tool, so a panic here
+/// would take down sense/heal/accept along with the failed call.
+fn err_json(reason: &str) -> String {
+    serde_json::json!({ "ok": false, "error": reason, "reason": reason }).to_string()
 }
 
 /// Accept a struct parameter supplied either as a JSON object OR as a JSON-encoded
@@ -86,6 +100,34 @@ pub struct HealArgs {
 pub struct IntentAcceptArgs {
     /// Path to the intent manifest JSON file (relative to workspace), e.g. ".phoenix-intent/intent.json".
     pub manifest_path: String,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct MissionGoalArg {
+    /// Unique goal id, e.g. "build".
+    pub id: String,
+    /// Ids of goals that must SUCCEED before this one runs. Omit or leave empty for an independent goal.
+    #[serde(default)]
+    pub depends_on: Vec<String>,
+    /// The command to run for this goal, as an argv string (split on whitespace, no shell).
+    pub task: String,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct MissionArgs {
+    /// The goals to run. Order does not matter — prerequisites are sorted automatically.
+    #[serde(deserialize_with = "de_struct_or_json_string")]
+    pub goals: Vec<MissionGoalArg>,
+    /// Max goals admitted at once (default 2). Bounds admission; it does not create OS threads.
+    #[serde(default)]
+    pub capacity: Option<usize>,
+    /// "local" (default) runs jobs as child processes here. "cloud" dispatches to GitHub Copilot
+    /// cloud agents and requires GITHUB_TOKEN + GITHUB_REPOSITORY in the environment.
+    #[serde(default)]
+    pub backend: Option<String>,
+    /// Mission workspace for worktrees, run ledger, and trace chains. Relative to PHOENIX_WORKSPACE.
+    #[serde(default)]
+    pub workspace: Option<String>,
 }
 
 #[derive(Clone)]
@@ -159,6 +201,115 @@ impl Phoenix {
         let result = verify_intent(&ws, &manifest);
         serde_json::to_string(&result).unwrap_or_else(|e| format!("{{\"error\":\"{e}\"}}"))
     }
+
+    /// Run an N-goal DAG under the supervisor: bounded admission, worktree isolation, lease
+    /// fencing, budgets, a durable run ledger, and per-goal trace chains.
+    #[tool(description = "Run a multi-goal DAG under the Phoenix supervisor. Goals declare dependencies and each runs only after its prerequisites SUCCEED; a failed goal contains its dependents instead of failing the mission. Every executed goal gets an isolated git worktree and a fenced lease, and every execution is written to a durable run ledger plus a per-goal tamper-evident trace chain. backend=\"local\" (default) runs jobs as child processes here; backend=\"cloud\" dispatches each goal to a GitHub Copilot cloud agent (needs GITHUB_TOKEN + GITHUB_REPOSITORY). NOTE: the scheduler is sequential — one backend call at a time. `capacity` bounds how many goals are admitted concurrently; it does NOT create threads, so this does not reduce wall-clock time. Use it for dependency-ordered, isolated, auditable execution. EXAMPLE: {\"capacity\":2,\"backend\":\"local\",\"goals\":[{\"id\":\"a\",\"depends_on\":[],\"task\":\"cargo build\"},{\"id\":\"b\",\"depends_on\":[\"a\"],\"task\":\"cargo test\"}]}. Returns {ok, settled, goals_total, goals_succeeded, goals_failed, peak_concurrency, isolation_ok, chains_ok, ledger, goals}.")]
+    async fn phoenix_mission(&self, args: Parameters<MissionArgs>) -> String {
+        let a = args.0;
+
+        let capacity = a.capacity.unwrap_or(2);
+        if capacity == 0 {
+            return err_json("capacity must be at least 1; zero capacity can never admit a goal");
+        }
+
+        let backend_name = a.backend.unwrap_or_else(|| "local".to_string());
+        if backend_name != "local" && backend_name != "cloud" {
+            return err_json(&format!(
+                "unsupported backend {backend_name:?}; expected \"local\" or \"cloud\""
+            ));
+        }
+
+        let specs: Vec<GoalSpec> = a
+            .goals
+            .into_iter()
+            .map(|g| GoalSpec { id: g.id, depends_on: g.depends_on, task: g.task })
+            .collect();
+
+        // Validate BEFORE run_mission: it panics on a malformed graph, which inside this
+        // long-lived server would kill every other Phoenix tool, not just this call.
+        let planned = match plan(specs) {
+            Ok(p) => p,
+            Err(e) => return err_json(&e.to_string()),
+        };
+
+        let ws = workspace();
+        let mission_ws = match a.workspace {
+            Some(rel) => ws.join(rel),
+            None => ws.join(".phoenix-mission"),
+        };
+
+        let config = MissionConfig::new(capacity);
+        let report = if backend_name == "cloud" {
+            match HttpCloudClient::from_env() {
+                Ok(client) => planned.run(config, &mission_ws, &CloudBackend::new(client)),
+                Err(e) => return err_json(&format!("cloud backend setup failed: {e}")),
+            }
+        } else {
+            planned.run(config, &mission_ws, &LocalBackend)
+        };
+
+        let ledger = RunLedger::at(report.workspace.join("run-ledger.jsonl")).read();
+
+        let goals: Vec<serde_json::Value> = report
+            .records
+            .iter()
+            .map(|r| {
+                serde_json::json!({
+                    "goal": r.goal,
+                    "outcome": match r.outcome {
+                        GoalOutcome::Succeeded => "succeeded",
+                        GoalOutcome::Failed => "failed",
+                        // A record is only pushed after execution or budget refusal, so these
+                        // should not appear. They are reported verbatim rather than collapsed
+                        // into a wildcard, so a future variant surfaces instead of being hidden.
+                        GoalOutcome::Pending => "pending",
+                        GoalOutcome::Blocked => "blocked",
+                    },
+                    "had_lease": r.had_lease_at_execution,
+                    "had_worktree": r.had_worktree_at_execution,
+                    "budget_refused": r.budget_refused,
+                })
+            })
+            .collect();
+
+        let succeeded =
+            report.records.iter().filter(|r| r.outcome == GoalOutcome::Succeeded).count();
+        let failed = report.records.iter().filter(|r| r.outcome == GoalOutcome::Failed).count();
+        let chains_ok = report.chain_verify.all_ok();
+
+        // `ok` is a conjunction of independently observable facts, not a summary judgement:
+        // everything settled, nothing failed, isolation held, and every trace chain verifies.
+        let ok = report.settled
+            && failed == 0
+            && chains_ok
+            && report.all_executed_held_lease_and_worktree()
+            && !report.mission_budget_exhausted;
+
+        serde_json::json!({
+            "ok": ok,
+            "backend": backend_name,
+            "capacity": capacity,
+            "settled": report.settled,
+            "goals_total": planned.len(),
+            "goals_executed": report.executed_goals().count(),
+            "goals_succeeded": succeeded,
+            "goals_failed": failed,
+            "peak_concurrency": report.peak_concurrency,
+            "isolation_ok": report.all_executed_held_lease_and_worktree(),
+            "mission_budget_exhausted": report.mission_budget_exhausted,
+            "chains_ok": chains_ok,
+            "broken_writers": report.chain_verify.broken_writers(),
+            "workspace": report.workspace.display().to_string(),
+            "ledger": {
+                "entries": ledger.entries.len(),
+                "unreadable": ledger.unreadable.len(),
+                "total_cost_micros": ledger.total_cost_micros(),
+            },
+            "goals": goals,
+        })
+        .to_string()
+    }
 }
 
 #[tool_handler(router = self.tool_router)]
@@ -169,8 +320,11 @@ impl ServerHandler for Phoenix {
             "ATV-Phoenix self-healing spine. Use phoenix_sense to objectively check success, \
              phoenix_snapshot to save a blessed last-good state, phoenix_heal to recover \
              (bounded), phoenix_verify_trace to audit, phoenix_accept to prove a single goal \
-             done (failure-first), and phoenix_intent_accept to prove composite completion \
-             for a multi-goal intent (all N goals failure-first)."
+             done (failure-first), phoenix_intent_accept to prove composite completion \
+             for a multi-goal intent (all N goals failure-first), and phoenix_mission to run a \
+             dependency-ordered DAG of goals under the supervisor (worktree isolation, lease \
+             fencing, budgets, durable run ledger, per-goal trace chains, local or GitHub \
+             Copilot cloud-agent execution)."
                 .into(),
         );
         info.capabilities = ServerCapabilities::builder().enable_tools().build();
