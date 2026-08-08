@@ -15,30 +15,37 @@ the supervisor spine:
 
 > **plan → admit under capacity → isolate → execute → ledger + chain → contain failure**
 
-## Read this first: what "concurrency" means here
+## Read this first: what `capacity` means
 
-The scheduler is **sequential**. One backend call at a time, no threads.
+`capacity` is a **real parallelism limit**. Goals admitted together execute concurrently — one
+thread per goal — and the supervisor never admits more than `capacity` at once. Four independent
+goals at `capacity: 4` run at the same time; at `capacity: 1` they run one after another.
 
-`capacity` bounds how many goals the supervisor admits simultaneously — it is an admission limit,
-not a thread pool. Raising it does **not** reduce wall-clock time. The cloud backend submits a task
-and then polls it to a terminal state before the next goal starts, so cloud dispatch does not
-overlap either.
+Only the goal's own work runs off the scheduler thread. Admission, leases, worktrees, budgets, the
+run ledger, and the hash-chained traces are all settled on the scheduler thread between batches —
+the chains are hash-linked, so concurrent appends would corrupt the record used to prove what
+happened.
 
-Say this plainly to the user. Promising a speedup this runtime does not deliver is the easiest way
-to lose their trust, and they will measure it.
+With `backend: "cloud"`, each goal is submitted and polled on its own thread, so cloud goals
+genuinely overlap too.
 
-What you actually get:
+What you get:
 
 | Property | What it means |
 |---|---|
+| True concurrency | Up to `capacity` goals inside `execute` simultaneously |
 | Dependency ordering | A goal runs only after every prerequisite **succeeded** |
 | Contained failure | A failed goal blocks its dependents; unrelated branches still complete |
+| Panic containment | A backend that panics fails its own goal; the mission still settles |
 | Worktree isolation | Every executed goal gets an exclusive workspace path |
 | Lease fencing | A stale holder cannot write over a goal it no longer owns |
 | Budgets | Per-goal and mission-wide caps; the mission stops when the mission cap blows |
 | Durable run ledger | One append-only entry per execution, with backend + cost + error |
 | Per-goal trace chains | Each goal gets its own tamper-evident chain, verified independently |
 | Cloud dispatch | Each goal can run on a GitHub Copilot cloud agent instead of this machine |
+
+Results are joined in admission order, so `records` stays deterministic even though execution
+overlapped. Do not infer timing from record order — read the ledger.
 
 ## When to use it
 
@@ -149,16 +156,17 @@ So the honest full shape for a multi-goal task is:
 
 | Rationalization | Reality |
 |---|---|
-| "capacity: 8 will make this 8× faster." | The scheduler is sequential. Capacity bounds admission, not wall-clock time. |
+| "capacity: 8 will make this 8× faster." | Only if you have 8 independent goals. Dependencies serialize; the DAG shape sets the ceiling, not `capacity`. |
 | "The mission returned ok, so the goals are done." | `ok` means it *ran and was recorded*. Done is `phoenix_accept`, failure-first. |
-| "I'll skip depends_on, the order looks fine." | Then you are asserting an order the runtime cannot enforce and failure cannot contain. |
-| "Cloud will be faster." | Each cloud goal is polled to completion before the next starts. Use cloud to move work off this machine, not to save time. |
+| "I'll skip depends_on, the order looks fine." | Goals now run **concurrently**. Without `depends_on` they will genuinely collide. |
+| "Record order shows what ran first." | Records are joined in admission order, not completion order. Read the ledger for timing. |
 | "The remote reported no cost, so it was free." | It reported nothing. `null` is not `0`. |
 | "I'll use a shell pipe in task." | `task` is argv, no shell. Put it in a script. |
 
 ## Red Flags — stop
 
-- You are about to tell the user this runs their goals "in parallel." It does not.
+- Goals share mutable state outside their worktrees. Concurrency makes that a real race, not a
+  theoretical one — declare `depends_on` or make them independent.
 - A refusal came back and you are editing the DAG to silence it rather than to fix it.
 - `chains_ok` is false → a trace chain is broken; the audit record cannot be trusted. Investigate.
 - `isolation_ok` is false → a goal executed without a lease or worktree. Do not accept the run.

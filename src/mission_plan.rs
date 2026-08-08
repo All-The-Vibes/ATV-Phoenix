@@ -114,7 +114,7 @@ impl MissionPlan {
         &self,
         config: MissionConfig,
         workspace: &Path,
-        inner: &dyn ExecutionBackend,
+        inner: &(dyn ExecutionBackend + Sync),
     ) -> MissionReport {
         // `run_mission` wants `&[(&str, &[&str])]`, so the borrowed prerequisite slices need
         // storage that outlives the call.
@@ -217,13 +217,16 @@ pub fn plan(goals: Vec<GoalSpec>) -> Result<MissionPlan, PlanError> {
 /// A job id absent from the map is forwarded **unchanged** rather than given a default: the
 /// mismatch then surfaces as a failed job in the run ledger instead of silently running something
 /// nobody asked for.
+///
+/// `inner` is `Sync` because the mission runner shares the backend across goal threads; this type
+/// is therefore `Sync` too (its other field is a shared slice).
 pub struct TaskMapBackend<'a> {
-    inner: &'a dyn ExecutionBackend,
+    inner: &'a (dyn ExecutionBackend + Sync),
     goals: &'a [GoalSpec],
 }
 
 impl<'a> TaskMapBackend<'a> {
-    pub fn new(inner: &'a dyn ExecutionBackend, goals: &'a [GoalSpec]) -> Self {
+    pub fn new(inner: &'a (dyn ExecutionBackend + Sync), goals: &'a [GoalSpec]) -> Self {
         Self { inner, goals }
     }
 

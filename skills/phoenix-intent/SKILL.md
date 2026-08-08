@@ -10,7 +10,7 @@ license: MIT
 phoenix-goal handles **one goal with one acceptance check**. Many real tasks are multi-faceted
 — *"build the connector, integrate it, configure the scheduler, and notify the team"* — with
 parallel independent sub-goals and sequential dependencies. `phoenix-intent` is the orchestration
-layer ("parallel" here means *independent*, not concurrent — nothing runs on threads):
+layer (hand it to `phoenix-mission` when you want the independent goals actually run concurrently):
 
 > **decompose → validate all RED → execute (dependency-ordered) → prove composite done**
 
@@ -74,7 +74,7 @@ vague intent  ("build and ship the feature, notify the team")
 - `id`: stable kebab-case; becomes the per-goal trace directory name (`.phoenix-intent/<id>`).
 - `kind`: optional — `build`, `integrate`, `configure`, `notify`, `cron`, `webhook`.
   Used to select the right typed acceptance-check template.
-- `depends_on`: empty array = independent (no required order; still runs one at a time).
+- `depends_on`: empty array = independent (runs concurrently under `phoenix-mission`).
   Non-empty = this goal waits for listed goals to be proven before starting.
 - Max 5 goals per intent. More than 5 is a signal to decompose into multiple intents.
 
@@ -115,9 +115,8 @@ composite unless every single goal trace shows failure-first satisfaction.
    - Run `phoenix-ralph` with `PHOENIX_WORKSPACE=<repo>/.phoenix-intent/<id>`.
    - Goals with `depends_on` edges, or that need worktree isolation, a durable run ledger, or
      execution on Copilot cloud agents, should be scheduled with **`phoenix-mission`** instead of
-     hand-ordered ralph loops — it enforces the order rather than assuming it.
-   - Note: independent goals (`depends_on: []`) are *unordered*, not concurrent. Neither ralph nor
-     `phoenix-mission` runs goals on threads, so do not promise the user a wall-clock speedup.
+     hand-ordered ralph loops — it enforces the order rather than assuming it, and runs independent
+     goals concurrently.
 
 5. **COMPOSITE PROOF.** Call `phoenix-mcp intent-accept .phoenix-intent/intent.json`.
    ok=true only when ALL goals are proven. Attach the result as evidence.

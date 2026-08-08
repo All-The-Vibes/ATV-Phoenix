@@ -118,7 +118,8 @@ pub struct MissionArgs {
     /// The goals to run. Order does not matter — prerequisites are sorted automatically.
     #[serde(deserialize_with = "de_struct_or_json_string")]
     pub goals: Vec<MissionGoalArg>,
-    /// Max goals admitted at once (default 2). Bounds admission; it does not create OS threads.
+    /// Max goals executed at once (default 2). A real parallelism limit: goals admitted together
+    /// run concurrently, one thread each.
     #[serde(default)]
     pub capacity: Option<usize>,
     /// "local" (default) runs jobs as child processes here. "cloud" dispatches to GitHub Copilot
@@ -204,7 +205,7 @@ impl Phoenix {
 
     /// Run an N-goal DAG under the supervisor: bounded admission, worktree isolation, lease
     /// fencing, budgets, a durable run ledger, and per-goal trace chains.
-    #[tool(description = "Run a multi-goal DAG under the Phoenix supervisor. Goals declare dependencies and each runs only after its prerequisites SUCCEED; a failed goal contains its dependents instead of failing the mission. Every executed goal gets an isolated git worktree and a fenced lease, and every execution is written to a durable run ledger plus a per-goal tamper-evident trace chain. backend=\"local\" (default) runs jobs as child processes here; backend=\"cloud\" dispatches each goal to a GitHub Copilot cloud agent (needs GITHUB_TOKEN + GITHUB_REPOSITORY). NOTE: the scheduler is sequential — one backend call at a time. `capacity` bounds how many goals are admitted concurrently; it does NOT create threads, so this does not reduce wall-clock time. Use it for dependency-ordered, isolated, auditable execution. EXAMPLE: {\"capacity\":2,\"backend\":\"local\",\"goals\":[{\"id\":\"a\",\"depends_on\":[],\"task\":\"cargo build\"},{\"id\":\"b\",\"depends_on\":[\"a\"],\"task\":\"cargo test\"}]}. Returns {ok, settled, goals_total, goals_succeeded, goals_failed, peak_concurrency, isolation_ok, chains_ok, ledger, goals}.")]
+    #[tool(description = "Run a multi-goal DAG under the Phoenix supervisor. Goals declare dependencies and each runs only after its prerequisites SUCCEED; a failed goal contains its dependents instead of failing the mission. Goals admitted together execute CONCURRENTLY (one thread per goal), bounded by `capacity` — so independent goals genuinely overlap and cloud goals are submitted in parallel. Every executed goal gets an isolated worktree and a fenced lease, and every execution is written to a durable run ledger plus a per-goal tamper-evident trace chain. backend=\"local\" (default) runs jobs as child processes here; backend=\"cloud\" dispatches each goal to a GitHub Copilot cloud agent (needs GITHUB_TOKEN + GITHUB_REPOSITORY). Dependencies serialize, so the DAG shape sets the speedup ceiling, not capacity. EXAMPLE: {\"capacity\":2,\"backend\":\"local\",\"goals\":[{\"id\":\"a\",\"depends_on\":[],\"task\":\"cargo build\"},{\"id\":\"b\",\"depends_on\":[\"a\"],\"task\":\"cargo test\"}]}. Returns {ok, settled, goals_total, goals_succeeded, goals_failed, peak_concurrency, isolation_ok, chains_ok, ledger, goals}.")]
     async fn phoenix_mission(&self, args: Parameters<MissionArgs>) -> String {
         let a = args.0;
 

@@ -208,6 +208,33 @@ pub fn check_agent(home: &Path) -> CheckReport {
 }
 
 /// Check every shipped skill is installed and byte-matches (after normalization) the shipped copy.
+/// Installed Phoenix-owned skills that this build does not ship.
+///
+/// `check_skills_integrity` used to iterate only `shipped_skills()`, so a skill that an earlier
+/// version installed and a later version dropped stayed on disk forever, invisible: doctor
+/// reported "N/N match shipped" while the agent kept being offered a superseded skill. A stale
+/// skill is not cosmetic — it competes for routing against the flow that replaced it.
+///
+/// Scoped to `phoenix` / `phoenix-*` on purpose: the skills directory is shared with unrelated
+/// third-party skills that Phoenix must never claim authority over.
+fn stale_phoenix_skills(inst_dir: &Path) -> Vec<String> {
+    let shipped: std::collections::BTreeSet<&str> =
+        shipped_skills().iter().map(|(name, _)| *name).collect();
+
+    let mut stale: Vec<String> = std::fs::read_dir(inst_dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|e| e.path().is_dir())
+        .filter_map(|e| e.file_name().into_string().ok())
+        .filter(|name| name == "phoenix" || name.starts_with("phoenix-"))
+        .filter(|name| !shipped.contains(name.as_str()))
+        .filter(|name| inst_dir.join(name).join("SKILL.md").exists())
+        .collect();
+    stale.sort();
+    stale
+}
+
 pub fn check_skills_integrity(home: &Path) -> CheckReport {
     let inst_dir = home.join("skills");
     let (mut missing, mut drifted, mut invalid) = (Vec::new(), Vec::new(), Vec::new());
@@ -237,11 +264,22 @@ pub fn check_skills_integrity(home: &Path) -> CheckReport {
     if !invalid.is_empty() {
         problems.push(format!("invalid frontmatter: {}", invalid.join(", ")));
     }
+    let stale = stale_phoenix_skills(&inst_dir);
+    if !stale.is_empty() {
+        problems.push(format!("stale (installed but no longer shipped): {}", stale.join(", ")));
+    }
+    // The evidence must not read "20/20 match shipped" while a superseded skill is still
+    // installed and routing — a headline that hides the finding is how this went unnoticed.
+    let evidence = if stale.is_empty() {
+        format!("{matched}/{total} match shipped")
+    } else {
+        format!("{matched}/{total} match shipped, {} stale", stale.len())
+    };
     CheckReport {
         check: "skills".into(),
         ok: problems.is_empty(),
         fixable: true,
-        evidence: format!("{matched}/{total} match shipped"),
+        evidence,
         problems,
     }
 }
@@ -329,6 +367,25 @@ pub fn fix(home: &Path, binpath: &Path) -> Vec<String> {
             if std::fs::write(&f, content).is_ok() {
                 actions.push(format!("re-synced skill {name}"));
             }
+        }
+    }
+
+    // Retire skills this build no longer ships.
+    //
+    // The directory is moved OUT of `skills/` rather than deleted, so a mistaken retirement is
+    // recoverable. It must leave the skills tree entirely: a `*.doctor-bak` folder left in place
+    // would still carry a valid SKILL.md (so it could still be routed to) and would still match
+    // the stale scan on the next run, renaming itself forever and never letting doctor go green.
+    let retired_dir = home.join("retired-skills");
+    for name in stale_phoenix_skills(&skills_dir) {
+        let dir = skills_dir.join(&name);
+        if std::fs::create_dir_all(&retired_dir).is_err() {
+            continue;
+        }
+        let dest = retired_dir.join(&name);
+        let _ = std::fs::remove_dir_all(&dest);
+        if std::fs::rename(&dir, &dest).is_ok() {
+            actions.push(format!("retired stale skill {name} -> retired-skills/{name}"));
         }
     }
 
