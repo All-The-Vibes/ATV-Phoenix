@@ -47,3 +47,8 @@ __pycache__/
 build/
 *.egg-info/
 *.whl
+
+# ARC-AGI-3 environments downloaded by the arc-agi toolkit at runtime (issue #177).
+# 3.9 MB of upstream game code that arc_agi.Arcade() fetches on first use; it is a
+# cache, not a source, and re-downloads on any machine that needs it.
+environment_files/
