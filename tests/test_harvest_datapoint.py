@@ -4,6 +4,7 @@ Acceptance tests for scripts/harvest-datapoint.ps1 (issues #38, #161).
 Quality gates: valid harvest produces task dir; LAW 2 PII lint; saw_red gate;
 blast-radius gate; red-before-fix gate; dogfood set accepted by run_swe.ps1.
 """
+import errno
 import json
 import os
 import pathlib
@@ -17,11 +18,30 @@ RUN_SWE = REPO / "evals" / "swe-bench-lite" / "run_swe.ps1"
 
 
 def _pwsh_available():
+    """Report whether PowerShell can be invoked, and refuse to guess.
+
+    The original form caught every exception and returned False, so a
+    `subprocess.TimeoutExpired` from a loaded machine read as "PowerShell is not
+    installed" and eleven tests in this file skipped themselves. The suite then exited 0.
+    Observed on 2026-08-07: five identical runs on one machine produced 13 passed, 13
+    passed, 8 passed with 5 skipped, 13 passed, 13 passed, with no code change between
+    them. A green run that skipped its assertions is not evidence the assertions hold,
+    which is the failure this file exists to catch in the harvester (issue #170).
+
+    Only a genuine absence justifies a skip. A timeout is an environment failure and
+    raises, so the run goes red and says why instead of quietly proving nothing.
+    """
     try:
-        subprocess.run(["powershell", "--version"], capture_output=True, timeout=5)
+        subprocess.run(["powershell", "--version"], capture_output=True, timeout=30)
         return True
-    except Exception:
+    except (FileNotFoundError, NotADirectoryError, PermissionError):
         return False
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            "the PowerShell availability probe timed out after 30s. That is a loaded "
+            "or broken environment, not a missing interpreter, and skipping here would "
+            "report a pass for assertions that never ran."
+        ) from exc
 
 
 def _make_inputs(tmp_path, problem_text=None, f2p_text=None, p2p_text=None, solution_text=None, solution_name="solution.py"):
@@ -280,3 +300,57 @@ def test_dogfood_set_accepted_by_run_swe(tmp_path):
     )
     # Should exit 0 (no tasks is a valid no-op run), not crash
     assert r.returncode == 0, f"run_swe.ps1 -Set dogfood exited {r.returncode}\n{r.stdout}\n{r.stderr}"
+
+
+# --- issue #170: the availability probe must not turn an environment failure into a skip ---
+
+
+def test_probe_returns_false_when_powershell_is_genuinely_absent(monkeypatch):
+    """A missing interpreter is the one condition that justifies skipping."""
+    def _absent(*args, **kwargs):
+        raise FileNotFoundError(2, "The system cannot find the file specified")
+
+    monkeypatch.setattr(subprocess, "run", _absent)
+    assert _pwsh_available() is False
+
+
+def test_probe_raises_when_the_probe_times_out(monkeypatch):
+    """A timeout is a loaded machine, not a missing interpreter.
+
+    This is the whole bug. The old probe caught TimeoutExpired and returned False, so
+    eleven tests skipped and the suite exited 0.
+    """
+    def _slow(*args, **kwargs):
+        raise subprocess.TimeoutExpired(cmd=["powershell", "--version"], timeout=30)
+
+    monkeypatch.setattr(subprocess, "run", _slow)
+    import pytest
+
+    with pytest.raises(RuntimeError) as caught:
+        _pwsh_available()
+    assert "timed out" in str(caught.value)
+
+
+def test_probe_does_not_swallow_unexpected_errors(monkeypatch):
+    """Anything that is neither absence nor timeout must surface, not read as absent."""
+    def _broken(*args, **kwargs):
+        raise OSError(errno.E2BIG, "argument list too long")
+
+    monkeypatch.setattr(subprocess, "run", _broken)
+    import pytest
+
+    with pytest.raises(OSError):
+        _pwsh_available()
+
+
+def test_probe_reports_true_on_a_machine_with_powershell():
+    """Guards this file against the false-skip state returning silently.
+
+    If PowerShell is present and the probe still says otherwise, every skip below is a
+    lie, so this fails rather than letting eleven tests vanish.
+    """
+    if shutil.which("powershell") is None:
+        import pytest
+
+        pytest.skip("PowerShell is genuinely absent on this machine")
+    assert _pwsh_available() is True
