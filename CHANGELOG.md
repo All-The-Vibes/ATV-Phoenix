@@ -122,6 +122,17 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The Tier 3 gate evidence in `tests/test_eval_gate_discloses_ceiling.py` can no longer disappear
+  quietly.** `test_exit_codes_are_unchanged_by_the_disclosure` is this repository's only observation of
+  `scripts/eval-gate.ps1` rejecting a deliberately regressed arm (exit 1) and accepting an unchanged one
+  (exit 0), which is what issue #171 asks for. All three tests in the file sat behind a `_pwsh_available`
+  probe that caught every exception and returned False, so a `subprocess.TimeoutExpired` on a loaded
+  machine erased that observation and the suite still exited 0. Reproduced on 1eddf79 by forcing the
+  probe to time out: 3 skipped, exit 0. The probe now returns False only for a genuine absence, raises
+  `RuntimeError` on a timeout, and lets anything else propagate; the same forced timeout now gives 4
+  failed, exit 1. Four tests pin it, one of which fails when the probe reports absence on a machine where
+  `shutil.which` finds PowerShell. Same defect and fix as #170 (#171).
+
 - **The PowerShell availability probe in `tests/test_harvest_datapoint.py` no longer turns an
   environment failure into a skip.** `_pwsh_available` caught every exception and returned False, so a
   `subprocess.TimeoutExpired` from a loaded machine read as "PowerShell is not installed" and eleven

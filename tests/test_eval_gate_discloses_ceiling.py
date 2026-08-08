@@ -13,6 +13,7 @@ way to tell a real pass from a tie that carries no information.
 This is the same disclosure fix #150 shipped for the OKF eval. Exit codes do not change here,
 because the limitation is in what the number can show, not in what the gate should allow.
 """
+import errno
 import json
 import pathlib
 import shutil
@@ -29,12 +30,34 @@ SATURATED = "SATURATED"
 
 
 def _pwsh_available():
+    """Report whether PowerShell can be invoked, and refuse to guess.
+
+    The original form caught every exception and returned False, so a
+    `subprocess.TimeoutExpired` from a loaded machine read as "PowerShell is not
+    installed" and all three tests below skipped themselves while the suite exited 0.
+
+    That matters more here than in an ordinary test file. `test_exit_codes_are_unchanged_by_the_disclosure`
+    is the repository's only observation of the Tier 3 gate rejecting a deliberately
+    regressed arm and accepting an unchanged one, which is exactly what issue #171 asks
+    for: "a gate never seen doing both is not evidence." A probe that can silently erase
+    that observation erases the evidence with it, and the run still reports success.
+
+    Only a genuine absence justifies a skip. A timeout is an environment failure and
+    raises, so the run goes red and says why instead of quietly proving nothing.
+    Same defect and same fix as issue #170 in tests/test_harvest_datapoint.py.
+    """
     try:
         subprocess.run(["powershell", "-NoProfile", "-Command", "$PSVersionTable.PSVersion"],
-                       capture_output=True, timeout=15)
+                       capture_output=True, timeout=30)
         return True
-    except Exception:
+    except (FileNotFoundError, NotADirectoryError, PermissionError):
         return False
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            "the PowerShell availability probe timed out after 30s. That is a loaded or "
+            "broken environment, not a missing interpreter. Skipping here would erase the "
+            "only observation that the Tier 3 gate rejects a regressed arm (issue #171)."
+        ) from exc
 
 
 def _write_results(path, resolved_fraction, tasks=9):
@@ -112,3 +135,53 @@ def test_exit_codes_are_unchanged_by_the_disclosure(tmp_path):
     combined = r_drop.stdout + r_drop.stderr
     assert r_drop.returncode == 1, combined
     assert "REGRESSION" in combined, combined
+
+
+# --- issue #171: the evidence must not be able to disappear quietly ---
+
+
+def test_probe_returns_false_when_powershell_is_genuinely_absent(monkeypatch):
+    """A missing interpreter is the one condition that justifies skipping."""
+    def _absent(*args, **kwargs):
+        raise FileNotFoundError(2, "The system cannot find the file specified")
+
+    monkeypatch.setattr(subprocess, "run", _absent)
+    assert _pwsh_available() is False
+
+
+def test_probe_raises_when_the_probe_times_out(monkeypatch):
+    """A timeout is a loaded machine, not a missing interpreter.
+
+    Without this, a slow moment on the runner turns the three tests above into skips and
+    the Tier 3 gate goes unobserved while the suite still exits 0.
+    """
+    def _slow(*args, **kwargs):
+        raise subprocess.TimeoutExpired(cmd=["powershell"], timeout=30)
+
+    monkeypatch.setattr(subprocess, "run", _slow)
+    with pytest.raises(RuntimeError) as caught:
+        _pwsh_available()
+    assert "timed out" in str(caught.value)
+
+
+def test_probe_does_not_swallow_unexpected_errors(monkeypatch):
+    """Anything that is neither absence nor timeout must surface, not read as absent."""
+    def _broken(*args, **kwargs):
+        raise OSError(errno.E2BIG, "argument list too long")
+
+    monkeypatch.setattr(subprocess, "run", _broken)
+    with pytest.raises(OSError):
+        _pwsh_available()
+
+
+def test_the_regression_observation_actually_runs_on_this_machine():
+    """Fails if the gate evidence is being skipped on a machine that can run it.
+
+    Issue #171 wants the Tier 3 gate observed both accepting an unchanged arm and
+    rejecting a regressed one. `test_exit_codes_are_unchanged_by_the_disclosure` is that
+    observation, and it is guarded by `_pwsh_available`. If PowerShell is on PATH and the
+    probe still says otherwise, that guard is lying and the observation is not happening.
+    """
+    if shutil.which("powershell") is None:
+        pytest.skip("PowerShell is genuinely absent on this machine")
+    assert _pwsh_available() is True
