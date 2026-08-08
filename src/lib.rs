@@ -27,6 +27,7 @@ pub mod run_ledger;
 pub mod lease;
 pub mod hybrid_dag;
 pub mod mission;
+pub mod mission_plan;
 
 pub use doctor::{doctor, DoctorReport, integrity, fix as doctor_fix, resolve_home, InstallReport};
 pub use heal::{heal, HealCtx, HealResult, Strategy};

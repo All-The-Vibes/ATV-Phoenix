@@ -10,9 +10,9 @@ license: MIT
 phoenix-goal handles **one goal with one acceptance check**. Many real tasks are multi-faceted
 — *"build the connector, integrate it, configure the scheduler, and notify the team"* — with
 parallel independent sub-goals and sequential dependencies. `phoenix-intent` is the orchestration
-layer:
+layer (hand it to `phoenix-mission` when you want the independent goals actually run concurrently):
 
-> **decompose → validate all RED → execute (parallel where independent) → prove composite done**
+> **decompose → validate all RED → execute (dependency-ordered) → prove composite done**
 
 The composite acceptance gate is satisfied **only** when all N goals are individually proven
 failure-first: each saw_red AND green_after_red AND currently_green on its own intact trace.
@@ -32,7 +32,8 @@ vague intent  ("build and ship the feature, notify the team")
    │              ALL must be RED — any green check is vacuous, re-target it
    │
    ▼  EXECUTE  ── per-goal phoenix-ralph loop (PHOENIX_WORKSPACE=.phoenix-intent/<goal_id>)
-   │              parallel where depends_on=[], sequential where dependencies exist
+   │              unordered where depends_on=[], ordered where dependencies exist
+   │              (use phoenix-mission to have the order enforced rather than assumed)
    │
    ▼  COMPOSITE PROOF  ── `phoenix-mcp intent-accept .phoenix-intent/intent.json`
                            ok=true only when ALL goals saw_red + green_after_red + green_now
@@ -73,7 +74,7 @@ vague intent  ("build and ship the feature, notify the team")
 - `id`: stable kebab-case; becomes the per-goal trace directory name (`.phoenix-intent/<id>`).
 - `kind`: optional — `build`, `integrate`, `configure`, `notify`, `cron`, `webhook`.
   Used to select the right typed acceptance-check template.
-- `depends_on`: empty array = independent (can run in parallel).
+- `depends_on`: empty array = independent (runs concurrently under `phoenix-mission`).
   Non-empty = this goal waits for listed goals to be proven before starting.
 - Max 5 goals per intent. More than 5 is a signal to decompose into multiple intents.
 
@@ -112,7 +113,10 @@ composite unless every single goal trace shows failure-first satisfaction.
 4. **EXECUTE per-goal.** For each goal (in dependency order):
    - Set up `.phoenix-intent/<id>/` with a `done-check.json`, `PROMPT.md`, and `backlog.json`.
    - Run `phoenix-ralph` with `PHOENIX_WORKSPACE=<repo>/.phoenix-intent/<id>`.
-   - Independent goals (empty `depends_on`) may run in parallel.
+   - Goals with `depends_on` edges, or that need worktree isolation, a durable run ledger, or
+     execution on Copilot cloud agents, should be scheduled with **`phoenix-mission`** instead of
+     hand-ordered ralph loops — it enforces the order rather than assuming it, and runs independent
+     goals concurrently.
 
 5. **COMPOSITE PROOF.** Call `phoenix-mcp intent-accept .phoenix-intent/intent.json`.
    ok=true only when ALL goals are proven. Attach the result as evidence.

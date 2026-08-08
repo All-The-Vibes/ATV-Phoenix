@@ -25,12 +25,15 @@ const GOALS: [(&str, &[&str], &str); 4] = [
 /// mismatch surfaces as a failed job in the ledger rather than being hidden behind a silent default.
 /// Handing every goal one constant task was the defect in issue #141.
 struct GoalTaskBackend<'a> {
-    inner: &'a dyn ExecutionBackend,
+    inner: &'a (dyn ExecutionBackend + Sync),
     goals: &'a [(&'a str, &'a [&'a str], &'a str)],
 }
 
 impl<'a> GoalTaskBackend<'a> {
-    fn new(inner: &'a dyn ExecutionBackend, goals: &'a [(&'a str, &'a [&'a str], &'a str)]) -> Self {
+    fn new(
+        inner: &'a (dyn ExecutionBackend + Sync),
+        goals: &'a [(&'a str, &'a [&'a str], &'a str)],
+    ) -> Self {
         Self { inner, goals }
     }
 
@@ -99,7 +102,7 @@ fn parse_args() -> Result<(String, PathBuf), String> {
     Ok((backend, workspace))
 }
 
-fn run_with_backend(backend: &dyn ExecutionBackend, workspace: &Path) -> Result<(), String> {
+fn run_with_backend(backend: &(dyn ExecutionBackend + Sync), workspace: &Path) -> Result<(), String> {
     let mission_backend = GoalTaskBackend::new(backend, &GOALS);
     let dag: Vec<(&str, &[&str])> = GOALS.iter().map(|(goal, prereqs, _)| (*goal, *prereqs)).collect();
     let report = run_mission(&dag, MissionConfig::new(2), workspace, &mission_backend);
