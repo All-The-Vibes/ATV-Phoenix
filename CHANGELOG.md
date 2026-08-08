@@ -27,6 +27,28 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Once the baseline drops below the ceiling the same file is scored with no further edit. A skill
   change riding alongside a scored path does not drag that path into the waiver.
 ### Added
+- **`phoenix-proof` fails when it has nothing to prove.** Every proof step in
+  `.github/workflows/phoenix-proof.yml` is gated on `steps.acceptance_contract.outputs.declared == 'true'`,
+  which on a pull request is true only when `.phoenix-ralph/done-check.json` exists on the head. With the
+  file absent, `Require base acceptance RED`, `Require head acceptance GREEN`, `Prove Phoenix acceptance`
+  and `Verify Phoenix trace` all skipped and the job still concluded SUCCESS, so any merge gate reading
+  `statusCheckRollup` counted a run that proved nothing as satisfied. Measured on 2026-08-07 across the six
+  then-open pull requests: all six reported `phoenix-proof COMPLETED SUCCESS` with every proof step skipped.
+  A new `Require an acceptance contract` step now exits 1 on a pull request that declares no contract. The
+  four proof steps keep their existing condition, so a run with no check file still does not try to read one.
+  `tests/test_cloud_proof_workflow.py` asserts the guard exists, is scoped to `pull_request`, runs before
+  the Rust build so a contract-less run stops early, and that removing it or pointing it at the wrong case
+  makes the same validator fail. Issue #169.
+- **The base acceptance sense keeps the head's acceptance tests, so a pull request can prove its own
+  test.** `Require base acceptance RED` checked out the base commit and sensed there, which meant a check
+  naming a test file the pull request adds saw a different file set on each side. Because #158 folds every
+  file named in `target` into the check digest, the base and head observations carried different digests and
+  `accept` reported `saw_red=false`. Moving the assertions into a file that already existed on base traded
+  that for the opposite failure: base passed and the step refused the proof as vacuous. Both were measured on
+  this branch, runs 31201312829 and 31201884178. The step now reads the test paths out of the check file,
+  checks out the base commit, then restores those paths from the head before sensing, so the base observation
+  measures the new test against the old code. Path extraction is restricted to `tests/*.py` with no parent
+  traversal. Issue #173.
 - **`pyproject.toml`, so the Python half installs with pip.** `pip install git+https://github.com/All-The-Vibes/ATV-Phoenix`
   failed with "neither 'setup.py' nor 'pyproject.toml' found", so a consumer of `phoenix_learn` had to add an
   absolute `sys.path` entry, which is machine-specific and breaks in CI, or vendor the whole repository as a
