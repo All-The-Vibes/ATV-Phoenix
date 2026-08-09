@@ -51,6 +51,7 @@ sys.path.insert(0, str(ROOT))
 from evals.arc.boardread import describe as describe_board  # noqa: E402
 from evals.arc.boardread import diff as diff_board  # noqa: E402
 from evals.arc.boardread import objects as board_objects  # noqa: E402
+from evals.arc.frames import budget as frame_budget  # noqa: E402
 from evals.arc.frames import parse as frame_parse  # noqa: E402
 from evals.arc.frames import plan as frame_plan  # noqa: E402
 from evals.arc.phoenix_loop import PhoenixLoop  # noqa: E402
@@ -280,6 +281,21 @@ class StallDetected(RuntimeError):
     """
 
 
+class Died(RuntimeError):
+    """Raised the instant the move-bar runs out and the level restarts.
+
+    Same reasoning as `LevelCleared`, and it was the missing half of it. A death silently
+    resets the board mid-loop: pieces vanish, the tray refills, the bar goes back to full.
+    Code that was walking a list of hypotheses carried on against a board it no longer
+    understood, and the undo-then-rebuild step at the top of each iteration had nothing
+    left to undo. Measured on level 7 of a fair run: seven deaths, every one of them
+    partway through a batch of tests, and every test after the death wasted.
+
+    Cutting the turn costs the untested tail of the batch -- which was worthless anyway --
+    and buys the agent the one thing it never had: being told.
+    """
+
+
 class Env:
     """The handle the model's code drives. Counts actions and deaths honestly."""
 
@@ -314,6 +330,12 @@ class Env:
         self.level_just_changed = False
         self.game_won = False
         self.deaths_this_turn = 0
+        # The colour a FULL move-bar is drawn in. A level always opens with the bar
+        # untouched and therefore one colour, so it is learned there and handed back to
+        # `budget` on every later read; without it a partly-eaten bar cannot say which of
+        # its two segments is the remaining one, and guessing the direction would be the
+        # same kind of invention this harness exists to remove.
+        self._bar_colour = None
 
     def begin_turn(self) -> None:
         self._turn_spent = 0
@@ -375,6 +397,10 @@ class Env:
             self._level_mark = self.spent
             self.level_just_changed = True
             self._inert = 0
+            # A new level draws a fresh, full bar, and it may be a different length and a
+            # different colour. Holding the old level's full-colour would make the first
+            # read of the new bar answer with the wrong segment.
+            self._bar_colour = None
             raise LevelCleared(
                 f"LEVEL {self._frame.levels_completed} CLEARED in {actions} actions. "
                 "The board below is a DIFFERENT level. Coordinates and helper functions "
@@ -406,19 +432,23 @@ class Env:
                 self.deaths_this_turn += 1
                 self._alive = False
                 self._frame = self._env.reset()
-                # A death here is the row-53 timer running out, and the measured failure
-                # mode is a search loop that keeps dying without noticing. Each retry
-                # costs a full clock AND every action it spent, both squared against the
-                # score. Stop the loop from inside rather than letting it run to the
-                # 4000-action cap, which is what turned one bad turn into 2075 actions.
-                if self.deaths_this_turn >= self.death_limit:
-                    raise StallDetected(
-                        f"you have died {self.deaths_this_turn} times in this single "
-                        f"turn. The row-53 bar is a countdown and you are running it out "
-                        f"repeatedly. Whatever you are searching, the answer is not in "
-                        f"that search. Stop, re-read the board with objects(), and work "
-                        f"out the rule instead of trying more arrangements."
-                    )
+                self._bar_colour = None
+                # The board has just been rebuilt underneath whatever code is running.
+                # Letting the loop continue is the same silent corruption `LevelCleared`
+                # exists to prevent: every remaining hypothesis in the batch would be
+                # played against a board the agent thinks is mid-experiment and is in fact
+                # brand new, and the undo step guarding each iteration would find nothing
+                # to undo. Measured on level 7 of a fair run: 7 deaths, 1,367 actions, and
+                # not one of the tests that followed a death could have meant anything.
+                raise Died(
+                    f"YOU DIED and level {self._frame.levels_completed + 1} RESTARTED "
+                    f"(death {self.deaths} of this run). The move-bar ran out. The board "
+                    "is now FRESH: every piece you placed is back in the tray and the bar "
+                    "is full again, so nothing your code was mid-way through still holds. "
+                    "The bar is NOT a clock -- it loses one cell per piece DROPPED and one "
+                    "per SUBMIT, and nothing else. Call clock() before you plan: it costs "
+                    "no action and tells you exactly how many attempts this life affords."
+                )
         return changed
 
     # ── surface the model uses ───────────────────────────────────────────────────
@@ -474,6 +504,20 @@ class Env:
 
     def look(self):
         return self._observe()
+
+    def clock(self):
+        """The move-bar as the board draws it: cells left, used, total, fraction.
+
+        Costs no action. Every earlier run believed this bar was a countdown clock,
+        because that is what the harness told them it was; it is a MUTATION budget that
+        only moves when a piece is DROPPED or a board is SUBMITTED. See `frames.budget`
+        for the measurement. Reading it before planning a turn is what turns "how many
+        hypotheses can I test" from a guess into arithmetic.
+        """
+        state = frame_budget(self.grid(), self._bar_colour)
+        if state.get("confirmed") and state.get("full_colour") is not None:
+            self._bar_colour = state["full_colour"]
+        return state
 
     def grid(self):
         arr = np.array(self._frame.frame, dtype=np.int8)
@@ -632,6 +676,7 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
         "press": env.press, "click": env.click, "look": env.look, "grid": env.grid,
         "alive": env.alive, "levels": env.levels, "reset": env.reset,
         "find": env.find, "note": env.note, "np": np,
+        "clock": env.clock,
         "objects": lambda: board_objects(env.grid()),
         "board": lambda: describe_board(env.grid()),
         "diff": diff_board,
@@ -794,6 +839,7 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
 
         buffer = io.StringIO()
         cleared = ""
+        advanced = False
         try:
             with contextlib.redirect_stdout(buffer):
                 exec(code, ns)  # noqa: S102 - executing model code is the design
@@ -803,6 +849,7 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
             # about the game, not as a crash in its own code.
             err = ""
             cleared = str(exc)
+            advanced = True
             # Bank the board and the order that cleared it, so any rule proposed later
             # has to reproduce this level too. Placements are read back from the click
             # log, which keeps the agent free to write whatever code it likes rather
@@ -818,6 +865,10 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
         except StallDetected as exc:
             err = ""
             cleared = str(exc)
+        except Died as exc:
+            # A death is feedback about the game, not a crash in the agent's code.
+            err = ""
+            cleared = str(exc)
         except Exception:
             err = traceback.format_exc(limit=3)
 
@@ -825,7 +876,14 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
         # played an order and been refused by the board. That is exactly the evidence the
         # solved levels cannot supply, and it is captured without the agent having to
         # cooperate: the same click log, read the same way.
-        if not cleared:
+        #
+        # Gated on ADVANCED, not on whether any message came back. Gating on the message
+        # meant a turn that ended in a stall -- or, once deaths began interrupting the
+        # turn, any turn that ended in a death -- threw away every attempt it had played.
+        # Those are the turns whose attempts matter most: a death arrives precisely when
+        # the agent has spent a whole life being refused, and forgetting the refusals let
+        # the next turn replay them.
+        if not advanced:
             played = _parsed(env.level_grid)
             if played is not None:
                 for attempt in rounds_from_clicks(env.click_log, played):

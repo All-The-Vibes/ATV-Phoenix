@@ -42,6 +42,90 @@ def _inside(inner, outer):
     )
 
 
+def budget(grid, full_colour=None):
+    """The bar the board draws for your remaining moves: cells left, used and total.
+
+    `mechanics.json` used to call this bar a TIMER that drains "as ticks pass", and told
+    the agent to budget its turn against the clock. Measured against the live game, every
+    part of that is wrong, and it was the most expensive thing left in the harness:
+
+        click a tray piece (pick up) .... 0 cells
+        click a pad (DROP a piece) ...... 1 cell
+        submit .......................... 1 cell
+        undo ............................ 0 cells
+        click empty space ............... 0 cells
+        doing nothing at all ............ 0 cells
+
+    So it is not a clock. It is a MUTATION budget: it counts pieces dropped and boards
+    submitted, and nothing else. 64 consecutive submits took a full bar to zero and the
+    64th killed; 120 clicks on empty space and 199 undos moved it not at all.
+
+    The consequence the agent was denied: looking is free. On an eight-pad level a full
+    hypothesis costs nine cells -- eight drops and a submit -- so one life buys seven
+    attempts, which is exactly the rate at which measured runs were dying on level 7
+    (1,367 actions, 7 deaths, ~195 actions each). Believing the bar was a clock made the
+    agent hurry through reads that cost nothing and rebuild whole boards that cost
+    everything.
+
+    Read from the drawing rather than remembered as a constant, because the bar's length
+    is a per-level property and a number baked into a prompt would be wrong somewhere.
+    The bar is the one full-width row drawn in colours that are not the board's
+    background: a single run while untouched, two runs once it has been eaten into.
+
+    Which of the two runs is the REMAINING one cannot be settled from a single frame, so
+    it is not guessed. A level always opens with the bar full and therefore one colour,
+    and the caller passes that colour back as ``full_colour`` on later reads. Without it
+    the two segments are still reported, flagged ``confirmed: False``, rather than a
+    direction being invented.
+    """
+    h, w = grid.shape
+    counts: dict[int, int] = {}
+    for row in grid:
+        for value in row.tolist():
+            counts[value] = counts.get(value, 0) + 1
+    background = max(counts, key=counts.get)
+
+    unknown = {"row": None, "left": None, "used": None, "total": None,
+               "fraction": None, "full_colour": full_colour, "confirmed": False}
+
+    # More than one row can look like a bar. On sb26 row 0 is a full-width two-colour
+    # band of ordinary board colours, and on the stale frame served at a level boundary
+    # it was picked as the meter and reported a full bar that did not exist. The bar is
+    # told apart by being drawn in a colour RESERVED for it: c2/c3 appear nowhere else on
+    # the board, while row 0's colours are used all over it. So candidates are ranked by
+    # how much of their ink lies outside the row, and the most exclusive one wins.
+    candidates = []
+    for y in range(h):
+        row = grid[y].tolist()
+        seen = set(row)
+        if background in seen or not 1 <= len(seen) <= 2:
+            continue
+        if 1 + sum(1 for a, b in zip(row, row[1:]) if a != b) > 2:
+            continue
+        elsewhere = sum(counts[c] for c in seen) - w
+        candidates.append((elsewhere, y, row, seen))
+
+    if not candidates:
+        return unknown
+
+    _, y, row, seen = min(candidates)
+
+    if len(seen) == 1:
+        colour = row[0]
+        return {"row": y, "left": w, "used": 0, "total": w, "fraction": 1.0,
+                "full_colour": colour, "confirmed": True}
+
+    if full_colour is None or full_colour not in seen:
+        a, b = row[0], row[-1]
+        return {**unknown, "row": y, "total": w,
+                "segments": {a: row.count(a), b: row.count(b)}}
+
+    left = row.count(full_colour)
+    return {"row": y, "left": left, "used": w - left, "total": w,
+            "fraction": round(left / w, 3), "full_colour": full_colour,
+            "confirmed": True}
+
+
 def parse(grid):
     """Split the board into clues, tray pieces, pads, frames and markers.
 
