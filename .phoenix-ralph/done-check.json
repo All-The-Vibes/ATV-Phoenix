@@ -1,6 +1,6 @@
 {
   "kind": "command_exit",
-  "target": ["python", "-m", "pytest", "tests/test_arc_meter.py", "-q"],
+  "target": ["python", "-m", "pytest", "tests/test_arc_rsi.py", "-q"],
   "expect": 0,
   "cwd": "."
 }

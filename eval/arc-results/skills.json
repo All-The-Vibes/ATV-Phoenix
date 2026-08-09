@@ -1,0 +1,15 @@
+{
+  "skills": [
+    {
+      "name": "solve_sb26",
+      "game": "sb26",
+      "source": "import numpy as np\ndef _sb26_comps(a, colour):\n    mask = (a == colour)\n    seen = np.zeros(mask.shape, bool)\n    out = []\n    for y, x in zip(*np.where(mask)):\n        if seen[y,x]: continue\n        stack=[(y,x)]; seen[y,x]=True; comp=[]\n        while stack:\n            yy,xx=stack.pop(); comp.append((yy,xx))\n            for dy,dx in ((1,0),(-1,0),(0,1),(0,-1)):\n                ny,nx=yy+dy,xx+dx\n                if 0<=ny<64 and 0<=nx<64 and mask[ny,nx] and not seen[ny,nx]:\n                    seen[ny,nx]=True; stack.append((ny,nx))\n        out.append(comp)\n    return out\n\ndef solve_sb26():\n    g=grid(); start=levels()\n    sources={}\n    for c in np.unique(g):\n        c=int(c)\n        if c in (0,2,4,5,8): continue\n        for comp in _sb26_comps(g,c):\n            ys=[p[0] for p in comp]; xs=[p[1] for p in comp]\n            if min(ys)>=54 and len(comp)>=8:\n                sources[c]=(round(sum(xs)/len(xs)),round(sum(ys)/len(ys)))\n    targets=[]\n    for c in np.unique(g):\n        c=int(c)\n        if c in (0,2,4,5,8): continue\n        for comp in _sb26_comps(g,c):\n            ys=[p[0] for p in comp]; xs=[p[1] for p in comp]\n            if max(ys)<11 and len(comp)>=8:\n                targets.append((sum(xs)/len(xs),c))\n    targets.sort()\n    pads=[]\n    for comp in _sb26_comps(g,2):\n        ys=[p[0] for p in comp]; xs=[p[1] for p in comp]\n        if 24<=min(ys) and max(ys)<=36 and len(comp)>=2:\n            pads.append((round(sum(xs)/len(xs)),round(sum(ys)/len(ys))))\n    pads.sort()\n    for (_,c),dst in zip(targets,pads):\n        if not alive() or levels()!=start: break\n        click(*sources[c]); click(*dst)\n    if alive() and levels()==start: press(5)\n    return levels()>start\n",
+      "description": "Reads bottom piece colors, top target order, and central red pads; drags matching pieces to pads and submits with action 5.",
+      "wins": 1,
+      "losses": 0,
+      "tags": [
+        "click"
+      ]
+    }
+  ]
+}

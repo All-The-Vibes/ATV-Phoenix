@@ -1,0 +1,25 @@
+{
+  "agent": "gpt-5.6-sol",
+  "auth": "managed_identity",
+  "action_space": "executable_python",
+  "probe": "mechanical",
+  "skill_library": true,
+  "games": 1,
+  "levels_completed": 1,
+  "levels_available": 8,
+  "tokens": 20305,
+  "wall_clock_s": 113.9,
+  "runs": [
+    {
+      "game": "sb26",
+      "agent": "gpt-5.6-sol",
+      "levels_completed": 1,
+      "win_levels": 8,
+      "actions_spent": 656,
+      "deaths": 0,
+      "tokens": 20305,
+      "skills_saved": [],
+      "elapsed_s": 112.8
+    }
+  ]
+}
