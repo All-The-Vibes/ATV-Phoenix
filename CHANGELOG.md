@@ -9,6 +9,17 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Seeds are part of the episodic gate's evidence.** `decide_episodic()` accepts a run as
+  `{"score": float, "seed": hashable}`. A run that cannot name its seed cannot be re-run, so the
+  verdict is the new `REJECT_UNREPRODUCIBLE` rather than green, and that objection outranks thin
+  evidence because a sample nobody can reproduce is a worse problem than a sample that is small.
+  Evidence is counted in DISTINCT seeds, so three runs at seed 42 are one observation rather than
+  three. One seed producing two different scores is also unreproducible, which tests the
+  determinism the gate had been assuming. `episodic_summary()` reports `baseline_seeds`,
+  `candidate_seeds`, the distinct counts, `reproducible` and `unreproducible_reason`. Probed
+  against the deployment on 2026-08-08: `temperature=0` and `top_p` are rejected with HTTP 400 and
+  `seed` is honoured, reproducing byte-identical output. Issue #185.
+
 - **An episodic adoption rule beside the row-based one.** `phoenix_learn.gate.decide()` needs
   `ADOPT_MIN_N = 20` held-out rows, and one ARC-AGI-3 run costs 4 to 10 minutes of real API spend,
   so clearing that bar is 2 to 3 hours of wall clock per decision. In practice `decide()` returned
