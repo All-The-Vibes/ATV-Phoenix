@@ -156,6 +156,65 @@ def main() -> int:
           f"(other rows the drop touched: {decoys})")
     ok = ok and good
 
+    # ── the differential-test mechanic ───────────────────────────────────────────────
+    #
+    # The lever that bounds a searched level. A hypothesis costs pads+1 cells to build
+    # from scratch, so on eight pads one life funds seven. But if a PLACED piece can be
+    # lifted and moved, the second hypothesis costs only the pads that changed -- two or
+    # three, typically -- which is roughly three times more hypotheses per life. The
+    # harness never told the agent this was possible.
+    # Establish the precondition rather than assuming it. By this point the checks above
+    # have placed, undone and submitted, so neither the tray nor any given pad is in a
+    # known state -- an earlier draft "lifted" from an empty pad, which is a no-op that
+    # costs 0 and would have passed the assertion while measuring nothing. A fresh
+    # environment makes the precondition explicit.
+    env2 = arc_agi.Arcade().make("sb26", include_frame_data=True)
+    frame2 = env2.reset()
+
+    def grid2():
+        arr = np.array(frame2.frame, dtype=int)
+        return arr[0] if arr.ndim == 3 else arr
+
+    colour2 = budget(grid2())["full_colour"]
+
+    def cost_of(label, x, y):
+        nonlocal frame2
+        before_bar = budget(grid2(), colour2)["left"]
+        before_img = grid2().copy()
+        frame2 = env2.step(by_value[6], {"x": int(x), "y": int(y)})
+        return (label,
+                before_bar - budget(grid2(), colour2)["left"],
+                not np.array_equal(before_img, grid2()))
+
+    fresh = parse(grid2())
+    seat_pad, target = fresh["pads"][0], fresh["pads"][2]
+    cost_of("pick", fresh["tray"][0]["cx"], fresh["tray"][0]["cy"])
+    cost_of("seat", seat_pad["cx"], seat_pad["cy"])
+
+    label, lift, moved_board = cost_of("lift a piece already ON a pad",
+                                       seat_pad["cx"], seat_pad["cy"])
+    good = lift == 0 and moved_board
+    print(f"{'PASS' if good else 'FAIL'}  {label:<32} costs {lift} cell(s) and changes "
+          f"the board (moved={moved_board})")
+    ok = ok and good
+
+    label, redrop, _ = cost_of("re-drop it on another pad", target["cx"], target["cy"])
+    good = redrop == 1
+    print(f"{'PASS' if good else 'FAIL'}  {label:<32} costs {redrop} cell(s), expected 1")
+    ok = ok and good
+
+    n_pads = len(fresh["pads"])
+    good = lift + redrop < n_pads + 1
+    print(f"{'PASS' if good else 'FAIL'}  moving one piece ({lift + redrop}) is cheaper "
+          f"than rebuilding ({n_pads + 1})")
+    ok = ok and good
+
+    text = json.loads(MECHANICS.read_text(encoding="utf-8")).get("sb26", "")
+    good = "ALREADY ON A PAD" in text
+    print(f"{'PASS' if good else 'FAIL'}  mechanics.json tells the agent a placed piece "
+          f"can be moved")
+    ok = ok and good
+
     print()
     print("ALL GREEN" if ok else "SOMETHING IS RED")
     return 0 if ok else 1

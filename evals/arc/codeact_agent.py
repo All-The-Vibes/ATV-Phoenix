@@ -69,6 +69,9 @@ ENDPOINT = os.environ.get(
 )
 DEPLOYMENT = os.environ.get("AOAI_DEPLOYMENT", "gpt-5.6-sol")
 TERMINAL = ("GameState.WIN", "GameState.GAME_OVER")
+# Measured, not assumed: with a level arranged correctly, press(7) does not clear it and
+# a stray click does not clear it, but press(5) clears it immediately.
+SUBMIT_ACTION = 5
 
 SYSTEM = """You are playing an unfamiliar video game by WRITING PYTHON.
 
@@ -309,6 +312,7 @@ class Env:
         self.deaths = 0
         self.best = 0
         self.notes: list[str] = []
+        self.level_notes: list[str] = []
         self._alive = True
         self._turn_action_cap = turn_action_cap
         self._turn_spent = 0
@@ -336,6 +340,14 @@ class Env:
         # its two segments is the remaining one, and guessing the direction would be the
         # same kind of invention this harness exists to remove.
         self._bar_colour = None
+        # The colour an EMPTY pad draws in, learned at level start when every piece is
+        # still loose. A per-level property like the bar's length, so it is cleared on a
+        # level change rather than carried over.
+        self._empty_pad_colour = None
+        # The pad geometry, also learned at level start. See `seated` for why it cannot
+        # be re-derived from a half-built board.
+        self._pad_boxes = None
+        self._tray_boxes = None
 
     def begin_turn(self) -> None:
         self._turn_spent = 0
@@ -397,10 +409,15 @@ class Env:
             self._level_mark = self.spent
             self.level_just_changed = True
             self._inert = 0
+            self.level_notes = []
             # A new level draws a fresh, full bar, and it may be a different length and a
             # different colour. Holding the old level's full-colour would make the first
-            # read of the new bar answer with the wrong segment.
+            # read of the new bar answer with the wrong segment. The same applies to the
+            # colour an empty pad draws in.
             self._bar_colour = None
+            self._empty_pad_colour = None
+            self._pad_boxes = None
+            self._tray_boxes = None
             raise LevelCleared(
                 f"LEVEL {self._frame.levels_completed} CLEARED in {actions} actions. "
                 "The board below is a DIFFERENT level. Coordinates and helper functions "
@@ -523,6 +540,211 @@ class Env:
         arr = np.array(self._frame.frame, dtype=np.int8)
         return arr[0] if arr.ndim == 3 else arr
 
+    def seated(self):
+        """Which colour currently sits on which pad, and None where a pad is empty.
+
+        Costs no action. Two things here are cached at level start rather than re-derived,
+        and both were measured going wrong:
+
+        The PAD GEOMETRY. `parse` identifies pads as the smallest repeated blob on the
+        board, which is true of a pristine level and false the moment pieces are placed:
+        after one placement the occupied pad stopped being recognised as a pad at all and
+        a tray slot was classified as one instead. Re-deriving the pad set from a
+        half-built board therefore reports a different set of pads each time, which is
+        useless to an executor trying to reach a target arrangement.
+
+        The EMPTY-PAD COLOUR. An empty pad draws in its own colour, and which colour that
+        is has to be learned, not assumed -- it is per level like the bar's length.
+
+        A level opens with every piece still loose, so the first read where the tray is
+        full establishes both, and both are forgotten when the level changes.
+        """
+        layout = frame_parse(self.grid())
+        if not layout:
+            return {}
+        grid = self.grid()
+
+        if self._pad_boxes is None and len(layout["tray"]) == len(layout["pads"]):
+            self._pad_boxes = sorted(
+                ({k: int(p[k]) for k in ("x0", "x1", "y0", "y1", "cx", "cy")}
+                 for p in layout["pads"]),
+                key=lambda p: (p["cy"], p["cx"]),
+            )
+            self._tray_boxes = sorted(
+                ({k: int(t[k]) for k in ("x0", "x1", "y0", "y1", "cx", "cy")}
+                 for t in layout["tray"]),
+                key=lambda t: (t["cx"], t["cy"]),
+            )
+        pads = self._pad_boxes
+        if pads is None:
+            return {}
+
+        values, counts = np.unique(grid, return_counts=True)
+        background = int(values[np.argmax(counts)])
+
+        def dominant(pad):
+            patch = grid[pad["y0"]:pad["y1"] + 1, pad["x0"]:pad["x1"] + 1]
+            vals, cnts = np.unique(patch, return_counts=True)
+            return int(vals[np.argmax(cnts)])
+
+        # Learned from the pristine board, where every pad is empty, so the commonest
+        # reading across the pads IS the empty colour. Done before any piece is read,
+        # because reading a piece needs this value to know what to ignore.
+        if self._empty_pad_colour is None and len(layout["tray"]) == len(pads):
+            seen = [dominant(p) for p in pads]
+            self._empty_pad_colour = max(set(seen), key=seen.count)
+
+        def box_colour(pad):
+            """The colour of the piece sitting here, or None if the pad is empty.
+
+            Not the majority colour of the pad's box, which is what an earlier version
+            used and what broke on level 5. From level 4 the game draws some pieces
+            HOLLOW -- a ring with its middle punched out -- so the commonest colour
+            inside the box is the hole, which reads as the board background. Two pads
+            holding c9 rings were reported as background, the executor concluded they
+            were empty, and the arrangement it built was never the one it was asked for.
+
+            The piece is whatever ink is present that is neither the background nor the
+            colour an empty pad draws in. That is the same reading `frames.parse` reaches
+            by lifting each clue to its enclosing ring.
+            """
+            patch = grid[pad["y0"]:pad["y1"] + 1, pad["x0"]:pad["x1"] + 1]
+            vals, cnts = np.unique(patch, return_counts=True)
+            ink = [(int(c), int(v)) for v, c in zip(vals, cnts)
+                   if int(v) not in (background, self._empty_pad_colour)]
+            return max(ink)[1] if ink else None
+
+        return {(pad["cx"], pad["cy"]): box_colour(pad) for pad in pads}
+
+    def loose(self):
+        """Tray slots that still hold a piece: {(x, y): colour}. Costs no action.
+
+        Same reason `seated` caches its geometry. `parse` finds the tray by looking for
+        the dominant repeated shape below the pad band, and once pieces start leaving it
+        that shape stops repeating: measured, after a single placement the parse reported
+        an EMPTY tray on a board that still held three pieces, which stalled the executor
+        after one move.
+
+        An emptied slot draws in the board's background colour -- measured directly, a
+        slot went from 14 to 4 when its piece was placed, where 4 is the most common
+        colour on the grid.
+
+        A hollow piece is read the same way `seated` reads one: by its ink rather than by
+        the commonest colour in its box, since the commonest colour inside a punched-out
+        ring is the hole.
+        """
+        if self._tray_boxes is None:
+            self.seated()  # learns the geometry when the board is still pristine
+        if self._tray_boxes is None:
+            return {}
+        grid = self.grid()
+        values, counts = np.unique(grid, return_counts=True)
+        background = int(values[np.argmax(counts)])
+        out = {}
+        for slot in self._tray_boxes:
+            patch = grid[slot["y0"]:slot["y1"] + 1, slot["x0"]:slot["x1"] + 1]
+            vals, cnts = np.unique(patch, return_counts=True)
+            ink = [(int(c), int(v)) for v, c in zip(vals, cnts) if int(v) != background]
+            if ink:
+                out[(slot["cx"], slot["cy"])] = max(ink)[1]
+        return out
+
+    def try_assignment(self, mapping, submit=True):
+        """Put the board into `mapping` for the fewest bar cells, then submit.
+
+        The agent supplies WHICH colour goes on WHICH pad -- that is the hypothesis and
+        it stays entirely the agent's. This only executes it, and executes it at the
+        price the game actually charges instead of the price a naive rebuild costs.
+
+        Why it exists, measured. A hypothesis built from scratch costs one cell per drop
+        plus one to submit: nine on an eight-pad level, so a 64-cell bar funds seven
+        attempts per life. Level 7 has 8!/(2!3!3!) = 560 candidate assignments, and runs
+        were spending 84 actions per hypothesis against a floor of 17 because each new
+        candidate tore the whole board down and rebuilt it.
+
+        Three measured mechanics make that unnecessary:
+
+            lifting a piece already ON a pad ... 0 cells
+            dropping onto an OCCUPIED pad ..... 1 cell, and it SWAPS the two pieces
+            undo ............................. 0 cells
+
+        Since every candidate is a permutation of the same tray, one assignment can be
+        turned into another by swaps alone, and a swap fixes at least one pad for one
+        cell. Two candidates differing on two pads cost 1 swap + 1 submit = 2 cells
+        rather than 9. That is the difference between seven hypotheses per life and
+        roughly twenty.
+
+        Returns what it cost and what happened, so a turn can be planned against
+        `clock()` rather than guessed.
+
+        Accepts either shape the agent already writes: a list of (colour, (x, y)) pairs,
+        which is what every rule in this harness returns, or a {(x, y): colour} dict.
+        """
+        if isinstance(mapping, dict):
+            target = {(int(k[0]), int(k[1])): int(v) for k, v in mapping.items()}
+        else:
+            target = {(int(p[0]), int(p[1])): int(c) for c, p in mapping}
+
+        before_bar = (self.clock() or {}).get("left")
+        if not self.seated():
+            return {"ok": False, "why": "board did not parse"}
+
+        # Seat anything still loose first: a tray piece cannot be swapped with a pad.
+        # Bounded by the pad count, not looped until stable, so a mechanic that does not
+        # behave as measured cannot spin here.
+        for _ in range(len(target) + 1):
+            current = self.seated()
+            empties = [p for p in target if current.get(p) is None]
+            if not empties:
+                break
+            spare: dict[int, list] = {}
+            for slot, colour in self.loose().items():
+                spare.setdefault(colour, []).append(slot)
+            if not spare:
+                break
+            for pad in empties:
+                want = target[pad]
+                slot = (spare.get(want) or [None])[0]
+                if slot is None:
+                    # No loose piece of the wanted colour; seat any piece here and let
+                    # the swap pass below move it where it belongs.
+                    slot = next(iter(s for group in spare.values() for s in group))
+                    pad = empties[0]
+                self.click(slot[0], slot[1])
+                self.click(pad[0], pad[1])
+                break
+
+        # Every pad now holds something and the target is a permutation of what is
+        # there, so one swap fixes at least one pad for one cell.
+        for _ in range(len(target) + 1):
+            current = self.seated()
+            wrong = [p for p in target if current.get(p) != target[p]]
+            if not wrong:
+                break
+            pad = wrong[0]
+            donor = next((q for q in wrong
+                          if q != pad and current.get(q) == target[pad]), None)
+            if donor is None:
+                break
+            self.click(pad[0], pad[1])        # lift a placed piece: free
+            self.click(donor[0], donor[1])    # drop on an occupied pad: swap, 1 cell
+
+        current = self.seated()
+        placed = all(current.get(p) == target[p] for p in target)
+        won = False
+        if submit and placed:
+            self.press(SUBMIT_ACTION)
+            won = self.level_just_changed
+        after = self.clock() or {}
+        return {
+            "ok": placed,
+            "won": won,
+            "cells_spent": (before_bar - after.get("left", before_bar)
+                            if before_bar is not None else None),
+            "cells_left": after.get("left"),
+            "board": current,
+        }
+
     def alive(self):
         return self._alive
 
@@ -544,7 +766,21 @@ class Env:
         return list(zip(ys.tolist(), xs.tolist()))
 
     def note(self, text):
+        """Record a fact worth carrying. Kept per level, not per run.
+
+        The notes are the agent's own memory of WHY a theory died, and they are the only
+        part of its reasoning that survives `prune` evicting the trajectory. They used to
+        be capped at the last 25 across the whole run, which on a long level meant the
+        agent's early conclusions were pushed out by its own later ones -- exactly when
+        it most needed them, since by then the trajectory could no longer reach back
+        either. Measured: a fair run worked level 7 for 45 turns with 22 turns of
+        trajectory and a 25-note window.
+
+        Scoped to the level, so clearing a level frees the budget rather than a note
+        about level 7 evicting another note about level 7.
+        """
         self.notes.append(str(text)[:200])
+        self.level_notes.append(str(text)[:200])
 
     def frame(self):
         return self._frame
@@ -592,6 +828,16 @@ def prune(history: list[dict], keep_images: int = 2, budget: int = 120_000) -> l
     bought seventeen turns before the endpoint started refusing calls, and the run ended
     on quota rather than on ideas, holding 6/8 with 7,700 of its 8,000 actions unspent.
     Context is not free context; every turn's history is re-sent on the next call.
+
+    What the budget is spent ON is a separate question from how big it is, and getting
+    that wrong cost a level. The size of a message was its raw character count, so a
+    kept image -- a base64 data URL, tens of thousands of characters of no use to a model
+    that is being shown the current board anyway -- was charged against the same budget
+    as the agent's reasoning and evicted several turns of it. Images are now excluded
+    from the accounting entirely: the newest ones are still sent, but they no longer
+    push text out. Measured on a fair run: 22 turns of history survived on a level the
+    agent worked for 45, and it spent whole turns re-proposing assignments the ledger
+    had already refuted.
     """
     seen = 0
     out: list[dict] = []
@@ -605,8 +851,7 @@ def prune(history: list[dict], keep_images: int = 2, budget: int = 120_000) -> l
                 if seen > keep_images:
                     content = [p for p in content if p.get("type") != "image_url"]
             message = {"role": message["role"], "content": content}
-            size = sum(len(p.get("text", "")) or len(p.get("image_url", {}).get("url", ""))
-                       for p in content)
+            size = sum(len(p.get("text", "")) for p in content)
         else:
             size = len(content or "")
         if out and used + size > budget:
@@ -677,6 +922,8 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
         "alive": env.alive, "levels": env.levels, "reset": env.reset,
         "find": env.find, "note": env.note, "np": np,
         "clock": env.clock,
+        "seated": env.seated,
+        "try_assignment": env.try_assignment,
         "objects": lambda: board_objects(env.grid()),
         "board": lambda: describe_board(env.grid()),
         "diff": diff_board,
@@ -713,7 +960,27 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
         env.level_just_changed = False
         before_levels = env.best
         before_spent = env.spent
-        notes = "\n".join(f"- {n}" for n in env.notes[-25:]) or "(none yet)"
+
+        def current_notes() -> str:
+            """Everything learned on THIS level, plus a tail of what came before.
+
+            The old window was the last 25 notes of the whole run, which on a long level
+            meant the agent's early conclusions were evicted by its own later ones. That
+            is the worst possible moment to lose them: by turn 30 of a level the
+            trajectory no longer reaches back either, so a theory killed at turn 15 was
+            gone from both places and got re-derived from scratch. Measured on level 7 of
+            a fair run -- 45 turns of work against a 22-turn trajectory and a 25-note
+            window. Notes are cheap; a level's worth costs a fraction of one turn.
+            """
+            earlier = [n for n in env.notes[:-len(env.level_notes)]
+                       if env.level_notes] or env.notes
+            lines = [f"- {n}" for n in earlier[-8:]]
+            if env.level_notes:
+                lines.append(f"--- this level ({len(env.level_notes)} notes) ---")
+                lines += [f"- {n}" for n in env.level_notes[-60:]]
+            return "\n".join(lines) or "(none yet)"
+
+        notes = current_notes()
 
         # The board changed, so what was true about the old board is no longer evidence.
         # Beliefs are scoped to the level and retired when it advances (issue #181).
@@ -725,7 +992,7 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
                 f"level {env.best + 1}: retired {len(retired)} belief(s) earned on the "
                 f"previous board; they must be re-earned here: {', '.join(retired)}"
             )
-            notes = "\n".join(f"- {n}" for n in env.notes[-25:])
+            notes = current_notes()
 
         # The exact board, recomputed every turn and never carried over. This is the fix
         # for the measured level-2 loss: the model kept applying level 1's hand-written

@@ -48,6 +48,7 @@ TEXT = """MECHANICAL FACTS. These are how the GAME and the harness behave -- thi
       press(7) undo .................... 0
       click empty space ................ 0
       thinking, reading, doing nothing .. 0
+      click a piece ALREADY ON A PAD ... 0   (it comes back into your hand)
 
   120 clicks on empty space did not move it. 199 undos did not move it. 64 consecutive
   submits took it from full to empty and the 64th killed. It counts pieces DROPPED and
@@ -64,13 +65,41 @@ TEXT = """MECHANICAL FACTS. These are how the GAME and the harness behave -- thi
     spent 1,367 actions there. It was not out of ideas; it was out of budget and could not
     see the meter.
 
-    A DIFFERENTIAL TEST IS CHEAPER THAN A REBUILD. Undo is free but re-dropping is not, so
-    moving only the pieces that differ between two candidate answers costs only those
-    drops. Rebuilding all eight to test a two-pad change wastes six cells.
+    A DIFFERENTIAL TEST IS FAR CHEAPER THAN A REBUILD, and this is the biggest lever on
+  a level you are searching. A piece that is ALREADY ON A PAD can be picked up again by
+  clicking it -- that costs nothing -- and dropped somewhere else for one cell. Dropping
+  onto an OCCUPIED pad is accepted, also for one cell. So the price of your SECOND
+  hypothesis is the number of pads whose colour CHANGED, plus one for the submit. Not
+  eight.
+
+  Measured on the live game: pick up a placed piece = 0 cells, re-drop it = 1 cell, drop
+  onto an occupied pad = 1 cell, undo = 0 cells.
+
+  On an eight-pad level that is the difference between 7 hypotheses per life and roughly
+  20, because candidates worth testing next usually differ from the last one on two or
+  three pads. Rebuilding the whole board to test a two-pad change wastes six cells every
+  time. Order the assignments you want to try so that consecutive ones are close, and pay
+  only for the difference.
 
   clock() READS THE BAR and costs no action. It returns cells left, used, total and the
   fraction remaining, taken from the drawing rather than from a remembered constant --
   bar length is a per-level property. Call it before you plan a turn and divide.
+
+  seated() TELLS YOU WHICH COLOUR IS ON WHICH PAD right now, also for no action.
+
+  try_assignment(mapping) PLAYS A HYPOTHESIS FOR THE FEWEST CELLS, and on a level you are
+  searching it is the difference between seven attempts per life and roughly twenty. Hand
+  it either shape you already write -- a list of (colour, (x, y)) pairs, or a
+  {(x, y): colour} dict -- and it puts the board into that state and submits. What it does
+  NOT do is choose the mapping; that is your hypothesis and it stays entirely yours.
+
+  It is cheap because it only pays for the pads whose colour must CHANGE. Every candidate
+  is a permutation of the same tray, so it reaches the next one by SWAPS, and one swap
+  fixes a pad for one cell. Two candidates differing on two pads cost 1 swap + 1 submit =
+  2 cells, where tearing the board down and rebuilding it costs 9. It returns cells_spent,
+  cells_left, whether the arrangement was achieved, and whether it won. So ORDER the
+  candidates you mean to try so that consecutive ones are close, and pay only for the
+  differences.
 
   DEATH INTERRUPTS YOUR CODE. When the bar empties, the level restarts: every piece
   returns to the tray and the bar refills. Your running code is cut off at that point and

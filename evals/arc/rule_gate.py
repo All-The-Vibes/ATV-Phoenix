@@ -218,6 +218,40 @@ class RuleGate:
         """A new level is a new question; old refutations were about the old board."""
         self.refuted = []
 
+    def refuted_table(self, limit: int = 80) -> list[str]:
+        """Every refused assignment, one compact line each, in a fixed pad order.
+
+        This is the durable half of the agent's memory of its own work, and its absence
+        was measured as a whole level. `prune` caps the resent trajectory at 120,000
+        CHARACTERS -- about 22 turns at the 5,092 chars a turn actually costs -- and a
+        fair run spent 45 turns on level 7. So for the second half of that level the
+        agent could not see the first half: it kept deriving theories it had already
+        killed, firing them at `refuted()`, being told True, and spending the turn on
+        nothing. Three consecutive turns of one run went that way, and the run before it
+        cycled the same shapes.
+
+        The count alone -- "60 distinct assignments have been played here" -- cannot stop
+        that, because a number is not a memory. The assignments themselves can, and they
+        are cheap: one line per attempt, colours only, read in a fixed pad order, is
+        about thirty characters. Eighty of them cost less than one turn of trajectory,
+        and unlike the trajectory they are re-sent in full every single turn, so they
+        survive eviction.
+
+        Colours only, positions implied by the header's pad order, because the point is
+        to make the PATTERN in the failures visible at a glance rather than to restate
+        coordinates the agent already has from layout().
+        """
+        if not self.refuted:
+            return []
+        pads = sorted({(int(p[0]), int(p[1])) for o in self.refuted for _, p in o},
+                      key=lambda p: (p[1], p[0]))
+        lines = [f"pad order: {pads}"]
+        for order in self.refuted[-limit:]:
+            mapping = {(int(p[0]), int(p[1])): int(c) for c, p in order}
+            lines.append("  " + ",".join(
+                str(mapping.get(pad, "?")) for pad in pads))
+        return lines
+
     def shared_constraints(self, limit: int = 8) -> list[str]:
         """What EVERY refuted assignment agreed on, stated as testable restrictions.
 
@@ -335,6 +369,17 @@ class RuleGate:
                        "tell these apart, but the board already has. refuted(order) "
                        "checks a candidate against them for zero actions, and ignores "
                        "the order you place in because the board does too."]
+        table = self.refuted_table()
+        if table:
+            lines.append(
+                "Here they all are, colours in the pad order given first. This is your "
+                "own history and it is re-sent in full every turn, so trust it over your "
+                "recollection: the trajectory above you is truncated and does not reach "
+                "back to the start of this level. Read DOWN the columns -- a pad that "
+                "has been handed the same colour every single time is an assumption you "
+                "have never tested, not a fact you established."
+            )
+            lines.extend(table)
         shared = self.shared_constraints()
         if shared:
             lines.append(
