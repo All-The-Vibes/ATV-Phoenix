@@ -85,22 +85,61 @@ def _median(values):
     return (ordered[mid - 1] + ordered[mid]) / 2.0
 
 
+def _score_and_seed(run):
+    """Accept a seeded run mapping, or a bare number whose seed is unknown.
+
+    A bare number is not rejected here. It is carried through with `seed=None` so the caller
+    gets told which sample could not name its seed, rather than a type error (issue #185).
+    """
+    if isinstance(run, dict):
+        return float(run["score"]), run.get("seed")
+    return float(run), None
+
+
+def _reproducibility(baseline, candidate):
+    """(ok, reason). A sample is reproducible when every run names a seed and no seed
+    disagrees with itself.
+
+    `seed` was probed against the deployment on 2026-08-08 and reproduces byte-identical
+    output, while `temperature=0` and `top_p` are both rejected. So one seed producing two
+    different scores means the determinism this gate assumed does not hold for that run, and
+    the sample cannot be re-run to check.
+    """
+    for label, sample in (("baseline", baseline), ("candidate", candidate)):
+        by_seed = {}
+        for score, seed in sample:
+            if seed is None:
+                return False, "a %s run does not name its seed, so it cannot be re-run" % label
+            if seed in by_seed and by_seed[seed] != score:
+                return False, (
+                    "%s seed %r produced %s and %s, so it does not reproduce"
+                    % (label, seed, by_seed[seed], score))
+            by_seed[seed] = score
+    return True, None
+
+
 def episodic_summary(*, baseline_runs, candidate_runs):
     """The numbers an episodic verdict is made on, without the verdict.
 
     Kept separate from `decide_episodic` so a caller cannot read the numbers and quietly
     substitute its own judgement for the gate's.
     """
-    baseline = list(baseline_runs)
-    candidate = list(candidate_runs)
-    baseline_median = _median(baseline)
-    baseline_worst = min(baseline) if baseline else None
-    candidate_worst = min(candidate) if candidate else None
+    baseline = [_score_and_seed(r) for r in baseline_runs]
+    candidate = [_score_and_seed(r) for r in candidate_runs]
+    baseline_scores = [s for s, _ in baseline]
+    candidate_scores = [s for s, _ in candidate]
+    baseline_seeds = [seed for _, seed in baseline]
+    candidate_seeds = [seed for _, seed in candidate]
+
+    baseline_median = _median(baseline_scores)
+    baseline_worst = min(baseline_scores) if baseline_scores else None
+    candidate_worst = min(candidate_scores) if candidate_scores else None
     dominates = (
         baseline_median is not None
         and candidate_worst is not None
         and candidate_worst > baseline_median
     )
+    reproducible, reason = _reproducibility(baseline, candidate)
     return {
         "baseline_n": len(baseline),
         "candidate_n": len(candidate),
@@ -108,16 +147,30 @@ def episodic_summary(*, baseline_runs, candidate_runs):
         "baseline_worst": baseline_worst,
         "candidate_worst": candidate_worst,
         "dominates_lower_tail": dominates,
+        "baseline_seeds": baseline_seeds,
+        "candidate_seeds": candidate_seeds,
+        "distinct_baseline_seeds": len({s for s in baseline_seeds if s is not None}),
+        "distinct_candidate_seeds": len({s for s in candidate_seeds if s is not None}),
+        "reproducible": reproducible,
+        "unreproducible_reason": reason,
     }
 
 
 def decide_episodic(*, baseline_runs, candidate_runs, gaming_hits):
     """Adoption verdict for few, expensive, high-variance runs.
 
+    A run is `{"score": float, "seed": hashable}`, or a bare number whose seed is unknown.
+
     The bar is stochastic dominance on the lower tail: the candidate's WORST run must beat the
     baseline's MEDIAN. That refuses a single lucky run by construction, which is the failure
     this rule exists to stop. On sb26 a change was adopted on one green run at RHAE 3.11 percent
     and the confirmation run on identical code returned 0.13 percent.
+
+    Seeds are part of the evidence (issue #185). A run that cannot name its seed cannot be
+    re-run, so the verdict is REJECT_UNREPRODUCIBLE rather than green, and that objection
+    outranks thin evidence because a sample nobody can reproduce is a worse problem than a
+    sample that is small. Evidence is counted in DISTINCT seeds, so three runs at seed 42 are
+    one observation rather than three.
 
     The issue also asks that no candidate run be worse than the baseline's worst. That bar is
     implied rather than coded: a median is never below its own minimum, so a candidate whose
@@ -125,14 +178,21 @@ def decide_episodic(*, baseline_runs, candidate_runs, gaming_hits):
     second branch would ship a condition that can never fire on its own, and an unreachable
     guard reads as protection nobody has.
 
-    Both samples must reach EPISODIC_MIN_RUNS. A one-run baseline has no median worth beating,
-    and a verdict over zero runs is unmeasured rather than clean.
+    An empty sample is EXPERIMENTAL_SMOKE_TEST rather than clean, and carries no seed to
+    object to, so emptiness is judged before reproducibility.
     """
     if gaming_hits:
         return "REJECT_GAMING_DETECTED"
 
     summary = episodic_summary(baseline_runs=baseline_runs, candidate_runs=candidate_runs)
-    if summary["baseline_n"] < EPISODIC_MIN_RUNS or summary["candidate_n"] < EPISODIC_MIN_RUNS:
+    if summary["baseline_n"] == 0 or summary["candidate_n"] == 0:
+        return "EXPERIMENTAL_SMOKE_TEST"
+    if not summary["reproducible"]:
+        return "REJECT_UNREPRODUCIBLE"
+    if (
+        summary["distinct_baseline_seeds"] < EPISODIC_MIN_RUNS
+        or summary["distinct_candidate_seeds"] < EPISODIC_MIN_RUNS
+    ):
         return "EXPERIMENTAL_SMOKE_TEST"
     if summary["dominates_lower_tail"]:
         return "ADOPT_ELIGIBLE"
