@@ -527,7 +527,7 @@ def make_client():
     )
 
 
-def prune(history: list[dict], keep_images: int = 2, budget: int = 320_000) -> list[dict]:
+def prune(history: list[dict], keep_images: int = 2, budget: int = 120_000) -> list[dict]:
     """Recent turns in full, images only on the newest, older turns dropped.
 
     A 64x64 board as a data URL is expensive and a board from twelve turns ago is not the
@@ -543,6 +543,11 @@ def prune(history: list[dict], keep_images: int = 2, budget: int = 320_000) -> l
     What falls off the end is not lost the way it used to be: the agent's notes, the rule
     gate's solved levels, and the refuted-attempt ledger are all re-sent in full every
     turn, and those are the parts that were worth carrying.
+
+    The cap is also what the run can AFFORD. Measured at a larger budget: 915,000 tokens
+    bought seventeen turns before the endpoint started refusing calls, and the run ended
+    on quota rather than on ideas, holding 6/8 with 7,700 of its 8,000 actions unspent.
+    Context is not free context; every turn's history is re-sent on the next call.
     """
     seen = 0
     out: list[dict] = []

@@ -21,10 +21,14 @@ from evals.arc.frames import parse, plan  # noqa: E402
 # flat: `6,[14,8,8],[14,8,8],11,15` over eight pads.
 EXPECTED = {
     5: {"flat": False, "block": [14, 8, 8], "reduced": [6, None, None, 11, 15]},
+    # Level 7 goes the other way: SEVEN rings over EIGHT pads, a palindrome over three
+    # sibling frames. No block decomposition explains a short row, but calling it flat
+    # would be the same lie that cost eleven runs on level 5.
+    7: {"flat": False, "block": None, "reduced": [8, 9, 14, 11, 14, 9, 8]},
 }
 
 
-def main(max_levels=6) -> int:
+def main(max_levels=7) -> int:
     arc = arc_agi.Arcade()
     raw = arc.make("sb26", include_frame_data=True)
     env = Env(raw, raw.reset(), inert_limit=10_000, death_limit=10_000,
@@ -76,6 +80,12 @@ def main(max_levels=6) -> int:
 
         try:
             steps = plan(env.grid())
+            if not steps:
+                # The planner stops at level 6. That is fine: this file is checking what
+                # the agent is TOLD about the row, not whether the harness can solve it.
+                print(f"        (planner has no answer for level {level}; "
+                      f"stopping the walk here)")
+                break
             pool = list(L["tray"])
             for colour, pad in steps:
                 src = next(t for t in pool if t["colour"] == colour)

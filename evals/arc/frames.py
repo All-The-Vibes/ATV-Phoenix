@@ -150,9 +150,20 @@ def _clue_structure(colours, n_pads):
     """
     flat = {"flat": True, "colours": list(colours), "block": None,
             "at": [], "reduced": list(colours)}
+    if len(colours) == n_pads:
+        return flat
+
+    # A row SHORTER than the pad count is structured too, and saying otherwise is the
+    # same lie that cost eleven runs on level 5. Level 7 draws seven rings over eight
+    # pads as 8,9,14,11,14,9,8 -- a palindrome over three sibling frames whose outline
+    # colours are 8, 9 and 14 -- and its tray holds three 9s and three 14s where the row
+    # names two of each. No block decomposition explains a short row, so none is offered;
+    # what is reported is that the row is not one ring per pad.
+    unexplained = {"flat": False, "colours": list(colours), "block": None,
+                   "at": [], "reduced": list(colours)}
     over = len(colours) - n_pads
     if over <= 0:
-        return flat
+        return unexplained
 
     for size in range(2, n_pads):
         # A block of `size` fills one pad group, so the rest of the row addresses the
@@ -190,8 +201,7 @@ def _clue_structure(colours, n_pads):
             if len(reduced) == n_pads - size:
                 return {"flat": False, "colours": list(colours), "block": list(block),
                         "at": hits, "reduced": reduced}
-    return {"flat": False, "colours": list(colours), "block": None,
-            "at": [], "reduced": list(colours)}
+    return unexplained
 
 
 def _pad_owner(frames, pad):

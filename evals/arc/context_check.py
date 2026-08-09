@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from evals.arc.codeact_agent import prune  # noqa: E402
 
-BUDGET = 320_000
+BUDGET = 120_000
 
 
 def turn(n, with_image=True):
