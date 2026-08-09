@@ -91,7 +91,23 @@ API available to your code:
                            [{colour, cx, cy, x0, x1, y0, y1, px}, ...]. Costs NOTHING.
     board()             -> the same thing as readable text, grouped into rows.
     layout()            -> the board split by SHAPE alone into {frames, pads, clues,
-                           tray, markers}, or None if it is not drawn that way. FREE.
+                           tray, clue_structure}, or None if it is not drawn that way.
+                           FREE.
+                           layout()["clue_structure"] describes the SHAPE OF THE CLUE ROW,
+                           because the row is not always one ring per pad. It reports
+                           {flat, colours, block, at, reduced}: `flat` is False when the
+                           row is longer than the pad count, `block` is the run of colours
+                           that repeats, `at` where its occurrences start, and `reduced`
+                           is the row with each occurrence replaced by a single None.
+                           Measured on level 5: nine rings over eight pads read as
+                           colours=[6,14,8,8,14,8,8,11,15], block=[14,8,8],
+                           reduced=[6,None,None,11,15].
+                           It tells you the row's SHAPE, not its meaning. Which pads the
+                           reduced row addresses, which pads take the block, and what
+                           colour belongs on a None are yours to work out -- and the tray
+                           is the lever, because it holds exactly one piece per pad, so
+                           whatever it has left over after the spelled-out colours are
+                           accounted for is what the holes take.
     note(text)          -> write to your notes, which you keep seeing.
     sense(claim, ok)    -> record one trial of a belief. FREE.
     accept(claim)       -> {'ok': bool, 'reason': str}: is that belief actually proven?
@@ -511,15 +527,26 @@ def make_client():
     )
 
 
-def prune(history: list[dict], keep_images: int = 2) -> list[dict]:
-    """Full text trajectory, images only on the most recent turns.
+def prune(history: list[dict], keep_images: int = 2, budget: int = 320_000) -> list[dict]:
+    """Recent turns in full, images only on the newest, older turns dropped.
 
-    A 64x64 board as a data URL is expensive and a board from twelve turns ago is not
-    the board. The *text* of every turn is kept, because that is where the agent's
-    reasoning and results live, and dropping it is what made the agent amnesiac.
+    A 64x64 board as a data URL is expensive and a board from twelve turns ago is not the
+    board. The *text* of recent turns is kept, because that is where the agent's reasoning
+    and results live, and dropping all of it is what made the agent amnesiac.
+
+    But keeping every turn's text forever is what killed a measured 6/8 run at turn 18 of
+    80, with 7,700 of its 8,000 actions unspent: the trajectory grew past the context
+    window, every later model call failed, and the loop span out the rest of its turns in
+    silence. Unbounded memory is not memory, it is a fuse.
+
+    So the trajectory is capped by size and filled from the most recent turn backwards.
+    What falls off the end is not lost the way it used to be: the agent's notes, the rule
+    gate's solved levels, and the refuted-attempt ledger are all re-sent in full every
+    turn, and those are the parts that were worth carrying.
     """
     seen = 0
-    out = []
+    out: list[dict] = []
+    used = 0
     for message in reversed(history):
         content = message["content"]
         if isinstance(content, list):
@@ -529,8 +556,21 @@ def prune(history: list[dict], keep_images: int = 2) -> list[dict]:
                 if seen > keep_images:
                     content = [p for p in content if p.get("type") != "image_url"]
             message = {"role": message["role"], "content": content}
+            size = sum(len(p.get("text", "")) or len(p.get("image_url", {}).get("url", ""))
+                       for p in content)
+        else:
+            size = len(content or "")
+        if out and used + size > budget:
+            break
+        used += size
         out.append(message)
-    return list(reversed(out))
+
+    trimmed = list(reversed(out))
+    # A conversation that starts on an assistant turn reads as though the agent spoke
+    # first about a board nobody showed it.
+    while trimmed and trimmed[0]["role"] == "assistant":
+        trimmed.pop(0)
+    return trimmed
 
 
 def _parsed(grid):
@@ -607,6 +647,7 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
 
     tokens = 0
     stale = 0
+    model_failures = 0
     idle = 0
     last_output = "(first turn; nothing run yet)"
     started = time.time()
@@ -672,25 +713,74 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
 
         history.append({"role": "user", "content": content})
 
+        reply = None
+        call_error = None
+        starved = False
+        for attempt in range(10):
+            try:
+                reply = client.chat.completions.create(
+                    model=deployment,
+                    messages=[{"role": "system", "content": SYSTEM}, *prune(history)],
+                    max_completion_tokens=16000,
+                    # gpt-5.6-sol rejects temperature and top_p (HTTP 400: only the default
+                    # is supported) but honours seed and returns byte-identical output for
+                    # it. The Arcade already defaults to seed=0, so fixing this one makes a
+                    # whole run reproducible, which is what turns "it scored 3.1%" into a
+                    # measurement rather than an anecdote.
+                    seed=seed + turn,
+                )
+                break
+            except Exception as exc:
+                # A 429 is the endpoint asking us to slow down, not a verdict on the run.
+                # Measured: a 6/8 run recorded 60 turns of silence and was read as the
+                # agent running out of ideas, when it had run out of quota with 7,700 of
+                # its 8,000 actions unspent. Waiting costs wall-clock; not waiting costs
+                # the run.
+                text = str(exc)
+                if not ("429" in text or "rate limit" in text.lower()):
+                    call_error = exc
+                    break
+                if attempt == 9:
+                    starved = True
+                    break
+                nap = min(120, 10 * 2 ** attempt)
+                print(f"  {game} t{turn + 1}: rate limited, waiting {nap}s "
+                      f"(attempt {attempt + 1}/10)", flush=True)
+                time.sleep(nap)
+
+        if starved:
+            # Running out of quota is not the same as running out of ideas, and it must
+            # not be recorded as though it were. An earlier version re-raised here, which
+            # killed the process and threw away a finished 6/8 run on its way out.
+            print(f"  {game}: still rate limited after 10 tries; ending the run and "
+                  f"keeping {env.best}/{env.frame().win_levels}", flush=True)
+            history.pop()
+            break
+
         try:
-            reply = client.chat.completions.create(
-                model=deployment,
-                messages=[{"role": "system", "content": SYSTEM}, *prune(history)],
-                max_completion_tokens=16000,
-                # gpt-5.6-sol rejects temperature and top_p (HTTP 400: only the default
-                # is supported) but honours seed and returns byte-identical output for
-                # it. The Arcade already defaults to seed=0, so fixing this one makes a
-                # whole run reproducible, which is what turns "it scored 3.1%" into a
-                # measurement rather than an anecdote.
-                seed=seed + turn,
-            )
+            if call_error is not None:
+                raise call_error
             tokens += reply.usage.total_tokens
             answer = reply.choices[0].message.content or ""
             history.append({"role": "assistant", "content": answer})
             code = extract_code(answer)
+            model_failures = 0
         except Exception as exc:
+            # Loudly, and not forever. A silent `continue` here span a measured 6/8 run
+            # through sixty remaining turns without a word once its trajectory outgrew
+            # the context window, and the run was recorded as though it had simply
+            # stopped improving. A failing model call is a fact about the harness and
+            # has to look like one.
+            model_failures += 1
             last_output = f"model call failed: {type(exc).__name__}"
+            print(f"  {game} t{turn + 1}: MODEL CALL FAILED ({type(exc).__name__}: "
+                  f"{str(exc)[:160]}) [{model_failures} in a row]", flush=True)
             history.pop()
+            if model_failures >= 3:
+                print(f"  {game}: three model calls failed in a row; stopping the run "
+                      f"rather than burning {max_turns - turn - 1} turns in silence",
+                      flush=True)
+                break
             continue
 
         if not code:
