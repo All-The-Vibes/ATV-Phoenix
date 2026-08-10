@@ -1341,6 +1341,10 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
     deaths_seen = 0
     best_seen = 0
     stuck_since = 0
+    turn = -1
+    # Overwritten by whichever exit actually fires; this is the one that means the loop
+    # ran to the end of its turns with the game still winnable.
+    stopped = "max_turns"
 
     for turn in range(max_turns):
         env.begin_turn()
@@ -1744,10 +1748,16 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
         )
 
         if env.game_won:
+            stopped = "won"
             break
         if env.best >= env.frame().win_levels:
+            stopped = "won"
             break
-        if stale >= patience or env.spent >= action_cap:
+        if stale >= patience:
+            stopped = "patience"
+            break
+        if env.spent >= action_cap:
+            stopped = "action_cap"
             break
 
     return {
@@ -1762,6 +1772,16 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
         "elapsed_s": round(time.time() - started, 1),
         "seed": seed,
         "phoenix_proven": phoenix.established(),
+        # WHY the run ended, because "5 of 8" does not say whether the agent ran out of
+        # ideas or out of harness. Measured on lp85: it stopped at 5/8 having spent 394
+        # actions against a 388-action human baseline for the WHOLE game -- so it was
+        # still solving, at roughly human cost, and what ended it was `max_turns`. ARC
+        # charges actions, never turns, so a turn-capped run is the harness deciding the
+        # score. Without this field that read as a capability ceiling.
+        "stopped": stopped,
+        "turns_used": turn + 1,
+        "max_turns": max_turns,
+        "mechanics_learned": list(env.mechanics_learned),
         # Stamped so a debug session cannot be read as a measurement months from now.
         # `scorable` is the field to check before quoting anything from this dict.
         "start_level": start_level,
