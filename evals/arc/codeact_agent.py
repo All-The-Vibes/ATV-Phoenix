@@ -75,7 +75,25 @@ SUBMIT_ACTION = 5
 SYSTEM = """You are playing an unfamiliar video game by WRITING PYTHON.
 
 You see the board as an image. Nobody tells you the rules. Work them out by running code
-and reading what comes back. You are scored on levels completed.
+and reading what comes back.
+
+HOW YOU ARE SCORED, exactly, because it is not what you would guess:
+
+    level_score = min(1.15, (human_actions_for_that_level / your_actions) ** 2)
+    game_score  = sum(level_number * level_score) / sum(level_number for ALL levels)
+
+Three things follow, and they decide how to play:
+
+* EFFICIENCY IS SQUARED. Taking twice a human's actions scores 25%, not 50%. Ten times
+  scores 1%. Clearing a level slowly is worth almost nothing -- one measured run cleared
+  every level of a game and scored 13% because it spent four times the human's actions.
+* FINISHING STILL MATTERS MOST. A level you never clear scores zero and its weight stays
+  in the denominator, and later levels are weighted more heavily than early ones. So the
+  target is to clear every level AND to do it in about the number of actions a human took.
+* LOOKING IS FREE. Reading the board, listing objects, re-reading your notes and thinking
+  cost NOTHING. Only acting is charged. So think as long as you like, and buy information
+  with your eyes rather than with experiments: a burst of probing is the most expensive
+  mistake available to you, and it is the measured cause of the worst runs on record.
 
 Your code runs in a persistent namespace: variables and functions you define survive to
 the next turn. Build up a toolkit as you learn the game.
@@ -1101,6 +1119,26 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
     raw = arc.make(game, include_frame_data=True)
     frame = raw.reset()
 
+    # THE NUMBER THE AGENT IS SCORED AGAINST, handed to it rather than kept from it. ARC
+    # publishes the per-level human baseline as `baseline_actions` in the same environment
+    # metadata any agent can read, so this is the scoring function's own parameter, not a
+    # hint about the puzzle: it says how MANY actions a level is worth, never which ones.
+    # It is available for every environment including ones we have never seen, so an agent
+    # built around it still works on the hidden set.
+    #
+    # Withholding it made the harness state a goal the agent could not aim at. The system
+    # prompt used to say "you are scored on levels completed", which is simply false, and
+    # the agent optimised exactly that: one measured run cleared all six levels of cd82 and
+    # scored 13.67%, because it spent 1,026 actions where a human spent 171.
+    baselines = {}
+    try:
+        for meta in arc.get_environments():
+            if meta.game_id.split("-")[0] == game:
+                baselines = {i + 1: n for i, n in enumerate(meta.baseline_actions or [])}
+                break
+    except Exception:  # noqa: BLE001 - a missing baseline must not stop a run
+        baselines = {}
+
     # `start_level` is a DEBUG affordance and nothing else: it lets harness work on a late
     # level be iterated in seconds instead of paying the ~215 actions and dozen model calls
     # it costs to reach level 7 honestly. It cannot inflate a score -- `levels_completed`
@@ -1207,6 +1245,8 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
     # remove: context is a variable the agent keeps, not something the harness discards.
     history: list[dict] = []
     deaths_seen = 0
+    best_seen = 0
+    stuck_since = 0
 
     for turn in range(max_turns):
         env.begin_turn()
@@ -1270,7 +1310,26 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
         # because that is the agent's job and not the harness's guess.
         died = env.deaths - deaths_seen
         deaths_seen = env.deaths
+        if env.best > best_seen:
+            best_seen = env.best
+            stuck_since = turn
+        stalled = turn - stuck_since
+
         consolidate = ""
+
+        # What this level is WORTH, in the currency the benchmark actually pays in. The
+        # agent cannot aim at an efficiency target it is never shown, and it was previously
+        # shown only a soft action budget of its own harness's invention.
+        spent_here = env.spent - sum(env.level_actions)
+        par = baselines.get(env.best + 1)
+        pace = ""
+        if par:
+            ratio = par / max(1, spent_here)
+            worth = min(1.15, ratio ** 2)
+            pace = (f"THIS LEVEL: a human took {par} actions; you have spent "
+                    f"{spent_here}. Finishing now would score {worth:.0%} of it "
+                    f"(cap 115%). Every further action lowers that, squared.\n")
+
         if died and env.level_notes:
             consolidate = (
                 f"\nYOU DIED {died}x SINCE YOUR LAST TURN, and a death costs a whole bar.\n"
@@ -1279,6 +1338,40 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
                 "because=...) it. If you are unsure which, retract the one you were acting "
                 "on when you died: a wrong disproof is cheap and a repeated death is not.\n"
             )
+        elif stalled >= 6 and env.level_notes:
+            # BEING STUCK IS THE COMMON FAILURE, AND IT USED TO TRIGGER NOTHING. The
+            # death-only prompt above fires on a rare event; grinding is the frequent one.
+            # Measured on cd82: one run spent 66 consecutive turns and ~700 actions on a
+            # single level, never cleared it, and called retract() ZERO times -- while
+            # another run cleared that same level in 68 actions.
+            #
+            # THE WORDING MATTERS AND THE FIRST ONE COST A RUN. Telling a stuck agent to
+            # "try something structurally different" was measured as an instruction to run
+            # more experiments: actions went from 1,026 to 4,212, one level alone ate 2,731
+            # of them, and the score fell from 13.67% to 0.53%. Under RHAE the action count
+            # is squared, so encouraging exploration is close to the most expensive advice
+            # available. What a stuck agent needs is a different IDEA, and ideas are free:
+            # reading the board, listing objects and re-reading the goal cost nothing at
+            # all. So the stall points at the free tools and at retraction, and explicitly
+            # warns against buying information with actions.
+            consolidate = (
+                f"\nYOU HAVE SPENT {stalled} TURNS ON THIS LEVEL WITHOUT CLEARING IT.\n"
+                "That is evidence about your BELIEFS, not your effort: one of the notes "
+                "above is wrong, and while you keep it you are searching a space that does "
+                "not contain the answer.\n"
+                "Do this with FREE tools before you spend another action -- looking costs "
+                "nothing and every action is squared against your score. Re-read the board "
+                "with objects() and board() as if you had just arrived at it, decide which "
+                "note that reading contradicts, and retract(n, because=...) it. Then act "
+                "on the new idea, not on more experiments: more probing is what turned a "
+                "1,026-action run into a 4,212-action one.\n"
+            )
+            if stalled >= 14:
+                consolidate += (
+                    "You are well past the point where refining one belief helps. Retract "
+                    "SEVERAL and re-derive this board from what is drawn -- still using "
+                    "the free tools, still without a burst of experiments.\n"
+                )
 
         # The exact board, recomputed every turn and never carried over. This is the fix
         # for the measured level-2 loss: the model kept applying level 1's hand-written
@@ -1297,6 +1390,7 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
                     f"ACTIONS = {env.actions}"
                     f"{'  (6 is click(x,y))' if CLICK_ACTION in env.actions else ''}\n"
                     f"Levels: {env.best} of {env.frame().win_levels}\n"
+                    f"{pace}"
                     f"Actions used: {env.spent} (soft budget {action_cap}); "
                     f"this turn you may spend {env.turn_budget()} more\n"
                     f"Deaths so far: {env.deaths}\n"
