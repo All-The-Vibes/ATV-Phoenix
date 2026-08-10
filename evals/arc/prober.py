@@ -78,8 +78,23 @@ def sweep_clicks(env, step: int = 8, budget=None) -> list[dict]:
     # structural fact; the exact column within a row is refined later by reading the
     # grid, which is free. Step 8 on both axes cost 58 actions and missed the piece rack
     # entirely, which lost the drag-and-drop finding that makes the game solvable.
-    for y in range(2, 64, 4):
-        for x in range(6, 64, 12):
+    #
+    # COLUMN-MAJOR, because the budget cuts the sweep short and what it cuts matters.
+    # Sweeping row-major samples the top of the board thoroughly and the bottom not at
+    # all -- measured, that reached y=44 and reported ZERO live cells on a game that is
+    # entirely clickable, because every live row sits below it. Iterating columns on the
+    # OUTSIDE walks the full height every 16 clicks, so one column pass samples every
+    # band. On unseen games that is the difference between a probe and a guess: we do not
+    # know where an unfamiliar board keeps its furniture.
+    #
+    # AND STOP AS SOON AS A PASS FINDS SOMETHING. The sweep is not the point; it exists to
+    # nominate candidate rows for the drag-and-drop test, which is what actually cracks
+    # these games. Sweeping every point cost 54 of a 60-action budget and left nothing to
+    # test pairs with, so the probe reported no drag-and-drop on a game that is entirely
+    # drag-and-drop -- it spent its whole allowance proving the board was clickable, which
+    # nobody doubted. A completed column that found live cells is enough to proceed on.
+    for x in range(6, 64, 12):
+        for y in range(2, 64, 4):
             if budget and budget() <= 2:
                 return live
             before = env.grid().copy()
@@ -87,6 +102,8 @@ def sweep_clicks(env, step: int = 8, budget=None) -> list[dict]:
             n = cells_changed(before, env.grid())
             if n:
                 live.append({"x": x, "y": y, "cells": n})
+        if live:
+            return live
     return live
 
 
@@ -117,20 +134,59 @@ def test_pairs(env, rows: list[dict], samples: int = 1, budget=None) -> list[dic
     something is held. So pick a source up first, then test.
 
     The earlier version re-swept all 256 grid points for every candidate source, costing
-    about 600 actions. Under RHAE that is fatal. This version tests the centre band,
-    where these layouts put their trays, and stops at the first confirmed drag.
+    about 600 actions. Under RHAE that is fatal. This version tests a coarse grid of
+    plausible destinations and stops at the first confirmed drag.
+
+    CANDIDATE ORDER IS CHOSEN FOR THE BUDGET, not for tidiness. Each candidate costs three
+    actions, so a 60-action probe affords roughly eight of them, and which eight is
+    therefore the whole design.
+
+    AND CANDIDATES ARE BLOBS, NOT A COORDINATE GRID. The blind grid this used to walk
+    stepped y as 20, 26, 32, 38, 44, while sb26's level-1 pads sit at y=29 and are two
+    cells tall -- so no candidate could land on a pad, on any budget, and the probe
+    reported no drag-and-drop on a game that is entirely drag-and-drop. A grid fine enough
+    to guarantee a hit on an unknown board is far too expensive to walk.
+    Destinations are THINGS: they are drawn, so they are blobs, and `boardread.objects`
+    finds blobs without knowing anything about this game. Probing what is drawn instead of
+    where we guessed costs less and generalises to boards we have never seen, which is the
+    point of a prober. The coarse grid is kept only as a fallback for a board with nothing
+    findable on it.
     """
+    from evals.arc.boardread import objects as board_objects
+
     findings = []
     if not rows:
         return findings
 
     source_row = max(rows, key=lambda r: r["count"])
-    candidates = [
-        (x, y)
-        for y in range(20, 48, 6)
-        for x in range(12, 56, 6)
-        if abs(y - source_row["y"]) > 6
-    ]
+
+    def far_from_source(y):
+        return abs(y - source_row["y"]) > 6
+
+    seen = set()
+    blob_candidates = []
+    for blob in board_objects(env.grid()):
+        point = (int(blob["cx"]), int(blob["cy"]))
+        if point in seen or not far_from_source(point[1]):
+            continue
+        seen.add(point)
+        blob_candidates.append(point)
+
+    # Spread across rows before repeating one, for the same reason the click sweep goes
+    # column-major: whatever the budget cuts should be detail, not a whole band.
+    by_row: dict[int, list[tuple[int, int]]] = {}
+    for x, y in blob_candidates:
+        by_row.setdefault(y, []).append((x, y))
+    candidates = [row.pop(0) for _ in range(max((len(v) for v in by_row.values()), default=0))
+                  for row in by_row.values() if row]
+
+    if not candidates:
+        candidates = [
+            (x, y)
+            for x in range(12, 56, 6)
+            for y in range(20, 48, 6)
+            if far_from_source(y)
+        ]
 
     for xa in source_row["xs"][:samples]:
         for x, y in candidates:
@@ -169,17 +225,37 @@ def probe(env, click_step: int = 8, budget: int = 60) -> dict:
     state and scores (human_actions / ai_actions) squared, so an unbudgeted probe wins the
     level and loses the score: 625 actions on sb26 against a human baseline of 22 for
     level 1 caps that level at 0.1 percent however well it is subsequently played.
+
+    THE STALL GUARD IS SUSPENDED FOR THE DURATION. `Env.click` raises `StallDetected`
+    after 40 consecutive actions that change nothing, which is the right rule for an AGENT
+    -- repeating an action that does not affect the level is the measured way runs waste
+    thousands of actions. It is exactly the wrong rule here. A probe is SAMPLING: it
+    clicks a coarse grid to learn which cells are live, and on sb26 most of that grid is
+    dead, so a long run of inert clicks is the finding rather than a malfunction. Measured:
+    with the guard active, `sweep_clicks` died partway through its sweep and the probe
+    reported no drag-and-drop on a game that is entirely drag-and-drop.
+
+    The limit is restored afterwards, including on failure, so nothing downstream inherits
+    a disarmed guard.
     """
     spent_before = env.spent
+    stall_limit = getattr(env, "inert_limit", None)
+    if stall_limit is not None:
+        env.inert_limit = 10**9
 
     def remaining():
         return budget - (env.spent - spent_before)
 
-    actions = probe_actions(env, per_action=2, budget=remaining)
-    live = sweep_clicks(env, click_step, budget=remaining) if remaining() > 4 else []
-    rows = cluster_targets(live)
-    pairs = test_pairs(env, rows, budget=remaining) if rows and remaining() > 4 else []
-    env.reset()
+    try:
+        actions = probe_actions(env, per_action=2, budget=remaining)
+        live = sweep_clicks(env, click_step, budget=remaining) if remaining() > 4 else []
+        rows = cluster_targets(live)
+        pairs = test_pairs(env, rows, budget=remaining) if rows and remaining() > 4 else []
+        env.reset()
+    finally:
+        if stall_limit is not None:
+            env.inert_limit = stall_limit
+            env._inert = 0
     return {
         "actions": actions,
         "click_rows": rows,
