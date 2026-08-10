@@ -76,6 +76,27 @@ def check_game(game: str, presses: int = 12) -> bool:
         print(f"  {'PASS' if moved else 'FAIL'}  {game}: actually drains, so a warning "
               f"is possible before the bar runs out")
         ok = ok and monotone and moved
+
+        # THE BAR MUST STAY THE SAME ROW, and this is the assertion that was missing when
+        # it mattered. A first attempt at reading cd82's bar latched onto row 63 on the
+        # opening board and then onto row 16 -- a static strip of board furniture drawn in
+        # the same two colours -- for every read after it, reporting a FROZEN 18/64 for the
+        # rest of the level. Every check above passed: a constant is monotone, and 18 is
+        # less than 64, so it "drained". A frozen number is worse than no number, because
+        # it looks like a reading. The bar does not move between frames; if the row does,
+        # we are reading two different things and calling them one.
+        rows = [r.get("row") for r in confirmed if r.get("row") is not None]
+        settled = len(set(rows)) <= 1 and (not rows or rows[0] == opening.get("row"))
+        print(f"  {'PASS' if settled else 'FAIL'}  {game}: reads the SAME row throughout "
+              f"(opening {opening.get('row')}, then {sorted(set(rows))})")
+        ok = ok and settled
+
+        # And it must not sit still while actions are being spent, which is the other half
+        # of the same bug: a reading that never changes is not tracking anything.
+        varied = len(set(lefts)) > 1
+        print(f"  {'PASS' if varied else 'FAIL'}  {game}: the reading actually CHANGES "
+              f"while spending ({lefts[0]} ... {lefts[-1]})")
+        ok = ok and varied
     else:
         print(f"  FAIL  {game}: confirmed reads carried no remaining count")
         ok = False

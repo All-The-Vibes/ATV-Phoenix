@@ -406,6 +406,7 @@ class Env:
         # its two segments is the remaining one, and guessing the direction would be the
         # same kind of invention this harness exists to remove.
         self._bar_colour = None
+        self._bar_row = None
         # The colour an EMPTY pad draws in, learned at level start when every piece is
         # still loose. A per-level property like the bar's length, so it is cleared on a
         # level change rather than carried over.
@@ -484,6 +485,7 @@ class Env:
             # read of the new bar answer with the wrong segment. The same applies to the
             # colour an empty pad draws in.
             self._bar_colour = None
+            self._bar_row = None
             self._empty_pad_colour = None
             self._pad_boxes = None
             self._tray_boxes = None
@@ -520,6 +522,7 @@ class Env:
                 self._alive = False
                 self._frame = self._env.reset()
                 self._bar_colour = None
+                self._bar_row = None
                 # The board has just been rebuilt underneath whatever code is running.
                 # Letting the loop continue is the same silent corruption `LevelCleared`
                 # exists to prevent: every remaining hypothesis in the batch would be
@@ -601,9 +604,14 @@ class Env:
         for the measurement. Reading it before planning a turn is what turns "how many
         hypotheses can I test" from a guess into arithmetic.
         """
-        state = frame_budget(self.grid(), self._bar_colour)
+        state = frame_budget(self.grid(), self._bar_colour, self._bar_row)
         if state.get("confirmed") and state.get("full_colour") is not None:
             self._bar_colour = state["full_colour"]
+            # The bar's ROW is remembered as well as its colour. Measured on cd82: a static
+            # strip of board furniture drawn in the same two colours as the bar was equally
+            # "exclusive", won the tie on the lower row index, and made clock() report a
+            # frozen 18/64 for the rest of the level. A frozen number is worse than none.
+            self._bar_row = state.get("row")
         return state
 
     def grid(self):

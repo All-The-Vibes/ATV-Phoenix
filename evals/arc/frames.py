@@ -42,7 +42,7 @@ def _inside(inner, outer):
     )
 
 
-def budget(grid, full_colour=None):
+def budget(grid, full_colour=None, row=None):
     """The bar the board draws for your remaining moves: cells left, used and total.
 
     `mechanics.json` used to call this bar a TIMER that drains "as ticks pass", and told
@@ -91,16 +91,48 @@ def budget(grid, full_colour=None):
     two-segment row CONTAINING that colour, background or not. The strict exclusivity pass
     still runs first and still wins, which leaves sb26's reading byte-identical; this only
     answers where the strict pass finds nothing at all.
+
+    AND THE ROW IS REMEMBERED, because that second pass is not selective enough on its own.
+    Measured on cd82: the bar is row 63 and drains 64, 63, 62, 61 as actions are spent, but
+    row 16 is a static piece of board furniture drawn in the same two colours, so it is
+    equally "exclusive" and, being the lower index, won the tie. `clock()` then reported a
+    frozen 18/64 forever -- worse than the blindness it replaced, because a frozen number
+    looks like a reading. A bar does not move between frames, so the caller hands back the
+    row it was found on and it is read directly, with the searches below as the fallback.
     """
     h, w = grid.shape
     counts: dict[int, int] = {}
-    for row in grid:
-        for value in row.tolist():
+    for line in grid:
+        for value in line.tolist():
             counts[value] = counts.get(value, 0) + 1
     background = max(counts, key=counts.get)
 
     unknown = {"row": None, "left": None, "used": None, "total": None,
                "fraction": None, "full_colour": full_colour, "confirmed": False}
+
+    def read(y, cells):
+        seen = set(cells)
+        if len(seen) == 1:
+            return {"row": y, "left": w, "used": 0, "total": w, "fraction": 1.0,
+                    "full_colour": cells[0], "confirmed": True}
+        if full_colour is None or full_colour not in seen:
+            a, b = cells[0], cells[-1]
+            return {**unknown, "row": y, "total": w,
+                    "segments": {a: cells.count(a), b: cells.count(b)}}
+        left = cells.count(full_colour)
+        return {"row": y, "left": left, "used": w - left, "total": w,
+                "fraction": round(left / w, 3), "full_colour": full_colour,
+                "confirmed": True}
+
+    # The known bar, read where it was last seen. Still validated as bar-shaped, so a board
+    # that redraws that row into something else falls through to the searches instead of
+    # reporting nonsense from a stale coordinate.
+    if row is not None and 0 <= row < h:
+        cells = grid[row].tolist()
+        seen = set(cells)
+        runs = 1 + sum(1 for a, b in zip(cells, cells[1:]) if a != b)
+        if 1 <= len(seen) <= 2 and runs <= 2 and (full_colour is None or full_colour in seen):
+            return read(row, cells)
 
     # More than one row can look like a bar. On sb26 row 0 is a full-width two-colour
     # band of ordinary board colours, and on the stale frame served at a level boundary
@@ -111,18 +143,18 @@ def budget(grid, full_colour=None):
     def scan(allow_background: bool, must_contain=None):
         found = []
         for y in range(h):
-            row = grid[y].tolist()
-            seen = set(row)
+            cells = grid[y].tolist()
+            seen = set(cells)
             if not 1 <= len(seen) <= 2:
                 continue
             if must_contain is not None and must_contain not in seen:
                 continue
             if background in seen and not allow_background:
                 continue
-            if 1 + sum(1 for a, b in zip(row, row[1:]) if a != b) > 2:
+            if 1 + sum(1 for a, b in zip(cells, cells[1:]) if a != b) > 2:
                 continue
             elsewhere = sum(counts[c] for c in seen) - w
-            found.append((elsewhere, y, row, seen))
+            found.append((elsewhere, y, cells))
         return found
 
     candidates = scan(allow_background=False)
@@ -134,22 +166,8 @@ def budget(grid, full_colour=None):
     if not candidates:
         return unknown
 
-    _, y, row, seen = min(candidates)
-
-    if len(seen) == 1:
-        colour = row[0]
-        return {"row": y, "left": w, "used": 0, "total": w, "fraction": 1.0,
-                "full_colour": colour, "confirmed": True}
-
-    if full_colour is None or full_colour not in seen:
-        a, b = row[0], row[-1]
-        return {**unknown, "row": y, "total": w,
-                "segments": {a: row.count(a), b: row.count(b)}}
-
-    left = row.count(full_colour)
-    return {"row": y, "left": left, "used": w - left, "total": w,
-            "fraction": round(left / w, 3), "full_colour": full_colour,
-            "confirmed": True}
+    _, y, cells = min(candidates)
+    return read(y, cells)
 
 
 def parse(grid, strict=False):
