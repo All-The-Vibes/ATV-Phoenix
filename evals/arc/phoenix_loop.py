@@ -62,6 +62,10 @@ class PhoenixLoop:
         """Is this claim proven failure-first? The agent's `phoenix_accept`."""
         return self.store.accept(claim)
 
+    def keep(self, claim: str) -> dict:
+        """Carry this claim across level boundaries: it describes the game, not the board."""
+        return self.store.keep(claim)
+
     def established(self) -> list[str]:
         return self.store.established()
 

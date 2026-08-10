@@ -176,6 +176,19 @@ API available to your code:
                            drop it", acted on both, and re-derived the same two dead
                            theories four and six times. A memory that only grows
                            accumulates contradictions, not knowledge.
+    mechanic(text)      -> record a RULE OF THE GAME. Notes die at the level boundary;
+                           mechanics do not. The test is "would this still be true if the
+                           board were redrawn?" -- "the exit is top-right" is a note,
+                           "obstacles reflect particles" and "action 3 moves you north"
+                           are mechanics. Costs nothing, and it is the difference between
+                           carrying the physics to level 2 and buying it again with
+                           actions you are scored on. Measured: one run had 59 beliefs
+                           retired at a level change, physics among them, and then spent
+                           1,044 of its 1,055 actions on the level that followed.
+                           Pass claim="..." to keep its sense() evidence too.
+    unmechanic(n, because) -> drop a supposed rule. A mechanic is the one belief no level
+                           change ever clears out from under you, so after a death or a
+                           long stall these are the FIRST things to doubt.
     sense(claim, ok)    -> record one trial of a belief. FREE.
     accept(claim)       -> {'ok': bool, 'reason': str}: is that belief actually proven?
     propose(rule)       -> test a rule against EVERY level you have already cleared. FREE.
@@ -376,6 +389,11 @@ class Env:
         self.best = 0
         self.notes: list[str] = []
         self.level_notes: list[str] = []
+        #: Rules of the game rather than facts about a board: these survive every level
+        #: change. Per run only -- see `mechanic` for why this is never persisted.
+        self.mechanics_learned: list[str] = []
+        #: Set by the caller so `mechanic(claim=...)` can mark the belief durable too.
+        self._keep = lambda claim: {"ok": False, "why": "no belief store attached"}
         # How many actions each life has lasted, and where the current one began.
         self.lives: list[int] = []
         self._life_mark = 0
@@ -928,6 +946,60 @@ class Env:
         ys, xs = np.where(self.grid() == int(colour))
         return list(zip(ys.tolist(), xs.tolist()))
 
+    def mechanic(self, text, claim=None):
+        """Record a rule of the GAME, which survives the level boundary.
+
+        The level reset is correct about boards and wrong about physics. Measured on
+        su15: at one level change the agent was told it had "retired 59 belief(s) earned
+        on the previous board; they must be re-earned here" -- and among those 59 was
+        "a black obstacle on a particle's predicted northwest cell reflects that
+        particle". That is not a fact about level 1's layout. It is how the game works,
+        it was true on every board, and re-earning it costs ACTIONS, which are the one
+        thing RHAE squares. That run spent 1,044 of its 1,055 actions on a single level.
+
+        So there are two memories now, and the split is the question "would this still be
+        true if the board were redrawn?":
+
+          note()     -- this obstacle sits at (14,7); the exit is top-right     (dies)
+          mechanic() -- obstacles reflect particles; action 3 moves you north  (lives)
+
+        Guessing wrong is cheap in one direction only, so the default stays `note`: a
+        forgotten law costs a re-derivation, a wrong law kept forever costs the run.
+        `unmechanic(n, because=...)` exists for exactly that, and a death or a stall
+        should make you suspect these first, since they are the beliefs no level change
+        has ever cleared out from under you.
+
+        Pass `claim=` to also mark the matching Phoenix belief durable, so its EVIDENCE
+        crosses the boundary with it rather than the bare sentence.
+
+        This is per-run memory and is never written to `mechanics.json`. Learning inside
+        a run is the agent playing; a file that grows between runs is the harness feeding
+        the agent answers, which would make every later score dishonest.
+        """
+        entry = str(text)[:200]
+        if entry in self.mechanics_learned:
+            return {"ok": False, "why": "already recorded", "n": self.mechanics_learned.index(entry) + 1}
+        self.mechanics_learned.append(entry)
+        out = {"ok": True, "n": len(self.mechanics_learned)}
+        if claim:
+            out["belief"] = self._keep(str(claim))
+        return out
+
+    def unmechanic(self, number, because=""):
+        """Drop a supposed rule of the game. See `mechanic` for why this must exist."""
+        try:
+            index = int(number) - 1
+        except (TypeError, ValueError):
+            return {"ok": False, "why": f"mechanic numbers are integers, got {number!r}"}
+        if not 0 <= index < len(self.mechanics_learned):
+            return {"ok": False,
+                    "why": f"no mechanic {number}; {len(self.mechanics_learned)} recorded"}
+        dead = self.mechanics_learned.pop(index)
+        reason = str(because)[:160] or "no evidence given"
+        self.retracted.append(f"GAME RULE: {dead[:110]}  -- DISPROVED: {reason}")
+        return {"ok": True, "retracted": dead, "because": reason,
+                "remaining": len(self.mechanics_learned)}
+
     def note(self, text):
         """Record a fact worth carrying. Kept per level, not per run.
 
@@ -1197,6 +1269,9 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
     # and accept() on its own beliefs while it plays, so a theory it has never tried to
     # break is reported back to it as unproven instead of being quietly trusted.
     phoenix = PhoenixLoop(scope=("level", env.best))
+    # `mechanic(text, claim=...)` marks the matching belief durable, so the EVIDENCE for
+    # a law crosses the level boundary with the sentence rather than only the sentence.
+    env._keep = phoenix.keep
 
     # The agent's deliverable is a RULE, and this is what makes that true. Every level it
     # clears is kept with the board and the order that worked, and a proposed rule is
@@ -1227,6 +1302,7 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
         "press": env.press, "click": env.click, "look": env.look, "grid": env.grid,
         "alive": env.alive, "levels": env.levels, "reset": env.reset,
         "find": env.find, "note": env.note, "retract": env.retract, "np": np,
+        "mechanic": env.mechanic, "unmechanic": env.unmechanic,
         "clock": env.clock,
         "seated": env.seated,
         "seated_variants": env.seated_variants,
@@ -1245,8 +1321,7 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
         # `layout()` stays: it splits the board by shape alone and is perception, not an
         # answer. Discovery of the clue grammar has to be the agent's own work.
         "sense": phoenix.observe,
-        "accept": phoenix.accept,
-        "propose": propose,
+        "accept": phoenix.accept,        "propose": propose,
         "refuted": refuted,
         "ACTIONS": list(env.actions),
     }
@@ -1292,7 +1367,14 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
             """
             earlier = [n for n in env.notes[:-len(env.level_notes)]
                        if env.level_notes] or env.notes
-            lines = [f"- {n}" for n in earlier[-8:]]
+            lines = []
+            if env.mechanics_learned:
+                lines.append(f"--- HOW THIS GAME WORKS ({len(env.mechanics_learned)}, "
+                             f"survives every level; unmechanic(n, because=...) to drop "
+                             f"one) ---")
+                lines += [f"({i + 1}) {m}" for i, m in enumerate(env.mechanics_learned)]
+                lines.append("--- facts about earlier boards ---")
+            lines += [f"- {n}" for n in earlier[-8:]]
             if env.level_notes:
                 lines.append(f"--- this level ({len(env.level_notes)} notes, "
                              f"retract(n) to retire one) ---")
@@ -1311,11 +1393,23 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
         # Beliefs are scoped to the level and retired when it advances (issue #181).
         # Without this, level-1 facts stayed marked PROVEN on level 2 and the agent spent
         # a 2,075-action turn defending them against a board where they were false.
+        #
+        # THE OLD WORDING THEN MADE THE OPPOSITE MISTAKE. It said the retired beliefs
+        # "must be re-earned here", which is true of a board fact and ruinous advice
+        # about a law: measured on su15, one level boundary retired 59 beliefs including
+        # "a black obstacle on a particle's predicted northwest cell reflects that
+        # particle", and re-earning physics is paid for in the currency RHAE squares.
+        # That run then spent 1,044 of 1,055 actions on the single level after it. So the
+        # message now separates the two and says which one is free.
         retired = phoenix.enter(("level", env.best))
         if retired:
             env.note(
-                f"level {env.best + 1}: retired {len(retired)} belief(s) earned on the "
-                f"previous board; they must be re-earned here: {', '.join(retired)}"
+                f"level {env.best + 1}: retired {len(retired)} belief(s) that were only "
+                f"tested on the previous board. Any of these that is a RULE OF THE GAME "
+                f"rather than a fact about that board is still true here -- re-assert it "
+                f"with mechanic(text) and it will never be retired again. That costs no "
+                f"actions. Only the board-specific ones need re-earning: "
+                f"{', '.join(retired)}"
             )
             notes = current_notes()
 
@@ -1373,6 +1467,11 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
                 "spend another action, find the note that is wrong and retract(n, "
                 "because=...) it. If you are unsure which, retract the one you were acting "
                 "on when you died: a wrong disproof is cheap and a repeated death is not.\n"
+                + ("Check the HOW THIS GAME WORKS list first. Those are the beliefs no "
+                   "level change has ever cleared out from under you, so a rule that was "
+                   "only ever true of one board can survive there indefinitely and steer "
+                   "every plan you make. unmechanic(n, because=...) drops one.\n"
+                   if env.mechanics_learned else "")
             )
         elif stalled >= 6 and env.level_notes:
             # BEING STUCK IS THE COMMON FAILURE, AND IT USED TO TRIGGER NOTHING. The
@@ -1634,6 +1733,7 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
                     "code": code,
                     "output": last_output[-1500:],
                     "notes": env.notes[-8:],
+                    "mechanics": list(env.mechanics_learned),
                 }) + "\n")
 
         print(

@@ -51,6 +51,13 @@ class Belief:
     claim: str
     scope: object = None
     trials: list[Observation] = field(default_factory=list)
+    #: Survives `enter`. Scoping is right for a claim ABOUT a world and wrong for a claim
+    #: about the LAWS that generate worlds: "this obstacle sits at (14,7)" dies with the
+    #: level, "an obstacle reflects a particle" does not. Retiring both cost a measured
+    #: 59 beliefs at one ARC level boundary, physics included, and the agent then had to
+    #: buy the physics back with actions it is scored on. Off by default, because the
+    #: safe error is forgetting a law, not trusting a dead fact.
+    durable: bool = False
 
     @property
     def red(self) -> int:
@@ -130,14 +137,34 @@ class BeliefStore:
 
         Returns the claims that were dropped, so the caller can say plainly what it just
         stopped believing instead of carrying it forward unannounced.
+
+        Beliefs marked `durable` are carried over. That is not an exemption from the
+        gate -- a durable claim still has to pass `accept`, and it can still be refuted
+        by the next observation. It only says the claim is about the rules rather than
+        about the room, so a change of room is not itself evidence against it.
         """
         if scope == self.scope:
             return []
-        dropped = sorted(self.beliefs)
-        self.retired.extend(self.beliefs.values())
-        self.beliefs = {}
+        dropped = sorted(c for c, b in self.beliefs.items() if not b.durable)
+        self.retired.extend(self.beliefs[c] for c in dropped)
+        for claim in dropped:
+            del self.beliefs[claim]
+        for belief in self.beliefs.values():
+            belief.scope = scope
         self.scope = scope
         return dropped
+
+    def keep(self, claim: str) -> dict:
+        """Mark an existing belief as a law of the world rather than a fact about it.
+
+        Refuses a claim it has never seen, because the point is to preserve EVIDENCE
+        across a boundary and there is none to preserve for a claim nobody tested.
+        """
+        belief = self.beliefs.get(claim)
+        if belief is None:
+            return {"ok": False, "why": "never observed; sense() it before keeping it"}
+        belief.durable = True
+        return {"ok": True, "claim": claim, "verdict": self.accept(claim)}
 
     def observe(self, claim: str, ok: bool, seed: int | None = None, note: str = "") -> Belief:
         belief = self.beliefs.setdefault(claim, Belief(claim=claim, scope=self.scope))
