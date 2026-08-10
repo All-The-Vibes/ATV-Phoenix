@@ -348,3 +348,84 @@ answers confidently outside the conditions it was written for. The ladder was si
 one run had an endpoint to itself, and it kept returning a verdict — "the agent stopped
 improving" — long after that assumption stopped holding. The failure mode of this harness
 is never silence. It is a confident wrong answer.
+
+---
+
+## Gap 13 — the only memory that outlives a level was reachable only by a run that had already won
+
+`mechanic()` is the one belief that survives a level boundary, and its implementation was
+never wrong: it appends on the strength of the call. What was missing is that nothing told
+the agent WHEN to call it. So the agent invented a rule, and the rule it invented was
+fatal in a specific way.
+
+**Measured across every trace on disk:** 249 writes attempted, **190 of them placed under
+`if levels() > start:`**, and **217 placed after a `press()` or `click()`** in the same
+turn.
+
+**Gating on a level clear is a deadlock.** On a game you are losing, no turn clears a
+level, so no rule is ever kept — and that is precisely the game whose rules you need to
+keep. su15 attempted 84 writes, cleared nothing while making them, and stored none. bp35
+attempted 17, stored none, and spent the run proposing six mutually contradictory theories
+of the same game — "the course auto-scrolls", "a vertically scrolling white corridor", "an
+auto-bouncing platform climber" — because it re-derived what the game was every turn and
+nothing it concluded outlived the turn that concluded it. Even lp85, running four times
+faster than the human baseline, had stored nothing.
+
+**Writing after an action loses the write to the raise.** A death raises at the action
+that caused it, so a conclusion written at the bottom of the turn never runs: the lesson
+the death just taught is the one lesson never saved.
+
+**Fixed:** both habits are the agent filling a silence in the documentation, so both fixes
+are text. The API entry now says to record from the observation — a level clear is not the
+evidence for "action 3 moves left"; the movement diff already printed is — and to write
+above the actions rather than below them. The death message names the discarded write, but
+only when the symptom is present: an empty mechanics list after repeated deaths. Advice
+printed on every death is advice learned to skip.
+
+**Pinned by:** `python -m evals.arc.mechanic_check`, which reads the LIVE prompt text
+bounded at the next API entry rather than a character radius. Its five original checks
+passed green throughout the entire period the feature was dead, because they pin what
+happens once the call runs — and the call was never reached. A test can be perfectly
+correct about a mechanism nobody can get to.
+
+---
+
+## Gap 14 — the move bar was findable all along; nothing in the harness ever looked
+
+`frames.budget` finds a bar-shaped row unaided — full width, at most two colours, at most
+two runs — but a partly-drained bar has two segments, and one frame cannot say which is
+the budget that remains. It correctly refuses to guess, and asks the caller to hand back
+the colour the row showed while the bar was full.
+
+**The caller is the agent.** So the whole mechanism sat behind the agent's own curiosity,
+and on the games that need it most the agent is never curious. Measured on bp35:
+thirty-seven turns, sixteen deaths, and **not one call to `clock()` in the entire run**.
+Nothing was handed back, nothing was identified, and every death notice told it **"this
+game DRAWS NO MOVE BAR"** — while row 63 was draining 63 → 43 → 38 → 29 in the object
+dumps the agent had printed itself.
+
+That sentence is the defect. "I could not read this" was rendered as "there is nothing
+here to read", and the eight games we had recorded as bar-less were never confirmed to be
+bar-less; they were confirmed to have agents who never asked.
+
+**Fixed:** `_learn_bar_direction` runs off the changed-frame branch of `_step` rather than
+off `clock()`, because the game this fixes is precisely the one whose agent never calls
+`clock()`. A pristine bar is a single full-width run and is unambiguous on sight — bp35
+opens exactly that way, so frame one always held the answer. Once drained, two frames
+settle it by **conservation**: a bar keeps its width, so a cell leaving one segment
+arrives in the other. Two-toned board furniture does not balance, and a row that never
+moves is never named — the frozen 18/64 failure `cdd1f2a` fixed for the death path, now
+prevented by construction instead of by a cache. Two rows draining at once is refused
+rather than resolved by picking one.
+
+**Pinned by:** `python -m evals.arc.barwatch_check`, on bp35's real geometry taken from
+its trace, including the refill trap: the bar refills on death and reset, so a comparison
+across a rebuild shows the remaining segment growing and names the spent colour as the
+budget — a confident reading of exactly the wrong half.
+
+**The shape, a fourth time.** An instrument that is honest about its own uncertainty, and
+a harness that translates that honesty into a claim about the world on the agent's behalf.
+`budget()` never lied; it returned `confirmed: False`. The death message is what turned
+that into "no bar exists". The failure mode of this harness is never silence — it is a
+confident wrong answer, and it is usually produced one layer above the component that was
+being careful.
