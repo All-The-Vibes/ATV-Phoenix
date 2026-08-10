@@ -114,6 +114,81 @@ def check_the_agent_facing_split() -> None:
     print("  mechanic() lives, note() dies, both droppable OK")
 
 
+def check_the_doc_says_when_to_write() -> None:
+    """Storing correctly is worthless if the agent never reaches the call.
+
+    Every check above pins what happens once `mechanic()` runs, and all of them
+    were green while the feature was, in practice, dead. Measured across every
+    trace on disk: 249 writes attempted, 190 placed under `if levels() > start:`
+    and 217 placed after a press() or click() in the same turn.
+
+    Gating on a level clear is a deadlock -- on a game you are losing no turn
+    clears a level, so no rule is ever kept, and that is exactly the game whose
+    rules you need. One run attempted 84 writes, cleared nothing while making
+    them, and stored none; bp35 attempted 17, stored none, and spent the run
+    proposing six contradictory theories of the same game.
+
+    The doc said what a mechanic IS and never said when to record one, so the
+    agent invented a rule and the rule it invented was fatal. This pins the
+    live prompt text rather than a copy, for the reason congestion_check.py
+    gives: the thing that rotted was prose, and a transcription of prose inside
+    a test stays green while the original decays.
+    """
+    import re
+
+    from evals.arc.codeact_agent import SYSTEM
+
+    assert "mechanic(text)" in SYSTEM, "the API block no longer documents mechanic(text)"
+    start = SYSTEM.index("mechanic(text)")
+    # Bound the window at the next entry rather than a character count, so the
+    # check reads exactly the paragraph the agent reads and cannot start passing
+    # because some unrelated line drifted inside an arbitrary radius.
+    end = SYSTEM.index("unmechanic(", start)
+    entry = SYSTEM[start:end]
+
+    required = {
+        "that the write must precede the action": r"BEFORE you spend|ABOVE the actions",
+        "that gating on a level clear is the trap": r"levels\(\)\s*>\s*start",
+        "what gating cost": r"\b190\b",
+        "what writing after an action cost": r"\b217\b",
+        "that the observation is the evidence": r"movement diff|from the observation",
+    }
+    for what, pattern in required.items():
+        assert re.search(pattern, entry), f"the mechanic() doc no longer says {what}"
+    print("  the doc says WHEN to write, not just what     OK")
+
+
+def check_death_names_the_write_it_just_destroyed() -> None:
+    """A death raises at the killing action; everything below it is discarded.
+
+    So a conclusion written at the bottom of a turn -- which is where 217 of 249
+    of them were written -- is destroyed by the very event that taught it. The
+    death message is the one place the agent is certain to read at that moment,
+    so it must say so there, and only when the symptom is present: an agent that
+    is recording correctly does not need the paragraph, and advice printed on
+    every death is advice learned to skip.
+    """
+    import inspect
+    import re
+
+    from evals.arc.codeact_agent import Env
+
+    src = inspect.getsource(Env._step)
+    assert "NEVER RAN" in src, "the death message no longer names the discarded write"
+
+    guard = re.search(
+        r"if\s+self\.mechanics_learned\s*==\s*\[\]\s*and\s+self\.deaths\s*>=\s*(\d+)", src
+    )
+    assert guard, (
+        "the warning is no longer conditioned on an empty mechanics list plus "
+        "repeated deaths -- unconditional, it is noise on runs already doing it right"
+    )
+    assert int(guard.group(1)) >= 2, (
+        "the warning fires on the first death, before the pattern it describes exists"
+    )
+    print("  death names the lesson it just discarded      OK")
+
+
 if __name__ == "__main__":
     print("game rules vs board facts:")
     check_board_facts_still_die()
@@ -121,4 +196,6 @@ if __name__ == "__main__":
     check_a_law_is_still_falsifiable()
     check_keep_refuses_an_untested_claim()
     check_the_agent_facing_split()
+    check_the_doc_says_when_to_write()
+    check_death_names_the_write_it_just_destroyed()
     print("all green")

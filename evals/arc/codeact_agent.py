@@ -199,6 +199,20 @@ API available to your code:
                            retired at a level change, physics among them, and then spent
                            1,044 of its 1,055 actions on the level that followed.
                            Pass claim="..." to keep its sense() evidence too.
+                           WRITE IT THE MOMENT YOU SEE IT, and write it BEFORE you spend
+                           the next action. Two habits destroy these, and both were
+                           measured across 249 attempted writes: 190 were placed under
+                           `if levels() > start:`, and 217 were placed after a press or
+                           click in the same turn. The first says a rule may only be
+                           remembered on a turn that clears a level -- so on a game you
+                           are losing it is never remembered at all, which is exactly the
+                           game that needs it: one run attempted 84 writes, cleared no
+                           level while making them, and stored none. The second loses the
+                           write to a death, because a death raises immediately and the
+                           rest of your code never runs -- so the lesson the death just
+                           taught you is the one lesson never saved. A level clear is not
+                           the evidence for "action 3 moves left"; the movement diff you
+                           already printed is. Record from the observation, then act.
     unmechanic(n, because) -> drop a supposed rule. A mechanic is the one belief no level
                            change ever clears out from under you, so after a death or a
                            long stall these are the FIRST things to doubt.
@@ -629,6 +643,15 @@ class Env:
                        "nothing will. The only budget estimate you have is the length "
                        "of the lives you have already lost, which is reported to you "
                        "each turn. Bank progress before you reach it.\n")
+                    + ("THE REST OF THAT TURN'S CODE NEVER RAN. This raise happened at "
+                       "the action that killed you, so every line after it was "
+                       "discarded -- including any note() or mechanic() you had written "
+                       "at the bottom to record what the experiment showed. Measured "
+                       "across 249 attempted mechanic writes, 217 sat after an action "
+                       "and were lost this way whenever the turn died. Put the write "
+                       "ABOVE the actions it is based on, so a death costs you the "
+                       "actions and not the lesson as well.\n"
+                       if self.mechanics_learned == [] and self.deaths >= 2 else "")
                 )
         return changed
 
