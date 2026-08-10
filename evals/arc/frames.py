@@ -126,7 +126,7 @@ def budget(grid, full_colour=None):
             "confirmed": True}
 
 
-def parse(grid):
+def parse(grid, strict=False):
     """Split the board into clues, tray pieces, pads, frames and markers.
 
     Everything is derived from shape and repetition, never from a colour constant or a
@@ -135,7 +135,9 @@ def parse(grid):
 
     Returns None on a board this cannot describe. That includes the BLANK board the game
     draws once the last level is cleared: it has no rows to unpack, and raising there
-    turned finishing the game into a traceback on the very turn that finished it.
+    turned finishing the game into a traceback on the very turn that finished it. It also
+    includes boards whose piece and pad counts are incoherent, and -- when `strict` is set
+    -- any board that is not this parser's shape at all. See the note above the return.
     """
     import numpy as _np
 
@@ -216,7 +218,41 @@ def parse(grid):
     # simpler and it is always drawn: a child frame is placed under the parent pad it
     # follows, so its horizontal centre IS its insertion point. `traverse` uses that
     # and needs no marker.
+    # WHAT THIS DESCRIPTION IS WORTH, stated rather than assumed. This parser was written
+    # for one shape: a tray of pieces, one per pad, and a clue row addressing them.
+    # Measured across the 25 public ARC-AGI-3 games (`corpus_survey.py`), that shape holds
+    # on exactly ONE of them -- sb26. On the other 24 the code above still returns a
+    # layout, and it is nonsense: tu93 comes back with 62 pads and no tray, dc22 with 13
+    # pads and no tray, tn36 with a 1x27 clue row.
+    #
+    # Confident nonsense is worse than nothing. Every rule here assumes one tray piece per
+    # pad, so a caller handed a bogus layout plans against a board that does not exist, and
+    # the agent then looks like it is reasoning badly while reasoning correctly about a
+    # false picture -- Gap 7 in HARNESS_GAPS.md, the expensive lesson of this repo.
+    #
+    # Two different things are needed, so they are separated rather than conflated:
+    #
+    #   `well_formed` is the PRISTINE signature, one tray piece per pad. It is True on an
+    #   untouched sb26 board and False on the other 24 games' opening boards. It is also
+    #   False on a half-played sb26 board, which is correct and not a complaint: the tray
+    #   really has emptied. Ask it of an opening frame to decide whether this abstraction
+    #   describes the game at all.
+    #
+    #   `strict=True` turns that same question into a refusal, for callers that would
+    #   rather have None than something they must remember to check. It is off by default
+    #   because `seated()` and the executor parse MID-LEVEL, where an emptied tray is the
+    #   normal, healthy state, and refusing there would break the game we can already win.
+    #
+    # More tray pieces than pads is incoherent under any reading, so that is refused
+    # unconditionally.
+    if not pads or len(tray) > len(pads):
+        return None
+    well_formed = bool(tray) and len(tray) == len(pads)
+    if strict and not well_formed:
+        return None
+
     return {"frames": frames, "pads": pads, "clues": clues, "tray": tray,
+            "well_formed": well_formed,
             "clue_structure": _clue_structure(clues, len(pads))}
 
 

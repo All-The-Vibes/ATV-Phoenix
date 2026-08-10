@@ -3,6 +3,11 @@
 Read this file in full before you touch anything. It is the complete context for the
 goal you were given. Every fact here was measured, not assumed.
 
+**This file is about ONE game, sb26, and that game is finished 8/8. The benchmark is 25
+games and 183 levels, and the target to beat is Prime Agent at 95.5% RHAE. That is
+`CORPUS_MISSION.md`, and it is the live mission. Read this one for how the harness was
+built and what it cost; read that one for what to do next.**
+
 ## The mission
 
 Phoenix + gpt-5.6-sol beats ARC-AGI-3 on game sb26, all 8 levels.
