@@ -388,3 +388,55 @@ cheaply.
   other 24 games is perception-layer measurement, not gameplay. The first honest corpus
   number will come from running the agent on games it has never seen, and it should be
   expected to be bad.
+
+---
+
+## Standings, measured (not remembered)
+
+Run `python -m evals.arc.standings`. It scores the BEST scorable run per game with
+the official scorer and rolls the corpus up the official way.
+
+| | |
+|---|---|
+| corpus RHAE | **10.08%** |
+| games with a level cleared | **12 of 25** |
+| levels cleared | **39 of 183** |
+| Prime Agent | 95.50% |
+| gap | **85.42 points** |
+
+| game | levels | actions | human | RHAE |
+|---|---|---|---|---|
+| sb26 | 7/8 | 325 | 213 | **73.74%** |
+| cd82 | 6/6 | 394 | 171 | **61.68%** |
+| ft09 | 6/6 | 809 | 208 | **48.18%** |
+| lp85 | 5/8 | 394 | 388 | 38.02% |
+| vc33 | 3/7 | 457 | 447 | 14.80% |
+| sc25 | 3/6 | 846 | 350 | 10.20% |
+| su15 | 3/9 | 718 | 361 | 3.60% |
+| r11l | 1/6 | 690 | 233 | 1.60% |
+| sp80 · tu93 · tr87 · tn36 | 1–2 | — | — | ≤0.04% |
+| 13 others | 0 | — | — | 0.00% |
+
+**Completing more is not the same as scoring more.** sb26's best run is the **7/8 at
+73.74%**, not the 8/8 at 71.48%: level 8 cost 56 actions against a human 18, and
+efficiency is squared, so the eighth level added less to the numerator than the
+inefficiency of buying it removed. The scoreboard is the arbiter, not the level count —
+and because `EnvironmentScoreList.score` returns `max(...)`, a game is worth its best run
+and a worse run can never hurt it.
+
+**Where the gap actually is.** A perfect game is worth 4.00% of the corpus, so perfecting
+the three that work cannot close 85 points. **Thirteen games have never cleared a single
+level.** The corpus is won on breadth first and efficiency second.
+
+**What separates the games we win from the games we lose is deaths.** sb26, cd82 and ft09
+finished with 3, 1 and 4 deaths. bp35 died 20 times and cleared nothing; r11l 20, sc25 16,
+su15 15. The failure class is reactive games where a life ends without warning — which is
+exactly what Gap 14 was about, and why the bar watcher is the intervention aimed at the
+thirteen zeroes rather than at the three winners.
+
+**Concurrency is not throughput.** The endpoint's tokens-per-minute is fixed, so six
+concurrent runs split one allowance: measured, vc33 sat at backoff attempt 11 of 40 having
+lost 22 minutes, while bp35 (0/9, 20 deaths) and ka59 (1/7 at 1,126 actions against a
+human 730) burned quota for a score that could not exceed zero. Stopping those two
+restarted the other four within minutes. Under max-of-runs a hopeless run has no option
+value, so quota spent on it is quota taken from a run that can still score.
