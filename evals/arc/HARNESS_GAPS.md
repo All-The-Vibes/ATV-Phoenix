@@ -212,3 +212,41 @@ budget, or out of turns.
 
 Runs now stamp `stopped` as won / patience / action_cap / max_turns, with `turns_used`.
 Check that field before reading any unfinished result as a limit of the agent.
+
+## Gap 10: the only free move in the game, documented as the worst one
+
+The API block handed to every agent described the reset primitive in four words:
+
+    reset()             -> restart from level 1.
+
+Both halves are false, and the harness had the evidence to know it. Two counters exist on
+the ARC scorecard, `inc_action_count` and `inc_reset_count`, and `update_scorecard`
+dispatches between them on the id of the action taken: id 0 is RESET and routes to the
+reset counter, ids 1-7 route to the action counter. RHAE divides by the action count.
+**A reset does not enter the number the score is computed from.** And every death in this
+harness calls the same `_env.reset()` the agent's `reset()` calls -- so if reset restarted
+the game, a run that died would reappear on level 1. Across 59 recorded traces the level
+count never once fell. It restarts the CURRENT level and keeps every level already
+cleared.
+
+So the agent was told that the only free move available to it would throw away the entire
+run. It behaved accordingly: **8 of 61 traces ever called `reset()` at all**, and six of
+those eight are cd82 -- one of the three games we have beaten. On the other fifty-three
+runs the agent paid actions to walk a board backwards by hand, and under a squared
+penalty every one of those actions was charged twice.
+
+The correction has to carry the caveat or it replaces one error with another: a reset
+buys back the BOARD, never the BUDGET. Actions already spent on the level stay spent and
+stay counted. The rule that follows is arithmetic, not judgement -- reset when undoing by
+hand would cost more actions than replaying from pristine.
+
+The death message had the same shape of defect and is fixed alongside it. It stated *"The
+move-bar ran out"* to every game, including the eight that draw no bar, and advised
+calling `clock()`, which on those games honestly returns nothing. It now reports the
+measured lifespan, says plainly that the restart was free and the spent actions were not,
+and branches on whether this game actually draws a bar.
+
+**The transferable lesson**: an instrument that misdescribes a capability is worse than a
+missing one. A missing primitive gets rediscovered; a primitive documented as
+catastrophic gets avoided forever, and nothing in the trace ever says why. Pinned by
+`python -m evals.arc.reset_check`.

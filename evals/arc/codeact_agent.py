@@ -106,7 +106,20 @@ API available to your code:
     grid()              -> current board as a 64x64 numpy int array.
     alive()             -> False if the last action ended the game (you were reset).
     levels()            -> levels completed so far.
-    reset()             -> restart from level 1.
+    reset()             -> put the CURRENT level back to pristine. Levels you have
+                           already cleared STAY cleared; you do not go back to level 1.
+                           COSTS NO ACTION: the scorecard counts a reset as a reset, not
+                           as an action, so it never enters the number your score divides
+                           by. It is the only free move in the game.
+                           IT DOES NOT REFUND. Actions you already spent on this level
+                           are still spent and still counted. Reset buys back the BOARD,
+                           never the budget.
+                           So use it exactly when undoing by hand would cost more actions
+                           than replaying from pristine: a placement you cannot take back,
+                           a piece pushed somewhere it cannot return from, an experiment
+                           that left the board in a state you can no longer read. Paying
+                           four actions to walk something back to where reset would have
+                           put it for nothing is a straight loss.
     find(colour)        -> list of (y, x) cells of that colour.
     objects()           -> EXACT list of every discrete blob on the board right now:
                            [{colour, cx, cy, x0, x1, y0, y1, px}, ...]. Costs NOTHING.
@@ -549,9 +562,25 @@ class Env:
                 self.lives.append(self.spent - self._life_mark)
                 self._life_mark = self.spent
                 self._alive = False
+                # WHAT KILLED YOU IS A PER-GAME FACT, so read it before the board that
+                # holds the evidence is thrown away. The bar was the answer on sb26 and
+                # the harness then told EVERY game the bar had run out -- including the
+                # eight that draw no bar at all, where it also advised calling clock(),
+                # which on those games honestly returns nothing. That is the same failure
+                # as `parse` describing one game and answering for twenty-four.
+                had_bar = False
+                try:
+                    had_bar = bool((self.clock() or {}).get("confirmed"))
+                except Exception:
+                    # A crash HERE would end a two-hour run over a cosmetic sentence.
+                    # The board being read is the terminal frame, which is the one shape
+                    # frames.budget has never been exercised against.
+                    had_bar = False
+                lifespan = self.lives[-1]
                 self._frame = self._env.reset()
                 self._bar_colour = None
                 self._bar_row = None
+                self._inert = 0
                 # The board has just been rebuilt underneath whatever code is running.
                 # Letting the loop continue is the same silent corruption `LevelCleared`
                 # exists to prevent: every remaining hypothesis in the batch would be
@@ -561,12 +590,26 @@ class Env:
                 # not one of the tests that followed a death could have meant anything.
                 raise Died(
                     f"YOU DIED and level {self._frame.levels_completed + 1} RESTARTED "
-                    f"(death {self.deaths} of this run). The move-bar ran out. The board "
-                    "is now FRESH: every piece you placed is back in the tray and the bar "
-                    "is full again, so nothing your code was mid-way through still holds. "
-                    "The bar is NOT a clock -- it loses one cell per piece DROPPED and one "
-                    "per SUBMIT, and nothing else. Call clock() before you plan: it costs "
-                    "no action and tells you exactly how many attempts this life affords."
+                    f"(death {self.deaths} of this run). That life lasted {lifespan} "
+                    "actions. The board is now PRISTINE, so nothing your code was "
+                    "mid-way through still holds: re-read it before you act again.\n"
+                    "WHAT THIS COST YOU is the "
+                    f"{lifespan} actions, not the restart. A restart is free -- the "
+                    "scorecard counts it as a reset, never as an action -- but every "
+                    "action you spent getting here is still spent and still squared "
+                    "against this level's score. So the loss is the work, and the "
+                    "question to answer before spending more is which belief predicted "
+                    "that this would work.\n"
+                    + ("This game DRAWS A MOVE BAR: clock() reads it, costs no action, "
+                       "and tells you how much of the budget this life affords. It is "
+                       "not a clock -- on the game it was measured on it lost one cell "
+                       "per piece DROPPED and one per SUBMIT, and nothing else. Confirm "
+                       "on THIS game what moves it before you plan around it.\n"
+                       if had_bar else
+                       "This game DRAWS NO MOVE BAR, so clock() cannot warn you and "
+                       "nothing will. The only budget estimate you have is the length "
+                       "of the lives you have already lost, which is reported to you "
+                       "each turn. Bank progress before you reach it.\n")
                 )
         return changed
 
@@ -935,6 +978,16 @@ class Env:
     def reset(self):
         self._frame = self._env.reset()
         self._alive = True
+        # THE BOARD IS PRISTINE AGAIN, SO THE CACHED READINGS OF IT ARE NOT. The death
+        # path already cleared these two; the manual path did not, and the difference
+        # matters now that the prompt tells the agent reset is free and to use it. A
+        # stale bar row survived a rebuild once already and reported a frozen 18/64 --
+        # worse than reporting nothing, because a constant reads as a confident answer.
+        self._bar_colour = None
+        self._bar_row = None
+        # A reset changes the board wholesale. Carrying the inert counter across it would
+        # let a stall the reset just ended fire on the next action.
+        self._inert = 0
         # The click log deliberately SURVIVES a reset. It used to be cleared here, to stop
         # a failed pre-reset attempt being banked as the one that won -- but the log is
         # now split into rounds and the winner is the last complete one, so clearing was
