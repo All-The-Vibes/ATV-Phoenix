@@ -205,12 +205,27 @@ API available to your code:
     sense(claim, ok)    -> record one trial of a belief. FREE.
     accept(claim)       -> {'ok': bool, 'reason': str}: is that belief actually proven?
     propose(rule)       -> test a rule against EVERY level you have already cleared. FREE.
+                           Returns {'ok', 'tested', 'applies', 'passed', 'failed'}.
+                           READ `tested` BEFORE YOU READ `ok`. When `tested` is 0 this
+                           gate examined nothing, and it now says so instead of agreeing
+                           with you: `applies` is False and `ok` is False, and that is
+                           NOT a refutation of your rule. It happens on level 1, before
+                           anything is solved, and permanently on any game whose boards
+                           do not parse into pads and clues -- which is 24 of the 25.
     refuted(order)      -> has this exact placement order already failed here? FREE.
 
-YOUR DELIVERABLE IS A RULE, NOT A SEQUENCE OF CLICKS. Write a function rule(layout) that
-DERIVES the placements from the board it is given, and call propose(rule). It is replayed
-against every level you have already solved, for zero actions, and refused if it only fits
-the board in front of you.
+FIRST, FIND OUT WHICH KIND OF GAME YOU ARE IN, because the paragraph below is true of one
+of the twenty-five and inert on the rest. Call layout() on the fresh board. If
+`well_formed` is True you have a pads-and-clues game and the rule machinery below is your
+main lever. If it is False, that machinery cannot describe your game at all: propose()
+will never test anything, seated_variants()/loose_variants() describe furniture that is
+not there, and objects(), board() and diff() are how you read what IS drawn. Do not spend
+actions trying to make an inert gate turn green.
+
+ON A PADS-AND-CLUES GAME, YOUR DELIVERABLE IS A RULE, NOT A SEQUENCE OF CLICKS. Write a
+function rule(layout) that DERIVES the placements from the board it is given, and call
+propose(rule). It is replayed against every level you have already solved, for zero
+actions, and refused if it only fits the board in front of you.
 
 This is the difference between winning and stalling, measured. A previous run cleared a
 level by writing this:
@@ -222,9 +237,13 @@ cost per level went 9 -> 16 -> 38 -> 126 actions and the run died. A rule that r
 board survives every level; a table has to be rebuilt each time, more expensively.
 
 So when you find something that works, ask WHY it worked in terms of what is drawn on the
-board, write that as rule(layout), and propose() it. If it fails an earlier level, that
-failure is the most useful thing you will see all run: it tells you exactly which part of
-your understanding is a coincidence.
+board. On a pads-and-clues game, write that as rule(layout) and propose() it: if it fails
+an earlier level, that failure is the most useful thing you will see all run, because it
+tells you exactly which part of your understanding is a coincidence. On every OTHER game
+the lesson is the same and the instrument is different -- there is no rule gate to replay
+against, so the thing you write the answer into is mechanic(), which is the only memory
+that survives the next board, and the only test available is whether it still holds when
+that board arrives. Either way the deliverable is the reason, never the coordinates.
 
 PASSING propose() IS NECESSARY, NOT SUFFICIENT. Measured: on one level the agent proposed
 twelve different orders, all twelve reproduced every solved level and were accepted, and

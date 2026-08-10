@@ -295,16 +295,39 @@ class RuleGate:
         return out[:limit]
 
     def propose(self, rule: Callable) -> dict:
-        """Replay `rule` over every solved board. Costs zero game actions."""
+        """Replay `rule` over every solved board. Costs zero game actions.
+
+        A GATE THAT CANNOT GO RED IS NOT A GATE. This one used to return `ok: True`
+        whenever `solved` was empty, and `solved` only fills from boards that `parse`
+        accepts -- which is ONE of the 25 public games. So on the other twenty-four it
+        answered `ok: True` to every rule ever proposed, forever, having tested nothing.
+        Measured across the recorded traces: 55 vacuous greens on cd82 alone, and not a
+        single red on any non-parsing game.
+
+        That is the failure Phoenix exists to prevent, handed to the agent as
+        confirmation. An untested rule is now reported as untested: falsy, so code that
+        branches on `ok` treats it as "not proven" -- which is the truth -- and the reason
+        says plainly that this is not a refutation. `accepted` is no longer set by a
+        verdict that examined no evidence.
+        """
         if not callable(rule):
-            return {"ok": False, "reason": "propose() takes a function rule(layout)"}
+            return {"ok": False, "tested": 0, "applies": False,
+                    "reason": "propose() takes a function rule(layout)"}
 
         if not self.solved:
-            self.accepted = rule
             verdict = {
-                "ok": True,
-                "reason": "nothing solved yet, so nothing to generalise over; "
-                          "the rule is provisional until a level is cleared",
+                "ok": False,
+                "tested": 0,
+                "applies": False,
+                "reason": "UNTESTED, NOT REFUTED. This gate replays a rule over levels "
+                          "you have already cleared, and it holds none: either you have "
+                          "cleared none yet, or this game's boards do not parse into "
+                          "pads and clues, which is true of 24 of the 25 games. It "
+                          "cannot tell you anything about your rule. Do not read this "
+                          "as a verdict, and do not spend actions trying to turn it "
+                          "green -- check layout()['well_formed'] to see which case you "
+                          "are in, and if it is False, this whole formalism is inert on "
+                          "your game and objects()/board() are how you read it.",
                 "passed": [],
                 "failed": [],
             }
@@ -335,6 +358,8 @@ class RuleGate:
 
         verdict = {
             "ok": ok,
+            "tested": len(self.solved),
+            "applies": True,
             "passed": passed,
             "failed": failed,
             "reason": (

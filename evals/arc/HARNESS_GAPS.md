@@ -250,3 +250,39 @@ and branches on whether this game actually draws a bar.
 missing one. A missing primitive gets rediscovered; a primitive documented as
 catastrophic gets avoided forever, and nothing in the trace ever says why. Pinned by
 `python -m evals.arc.reset_check`.
+
+## Gap 11: the rule gate answered green to twenty-four games it had never tested
+
+Phoenix's whole claim is that a check which has never gone red proves nothing. The rule
+gate broke that claim in the quietest way available.
+
+`propose(rule)` replays a candidate rule over every level already cleared and refuses one
+that only fits the board in front of it. With no solved level on file it returned this:
+
+    {"ok": True, "reason": "nothing solved yet, so nothing to generalise over"}
+
+Solved levels only arrive via `rules.remember(...)`, which the turn loop calls only when
+`frames.parse` accepts the board. Parse accepts **one of the 25 public games**. So on the
+other twenty-four, `solved` is empty from the first turn to the last, and every rule ever
+proposed came back `ok: True` -- forever, having been compared against nothing. It also
+installed that untested rule as `accepted`.
+
+Measured across the recorded traces: **55 vacuous greens on cd82 alone**, and not one red
+on any non-parsing game. The SYSTEM prompt meanwhile opened with *"YOUR DELIVERABLE IS A
+RULE ... It is replayed against every level you have already solved, and refused if it
+only fits the board in front of you"* -- three claims, none of them true on 24 games.
+
+An untested verdict is now reported as untested: `tested: 0`, `applies: False`, `ok`
+falsy so that `if propose(r)["ok"]` reads "not proven", and a reason that says in the
+first four words that this is not a refutation. `accepted` is no longer set by a verdict
+that examined no evidence. The prompt now tells the agent to check
+`layout()["well_formed"]` FIRST and says plainly that on a game where it is False the
+whole formalism is inert -- while keeping the universal half of the lesson, which is that
+the deliverable is the reason and never the coordinates.
+
+The live gate is unchanged and still goes both ways, which the check verifies rather than
+assumes: a gate that can only refuse is no more honest than one that can only agree.
+
+**The transferable lesson**: "the check passed" and "the check ran" are different facts,
+and a gate that does not report the second one will eventually be believed about the
+first. Pinned by `python -m evals.arc.rule_gate_honesty_check`.
