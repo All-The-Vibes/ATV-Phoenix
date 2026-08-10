@@ -39,30 +39,50 @@ description is accurate.
 
 | | Prime Agent | Us |
 |---|---|---|
-| Corpus RHAE | **95.5%** | **9.27%** |
-| Games with a level cleared | 25 / 25 | 10 / 25 |
-| Levels completed | 183 / 183 | 36 / 183 (20%) |
-| Best single game | not broken out | sb26 **71.48%** |
+| Corpus RHAE | **95.5%** | **10.08%** |
+| Games with a level cleared | 25 / 25 | 12 / 25 |
+| Levels completed | 183 / 183 | 39 / 183 (21%) |
+| Best single game | not broken out | sb26 **73.74%** |
 | Model | Opus 5 | gpt-5.6-sol |
 
-Per game, best scorable run at `start_level: 1`. The nine below are the CodeAct agent;
-the remaining sixteen are the superseded `vision_agent`'s all-25 sweep (`novelty.json`,
-0.00% each except sp80 2/6 at 0.04%) and stand only as placeholders until played.
+Per game, best scorable run at `start_level: 1`, scored max-of-runs the way
+`EnvironmentScoreList.score` actually scores it. The twelve below are the CodeAct agent;
+the remaining thirteen are the superseded `vision_agent`'s all-25 sweep (`novelty.json`,
+0.00% each) and stand only as placeholders until played.
 
 | game | levels | actions | human | deaths | RHAE | stopped |
 |---|---|---|---|---|---|---|
-| sb26 | **8/8** | 245 | 213 | 0 | **71.48%** | won |
+| sb26 | 7/8 | 325 | 213 | 1 | **73.74%** | max_turns |
 | cd82 | **6/6** | 394 | 171 | 0 | **61.68%** | won |
 | ft09 | **6/6** | 809 | 208 | 4 | **48.18%** | won |
-| lp85 | 5/8 | 394 | 388 | 3 | 38.02% | **max_turns** |
+| lp85 | 5/8 | 394 | 388 | 3 | 38.02% | max_turns |
+| vc33 | 3/7 | 457 | 447 | 6 | 14.80% | **congestion** |
 | sc25 | 3/6 | 846 | 350 | 16 | 10.20% | max_turns |
-| su15 | 2/9 | 1055 | 361 | 17 | 1.87% | max_turns |
-| r11l | 2/6 | 468 | 233 | 20 | 0.36% | max_turns |
+| su15 | 3/9 | 718 | 361 | 15 | 3.60% | **congestion** |
+| r11l | 1/6 | 690 | 233 | 17 | 1.60% | max_turns |
+| sp80 | 2/6 | 2000 | 518 | - | 0.04% | vision_agent |
+| tu93 | 1/9 | 280 | 462 | 7 | 0.02% | **congestion** |
 | tr87 | 1/6 | 2059 | 414 | 8 | 0.01% | max_turns |
 | tn36 | 1/7 | 1333 | 317 | 8 | 0.00% | max_turns |
 
-**We are not 24 points behind. We are 86 points behind**, and the reason is coverage, not
+Note sb26: the best-scoring sb26 run is a **7/8**, not the 8/8. Efficiency is squared, so
+a run that clears one fewer level in 325 actions outscores one that clears them all in
+245-plus-the-cost-of-the-eighth. Completion and score are different objectives and the
+scorer means the second one.
+
+**We are not 24 points behind. We are 85 points behind**, and the reason is coverage, not
 quality. Read the next section before proposing any optimisation to sb26.
+
+### The dominant lever is the thirteen games nobody has played
+
+Thirteen of twenty-five games have never had a single CodeAct attempt. They contribute
+exactly 0.00% each and they are 52% of the corpus. Our *median attempted* game scores
+about 10%; our mean attempted game about 21%. Simply attempting the remaining thirteen at
+our current, unimproved competence is worth roughly **+5 to +11 points of corpus RHAE** —
+more than any harness improvement has ever returned, and it requires no new ideas.
+
+Since a game is worth its best run and a bad run cannot lower it, there is no argument for
+withholding an attempt. Play them.
 
 ### Deaths are the discriminator, not difficulty
 

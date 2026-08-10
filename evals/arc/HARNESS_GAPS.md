@@ -286,3 +286,65 @@ assumes: a gate that can only refuse is no more honest than one that can only ag
 **The transferable lesson**: "the check passed" and "the check ran" are different facts,
 and a gate that does not report the second one will eventually be believed about the
 first. Pinned by `python -m evals.arc.rule_gate_honesty_check`.
+
+---
+
+## Gap 12 — the harness could not tell a busy endpoint from a broken agent
+
+**Found:** a four-run batch died. Every member recorded `stopped: "max_turns"` while
+sitting at roughly a third of its turn budget.
+
+| run | levels | actions | deaths | turn |
+|---|---|---|---|---|
+| lp85-b | **7/8** | 454 | 2 | 70 / 160 |
+| su15-b | 3/9 | 718 | 15 | 101 / 160 |
+| sc25-c | 3/6 | 814 | 18 | 102 / 160 |
+| vc33-a | 3/7 | 457 | 6 | 57 / 160 |
+
+Read the scorecards alone and the story is an agent that exhausted its turns and stalled.
+The logs say something else entirely, and they say it four times:
+
+```
+lp85: three model calls failed in a row; stopping the run rather than
+      burning 90 turns in silence
+```
+
+The failures were `APITimeoutError`. The retry ladder tested for `"429"` and
+`"rate limit"` and nothing else, so a timeout was classified as a genuine defect: it
+skipped backoff, went to `call_error`, raised, and burned one of the three strikes that
+end a run. Under a saturated endpoint timeouts arrive in bursts, so three strikes came
+almost immediately. lp85 was **one level from finishing the game** with ninety turns and
+two unspent deaths in hand.
+
+**Two separate lies stacked here, which is why it survived so long.**
+
+The first is classification: congestion arrives under many names — 429, timeout,
+connection reset, 500, 503, "overloaded" — and the harness recognised two of them.
+
+The second is the label. `stopped` is initialised to `"max_turns"` and *neither* early-exit
+branch overwrote it, so a starved run and an exhausted run produced byte-identical
+evidence. Every rate-limited run in our history was mis-filed, and tu93 — killed at turn
+**29 of 160** with 280 of 8,000 actions spent — was read as an agent out of ideas.
+
+**Fixed:** congestion is recognised by what it is rather than by one phrasing of it; the
+ladder runs 40 attempts instead of 10; and both early exits now name themselves
+(`rate_limited`, `model_failures`). Genuine failures — context-length 400s, auth 401s,
+missing deployments, attribute errors — still fail fast, because retrying a real bug forty
+times only hides it for eighty minutes.
+
+**Pinned by:** `python -m evals.arc.congestion_check`. It lifts the live expression out of
+`play()` with `inspect` rather than restating it, because the defect being pinned was a
+live expression drifting from the comments around it — a copy in the test would have
+stayed green through the whole failure.
+
+**The measurement that made the batch fail in the first place:** process count buys no
+throughput. Nine concurrent runs share one tokens-per-minute allowance, so they split the
+same quota and add 429 churn on top. Measured: 45–82 rate-limit waits per run, and lp85 at
+7/8 spending entire turns at zero actions while it waited. Concurrency is worth having for
+wall-clock overlap, not for tokens, and past the endpoint's TPM it is strictly negative.
+
+**The general shape, again.** This is Gap 7 wearing new clothes: an instrument that
+answers confidently outside the conditions it was written for. The ladder was sized when
+one run had an endpoint to itself, and it kept returning a verdict — "the agent stopped
+improving" — long after that assumption stopped holding. The failure mode of this harness
+is never silence. It is a confident wrong answer.
