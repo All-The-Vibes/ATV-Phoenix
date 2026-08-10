@@ -77,6 +77,20 @@ def budget(grid, full_colour=None):
     and the caller passes that colour back as ``full_colour`` on later reads. Without it
     the two segments are still reported, flagged ``confirmed: False``, rather than a
     direction being invented.
+
+    THE SPENT PORTION MAY BE DRAWN IN THE BOARD'S BACKGROUND COLOUR. sb26 draws its bar
+    in colours reserved for it, so ranking candidates by exclusivity and skipping any row
+    containing the background worked there and hid an assumption. cd82 spends its bar into
+    the background: row 63 reads ``{4: 64}`` on a fresh board and ``{4: 61, 5: 3}`` three
+    moves later, where 5 IS the background. The row was therefore skipped the moment it
+    became informative, and `clock()` returned every field None from the first action
+    onward -- so on cd82 the agent could not see a single one of its six deaths coming,
+    and those deaths cost 463 of the run's 713 actions.
+
+    So once ``full_colour`` is known the bar is looked for a second way: the full-width
+    two-segment row CONTAINING that colour, background or not. The strict exclusivity pass
+    still runs first and still wins, which leaves sb26's reading byte-identical; this only
+    answers where the strict pass finds nothing at all.
     """
     h, w = grid.shape
     counts: dict[int, int] = {}
@@ -94,16 +108,28 @@ def budget(grid, full_colour=None):
     # told apart by being drawn in a colour RESERVED for it: c2/c3 appear nowhere else on
     # the board, while row 0's colours are used all over it. So candidates are ranked by
     # how much of their ink lies outside the row, and the most exclusive one wins.
-    candidates = []
-    for y in range(h):
-        row = grid[y].tolist()
-        seen = set(row)
-        if background in seen or not 1 <= len(seen) <= 2:
-            continue
-        if 1 + sum(1 for a, b in zip(row, row[1:]) if a != b) > 2:
-            continue
-        elsewhere = sum(counts[c] for c in seen) - w
-        candidates.append((elsewhere, y, row, seen))
+    def scan(allow_background: bool, must_contain=None):
+        found = []
+        for y in range(h):
+            row = grid[y].tolist()
+            seen = set(row)
+            if not 1 <= len(seen) <= 2:
+                continue
+            if must_contain is not None and must_contain not in seen:
+                continue
+            if background in seen and not allow_background:
+                continue
+            if 1 + sum(1 for a, b in zip(row, row[1:]) if a != b) > 2:
+                continue
+            elsewhere = sum(counts[c] for c in seen) - w
+            found.append((elsewhere, y, row, seen))
+        return found
+
+    candidates = scan(allow_background=False)
+    if not candidates and full_colour is not None:
+        # Second pass, only for a bar we have already identified on a full board: the
+        # spent half is allowed to be the background colour.
+        candidates = scan(allow_background=True, must_contain=full_colour)
 
     if not candidates:
         return unknown

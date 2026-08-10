@@ -94,8 +94,22 @@ API available to your code:
                            [{colour, cx, cy, x0, x1, y0, y1, px}, ...]. Costs NOTHING.
     board()             -> the same thing as readable text, grouped into rows.
     layout()            -> the board split by SHAPE alone into {frames, pads, clues,
-                           tray, clue_structure}, or None if it is not drawn that way.
+                           tray, well_formed, clue_structure}, or None if it is not drawn
+                           that way.
                            FREE.
+                           CHECK `well_formed` BEFORE YOU TRUST ANY OF IT. This split was
+                           written for one shape -- a tray holding one piece per pad, plus
+                           a clue row addressing them -- and `well_formed` is True only
+                           when the board in front of you actually is that shape. Measured
+                           across the 25 ARC-AGI-3 games: it holds on ONE of them. On the
+                           others this returns pads and trays that are not pads and trays,
+                           and planning against them is planning against a board that does
+                           not exist. When it is False on a FRESH board, this abstraction
+                           does not describe your game: use objects() and board(), which
+                           describe any board, and work out this game's own structure from
+                           what is drawn. (It also reads False on a half-played board of
+                           the right shape, because the tray really has emptied. That is
+                           not a warning, it is arithmetic.)
                            layout()["clue_structure"] describes the SHAPE OF THE CLUE ROW,
                            because the row is not always one ring per pad. It reports
                            {flat, colours, block, at, reduced, grid}: `flat` is False when
@@ -135,7 +149,15 @@ API available to your code:
                            Say which one you want by writing (colour, "hollow") or
                            (colour, "solid") wherever a bare colour goes in an
                            assignment. A bare colour still means "any piece of it".
-    note(text)          -> write to your notes, which you keep seeing.
+    note(text)          -> write to your notes, which you keep seeing. Returns its NUMBER.
+    retract(n, because) -> RETIRE note n: you have disproved it. The claim moves to a
+                           DISPROVED list you keep seeing, so you do not spend the rest of
+                           the level re-deriving it. Use this the moment two of your notes
+                           cannot both be true. Measured on another game: a run ended
+                           holding both "do not click the active piece" and "click it to
+                           drop it", acted on both, and re-derived the same two dead
+                           theories four and six times. A memory that only grows
+                           accumulates contradictions, not knowledge.
     sense(claim, ok)    -> record one trial of a belief. FREE.
     accept(claim)       -> {'ok': bool, 'reason': str}: is that belief actually proven?
     propose(rule)       -> test a rule against EVERY level you have already cleared. FREE.
@@ -336,6 +358,9 @@ class Env:
         self.best = 0
         self.notes: list[str] = []
         self.level_notes: list[str] = []
+        # Claims this board has DISPROVED. Kept apart from live notes so a dead theory
+        # reads as dead rather than as one more thing that might be true.
+        self.retracted: list[str] = []
         self._alive = True
         self._turn_action_cap = turn_action_cap
         self._turn_spent = 0
@@ -432,6 +457,10 @@ class Env:
             self.level_just_changed = True
             self._inert = 0
             self.level_notes = []
+            # Disproofs are scoped to the board that produced them, exactly like the
+            # beliefs they killed. A theory refuted on level 1 may well be true on
+            # level 2, and carrying the refutation across would forbid the right answer.
+            self.retracted = []
             # A new level draws a fresh, full bar, and it may be a different length and a
             # different colour. Holding the old level's full-colour would make the first
             # read of the new bar answer with the wrong segment. The same applies to the
@@ -875,9 +904,48 @@ class Env:
 
         Scoped to the level, so clearing a level frees the budget rather than a note
         about level 7 evicting another note about level 7.
+
+        Returns the note's NUMBER on this board, which is what `retract` takes.
         """
         self.notes.append(str(text)[:200])
         self.level_notes.append(str(text)[:200])
+        return len(self.level_notes)
+
+    def retract(self, number, because=""):
+        """Retire a belief this board has DISPROVED, and remember that it is dead.
+
+        Notes were create-only, and a memory that can only grow accumulates
+        contradictions rather than knowledge. Measured on cd82: the run ended still
+        carrying both "Do not click active blocks: clicks merge their pixels into the
+        fixed block" and "CLICK that domino to drop it" -- two notes that cannot both be
+        true, both retained, both being acted on. Meanwhile the same dead theories were
+        re-derived from scratch again and again: Voronoi on four separate turns,
+        orientation on six.
+
+        So this is the D in CRUD, and the retracted claim is KEPT, in a separate list, as
+        a disproof. Knowing a theory is dead is worth as much as knowing one is true --
+        it is what stops the twelfth rediscovery of the eleventh dead idea. `because` is
+        the evidence that killed it and is not optional in spirit: a retraction with no
+        reason is a mood, not a measurement.
+        """
+        try:
+            index = int(number) - 1
+        except (TypeError, ValueError):
+            return {"ok": False, "why": f"note numbers are integers, got {number!r}"}
+        if not 0 <= index < len(self.level_notes):
+            return {"ok": False,
+                    "why": f"no note {number}; this board has {len(self.level_notes)}"}
+        dead = self.level_notes.pop(index)
+        # `notes` carries the same text for the run-level tail; drop the last copy so the
+        # two lists cannot disagree about what is currently believed.
+        for i in range(len(self.notes) - 1, -1, -1):
+            if self.notes[i] == dead:
+                del self.notes[i]
+                break
+        reason = str(because)[:160] or "no evidence given"
+        self.retracted.append(f"{dead[:120]}  -- DISPROVED: {reason}")
+        return {"ok": True, "retracted": dead, "because": reason,
+                "remaining": len(self.level_notes)}
 
     def frame(self):
         return self._frame
@@ -1101,7 +1169,7 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
     ns = {
         "press": env.press, "click": env.click, "look": env.look, "grid": env.grid,
         "alive": env.alive, "levels": env.levels, "reset": env.reset,
-        "find": env.find, "note": env.note, "np": np,
+        "find": env.find, "note": env.note, "retract": env.retract, "np": np,
         "clock": env.clock,
         "seated": env.seated,
         "seated_variants": env.seated_variants,
@@ -1138,6 +1206,7 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
     # note lines plus one stdout buffer. That is the amnesia Prime Agent's RLM exists to
     # remove: context is a variable the agent keeps, not something the harness discards.
     history: list[dict] = []
+    deaths_seen = 0
 
     for turn in range(max_turns):
         env.begin_turn()
@@ -1155,13 +1224,26 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
             gone from both places and got re-derived from scratch. Measured on level 7 of
             a fair run -- 45 turns of work against a 22-turn trajectory and a 25-note
             window. Notes are cheap; a level's worth costs a fraction of one turn.
+
+            This board's notes are NUMBERED because they are addressable: `retract(n, ...)`
+            retires one. And what has been disproved is listed separately, because a
+            memory that only grows accumulates contradictions instead of knowledge --
+            measured on cd82, which ended holding two notes that could not both be true
+            while re-deriving the same dead theories four and six times over.
             """
             earlier = [n for n in env.notes[:-len(env.level_notes)]
                        if env.level_notes] or env.notes
             lines = [f"- {n}" for n in earlier[-8:]]
             if env.level_notes:
-                lines.append(f"--- this level ({len(env.level_notes)} notes) ---")
-                lines += [f"- {n}" for n in env.level_notes[-60:]]
+                lines.append(f"--- this level ({len(env.level_notes)} notes, "
+                             f"retract(n) to retire one) ---")
+                shown = env.level_notes[-60:]
+                first = len(env.level_notes) - len(shown) + 1
+                lines += [f"[{first + i}] {n}" for i, n in enumerate(shown)]
+            if env.retracted:
+                lines.append(f"--- DISPROVED on this board, do not re-derive "
+                             f"({len(env.retracted)}) ---")
+                lines += [f"x {r}" for r in env.retracted[-20:]]
             return "\n".join(lines) or "(none yet)"
 
         notes = current_notes()
@@ -1177,6 +1259,26 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
                 f"previous board; they must be re-earned here: {', '.join(retired)}"
             )
             notes = current_notes()
+
+        # A DEATH IS THE STRONGEST REFUTATION THE GAME EVER HANDS OUT, and it used to
+        # teach nothing. Measured on cd82: six deaths cost 463 of the run's 713 actions --
+        # 65% of everything it spent -- and after each one the agent resumed the same
+        # theory that had just walked it into the wall. Prime Agent's harness reviews a
+        # trajectory and applies the smallest relevant edit to its own state; this is the
+        # cheapest honest version of that, triggered by the one event that proves an edit
+        # is owed. It costs no actions, and it asserts nothing about WHICH belief is wrong,
+        # because that is the agent's job and not the harness's guess.
+        died = env.deaths - deaths_seen
+        deaths_seen = env.deaths
+        consolidate = ""
+        if died and env.level_notes:
+            consolidate = (
+                f"\nYOU DIED {died}x SINCE YOUR LAST TURN, and a death costs a whole bar.\n"
+                "Something you currently believe predicted that would work. Before you "
+                "spend another action, find the note that is wrong and retract(n, "
+                "because=...) it. If you are unsure which, retract the one you were acting "
+                "on when you died: a wrong disproof is cheap and a repeated death is not.\n"
+            )
 
         # The exact board, recomputed every turn and never carried over. This is the fix
         # for the measured level-2 loss: the model kept applying level 1's hand-written
@@ -1198,7 +1300,8 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
                     f"Actions used: {env.spent} (soft budget {action_cap}); "
                     f"this turn you may spend {env.turn_budget()} more\n"
                     f"Deaths so far: {env.deaths}\n"
-                    f"Colours on screen: {palette_legend(env.frame().frame)}\n\n"
+                    f"Colours on screen: {palette_legend(env.frame().frame)}\n"
+                    f"{consolidate}\n"
                     f"{learned}"
                     f"{board_text}\n\n"
                     f"{phoenix.summary()}\n\n"

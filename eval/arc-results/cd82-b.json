@@ -1,0 +1,33 @@
+{
+  "agent": "gpt-5.6-sol",
+  "auth": "managed_identity",
+  "action_space": "executable_python",
+  "games": 1,
+  "levels_completed": 5,
+  "levels_available": 6,
+  "tokens": 1956833,
+  "wall_clock_s": 1216.6,
+  "runs": [
+    {
+      "game": "cd82",
+      "agent": "gpt-5.6-sol",
+      "levels_completed": 5,
+      "win_levels": 6,
+      "actions_spent": 480,
+      "level_actions": [
+        147,
+        132,
+        164,
+        15,
+        17
+      ],
+      "deaths": 1,
+      "tokens": 1956833,
+      "elapsed_s": 1215.3,
+      "seed": 0,
+      "phoenix_proven": [],
+      "start_level": 1,
+      "scorable": true
+    }
+  ]
+}

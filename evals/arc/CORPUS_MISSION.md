@@ -156,6 +156,118 @@ Corpus shape for planning, from the same survey: human baselines run from 171 ac
 corpus 17,135. sb26 at 213 actions is among the **smallest** games in the set. Do not
 generalise difficulty from it.
 
+## First contact with an unseen game, measured
+
+`eval/arc-results/cd82-first.json` -- the agent, unchanged, on cd82, a game it had never
+seen. Scorable, start level 1.
+
+    1/6 levels.  713 actions.  7 deaths.  game score 0.34%.
+    Level 1 cleared in 205 actions against a human baseline of 55.
+    Corpus with sb26 and cd82 both counted: 2.87%.
+
+Four things that were worth the spend to learn:
+
+**It cleared a level of an unseen game.** Not nothing. The generic path works at all.
+
+**It never called `layout()` once.** Not on any of 40 turns. It went straight to
+`objects()` and `board()` and derived cd82's structure from what was drawn. So the
+sb26-shaped parser was not the blocker here -- the agent correctly declined to reach for
+it. That is worth knowing before anyone spends a week generalising `frames.py`: the
+perception layer was not what cost us this game.
+
+**cd82 is a different GENRE, and that was the blocker.** It is directional movement and
+painting -- actions 3 and 4 move a tile and repaint about 100 cells -- not the pick-up and
+drop-on-a-pad that every executor primitive in this harness implements. `try_assignment`,
+`seated`, pads and tray are all inapplicable. The agent had to hand-roll movement, spent
+205 actions on a 55-action level, then died seven times on level 2 over 508 more actions.
+Genre, not perception, is the gap.
+
+**The probe is expensive and sometimes learns nothing.** Measured over three unseen games:
+
+| game | probe cost | click rows found | drag found |
+|---|---|---|---|
+| cd82 | 38 actions | 10 | no (correct: it is not a drag game) |
+| r11l | 40 actions | 16 | no |
+| ft09 | 58 actions | **0** | no |
+
+On ft09 the probe spent 58 actions and found nothing at all -- and 58 actions is 28% of
+the ENTIRE human budget for that six-level game. RHAE squares efficiency, so a probe that
+returns nothing is not merely wasted, it caps the game's achievable score before play
+begins. On cd82 the 38-action probe cost 69% of level 1's human baseline on its own.
+
+That reframes the corpus problem. The bottleneck is not one perception layer; it is that
+**a general agent must identify a game's genre and its own applicable primitives cheaply**,
+and our only general instrument for that costs a third of the budget and can come back
+empty. Making the probe adaptive -- stop as soon as the genre is decided, and decide it
+from what is drawn rather than from a fixed script -- is worth more than generalising
+`frames.py`.
+
+## First contact with an unseen game, and what fixed it
+
+### Before: the agent, unchanged, on a game it had never seen
+
+`cd82-first.json` -- scorable, start level 1: **1/6 levels, 713 actions, 7 deaths, 0.34%**.
+Level 1 alone cost 205 actions against a 55-action human baseline.
+
+Three measured causes, none of them "the model is not smart enough":
+
+**Deaths were 65% of the entire cost.** Six turns of 74-83 actions each, 463 of 713
+actions, each one a full move bar walked into a wall.
+
+**The agent was BLIND to its life budget.** `clock()` read a confident full bar on the
+opening board and then returned every field None from the first action onward. It never
+saw a single one of those six deaths coming. Cause: `frames.budget` disqualified any row
+containing the board's background colour. sb26 draws its bar in reserved colours, so that
+assumption never surfaced; cd82 spends its bar INTO the background, so the row was
+rejected exactly when it became informative. Another instrument written against one game
+and silently wrong on the next -- the same shape of bug as Gap 7.
+
+**Notes were create-only, so contradictions accumulated instead of knowledge.** The run
+ended holding both *"Do not click active blocks: clicks merge their pixels"* and *"CLICK
+that domino to drop it"*, acting on both. Meanwhile it re-derived the same dead theories
+over and over: Voronoi on four separate turns, orientation on six. That is Gap 4 -- create
+and read, no delete -- costing a game.
+
+### The fix: Prime Agent's Continual Harness, minimally and honestly
+
+Prime Agent's differentiator is not its model. ARC Prize's own harness scores frontier
+models at 0.18-0.51% on this benchmark; Prime Agent reaches 95.5% with Opus 5. The
+difference is harness state the agent can CRUD from its own trajectory, plus a `/refine`
+step that applies the smallest relevant edit after a trajectory. We had create and read.
+
+1. **`budget` reads a bar whose spent half is the background colour**, once the full
+   colour is known from the opening board. General, not cd82-specific: measured across the
+   corpus, **17 of 25 games now keep a readable bar while spending and none go blind**.
+   Held by `budget_check.py`, which checks sb26 AND cd82, because proving a perception fix
+   against one game is what caused this.
+2. **`retract(n, because=...)`** -- the D in CRUD. A disproved note leaves the live list
+   and is remembered in a DISPROVED list, because knowing a theory is dead is what stops
+   the twelfth rediscovery of the eleventh dead idea. Scoped to the board, since a theory
+   false here may be true on the next level. Held by `retract_check.py`.
+3. **A death forces consolidation.** A death is the strongest refutation the game hands
+   out and it used to teach nothing. The turn after one, the agent is told it died and
+   must retract the belief that walked it there before spending another action. It costs
+   no actions and asserts nothing about which belief is wrong -- that is the agent's job.
+
+### After
+
+| | before | after |
+|---|---|---|
+| cd82 levels | 1/6 | **5/6** |
+| cd82 score | 0.34% | **50.88%** |
+| deaths | 7 | **1** |
+| actions | 713 | 480 |
+
+Levels 4 and 5 were cleared FASTER than the human baseline (1.40x and 1.35x, both at the
+1.15 cap). sb26 re-run end to end afterwards: still **8/8**, no regression.
+
+**Corpus: 2.87% -> 4.89%.**
+
+What is left on cd82 is discovery cost, not deaths: levels 1-3 ran at 0.37x, 0.06x and
+0.25x of human. Level 2 costs 132 actions against a human's 8. That is the next target
+there, and it is the same problem as ft09's empty probe -- identifying a game's genre
+cheaply.
+
 ## How to work
 
 1. **Offline before spend, always.** `corpus_survey`, `clue_structure_check`,
