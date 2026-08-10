@@ -376,6 +376,9 @@ class Env:
         self.best = 0
         self.notes: list[str] = []
         self.level_notes: list[str] = []
+        # How many actions each life has lasted, and where the current one began.
+        self.lives: list[int] = []
+        self._life_mark = 0
         # Claims this board has DISPROVED. Kept apart from live notes so a dead theory
         # reads as dead rather than as one more thing that might be true.
         self.retracted: list[str] = []
@@ -519,6 +522,14 @@ class Env:
             else:
                 self.deaths += 1
                 self.deaths_this_turn += 1
+                # HOW LONG A LIFE LASTS, measured, because most games never draw it.
+                # Eight of the 25 public games render no move bar at all, and on those the
+                # agent has no way to see death coming: r11l died SEVENTEEN times in 690
+                # actions and cleared one level, while ft09 -- which does draw a bar --
+                # died four times in the same span. A game that will not show you your
+                # budget can still be asked how long its lives have historically been.
+                self.lives.append(self.spent - self._life_mark)
+                self._life_mark = self.spent
                 self._alive = False
                 self._frame = self._env.reset()
                 self._bar_colour = None
@@ -1338,6 +1349,23 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
                     f"{spent_here}. Finishing now would score {worth:.0%} of it "
                     f"(cap 115%). Every further action lowers that, squared.\n")
 
+        # A LIFE EXPECTANCY FOR GAMES THAT DRAW NO BAR. Eight of the 25 public games
+        # render no move meter, and on those `clock()` honestly reports nothing -- which
+        # leaves the agent with no way at all to see a death coming. Measured: r11l died
+        # SEVENTEEN times in 690 actions and cleared one level; ft09, which does draw a
+        # bar, died four times over a comparable run. The game will not show the budget,
+        # but the agent's own history estimates it, and an estimate beats blindness.
+        # Suppressed when the bar IS readable, so this never argues with a real reading.
+        bar = env.clock() or {}
+        if not bar.get("confirmed") and env.lives:
+            typical = min(env.lives)
+            since = env.spent - env._life_mark
+            pace += (f"NO MOVE BAR IS DRAWN on this game, so nothing warns you before a "
+                     f"death. Measured from your own {len(env.lives)} death(s): the "
+                     f"shortest life so far lasted {typical} actions and you have spent "
+                     f"{since} since the last one. Treat that as your budget and bank "
+                     f"progress before you reach it.\n")
+
         if died and env.level_notes:
             consolidate = (
                 f"\nYOU DIED {died}x SINCE YOUR LAST TURN, and a death costs a whole bar.\n"
@@ -1373,6 +1401,11 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
                 "note that reading contradicts, and retract(n, because=...) it. Then act "
                 "on the new idea, not on more experiments: more probing is what turned a "
                 "1,026-action run into a 4,212-action one.\n"
+                "Look at the PHOENIX block too. A claim there reads 'unproven' when you "
+                "have only ever seen it CONFIRMED -- you have never tried to break it, so "
+                "it is a guess you got attached to, and it is the most likely thing "
+                "keeping you here. Design this turn to FALSIFY your load-bearing claim "
+                "rather than to succeed with it.\n"
             )
             if stalled >= 14:
                 consolidate += (
