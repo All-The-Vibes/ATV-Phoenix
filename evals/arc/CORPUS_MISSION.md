@@ -37,19 +37,45 @@ description is accurate.
 
 ## Where we stand, measured
 
-| | Prime Agent | Us (run D) |
+| | Prime Agent | Us |
 |---|---|---|
-| Corpus RHAE | **95.5%** | **2.86%** |
-| Games played | 25 / 25 | 1 / 25 |
-| Levels completed | 183 / 183 | 8 / 183 (4.4%) |
+| Corpus RHAE | **95.5%** | **9.27%** |
+| Games with a level cleared | 25 / 25 | 10 / 25 |
+| Levels completed | 183 / 183 | 36 / 183 (20%) |
 | Best single game | not broken out | sb26 **71.48%** |
 | Model | Opus 5 | gpt-5.6-sol |
 
-`eval/arc-results/full-variant-d.json`, scorable, start_level 1: 8/8 on sb26 in 245
-actions with zero deaths against a 213-action human baseline.
+Per game, best scorable run at `start_level: 1`. The nine below are the CodeAct agent;
+the remaining sixteen are the superseded `vision_agent`'s all-25 sweep (`novelty.json`,
+0.00% each except sp80 2/6 at 0.04%) and stand only as placeholders until played.
 
-**We are not 24 points behind. We are 93 points behind**, and the reason is coverage, not
+| game | levels | actions | human | deaths | RHAE | stopped |
+|---|---|---|---|---|---|---|
+| sb26 | **8/8** | 245 | 213 | 0 | **71.48%** | won |
+| cd82 | **6/6** | 394 | 171 | 0 | **61.68%** | won |
+| ft09 | **6/6** | 809 | 208 | 4 | **48.18%** | won |
+| lp85 | 5/8 | 394 | 388 | 3 | 38.02% | **max_turns** |
+| sc25 | 3/6 | 846 | 350 | 16 | 10.20% | max_turns |
+| su15 | 2/9 | 1055 | 361 | 17 | 1.87% | max_turns |
+| r11l | 2/6 | 468 | 233 | 20 | 0.36% | max_turns |
+| tr87 | 1/6 | 2059 | 414 | 8 | 0.01% | max_turns |
+| tn36 | 1/7 | 1333 | 317 | 8 | 0.00% | max_turns |
+
+**We are not 24 points behind. We are 86 points behind**, and the reason is coverage, not
 quality. Read the next section before proposing any optimisation to sb26.
+
+### Deaths are the discriminator, not difficulty
+
+Every game we have finished had 0-4 deaths. Every game we have failed had 8-20. A death
+resets the level, so the actions before it buy nothing, and under a squared efficiency
+penalty the level is worthless long before the agent stops paying for it.
+
+### lp85 was stopped by the harness, not by the game
+
+lp85 reached 5 of 8 having spent **394 actions against a 388-action human baseline for
+the whole eight-level game** — still solving, at roughly human cost — and what ended it
+was `--max-turns 90`. ARC charges actions and never turns. Runs now stamp `stopped` so
+this is visible in the artifact instead of depending on who reads the log.
 
 ## The scoring math, and the one strategic fact it forces
 

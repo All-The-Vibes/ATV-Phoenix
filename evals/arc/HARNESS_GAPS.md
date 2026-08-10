@@ -160,3 +160,55 @@ The advice that paid off is worth repeating: `frames.py` can be tested offline a
 every level for zero API spend, and `level_jump.py` will put a session on any level for
 free. Every fix in this round was found and proven offline before an agent run was paid
 for. Do that first, always.
+
+
+## Gap 8: correct scoping, ruinous wording -- the agent was told to re-buy its physics
+
+Beliefs are scoped to the level and retired when it advances. That fix was right and is
+still in place: without it a level-1 fact stayed marked PROVEN on level 2 and one run
+spent a 2,075-action turn defending it against a board where it was false.
+
+The wording around it made the opposite mistake. On su15 the agent was told it had
+"retired 59 belief(s) earned on the previous board; they must be re-earned here", and
+among those 59 was:
+
+    a black obstacle on a particle's predicted northwest cell reflects that particle
+
+That is not a fact about level 1's layout. It is how the game works, it was true on every
+board in the game, and re-earning it is paid for in ACTIONS -- the one quantity RHAE
+squares. The run then spent **1,044 of its 1,055 actions on the single level that
+followed** and finished 2 of 9.
+
+The gap was that the harness had exactly one kind of memory, so it had to choose between
+trusting a dead fact and discarding a live law. It chose discarding, correctly, and then
+told the agent to buy the law back at the worst possible exchange rate.
+
+Two memories now, split by "would this still be true if the board were redrawn?":
+
+    note()     -- this obstacle sits at (14,7)      dies at the boundary
+    mechanic() -- obstacles reflect particles       survives it
+
+`BeliefStore` gained a `durable` flag so the EVIDENCE crosses with the claim rather than
+a bare sentence, and durable is not a promotion to true: a later red still refutes it,
+and `keep()` refuses a claim nobody ever observed. The default stays `note()`, because a
+forgotten law costs one re-derivation and a wrong law kept forever costs the run --
+`unmechanic(n, because=...)` is the escape, and the death prompt now names the mechanics
+list first, since those are the only beliefs no level change has ever cleared out.
+
+**The transferable lesson**: scoping a belief and telling the agent what to do about the
+scope change are two decisions, and getting the first one right does not make the second
+one free.
+
+## Gap 9: the harness ended the run and the artifact called it a capability ceiling
+
+lp85 stopped at 5 of 8 levels having spent **394 actions against a 388-action human
+baseline for the whole eight-level game**. It was still solving, at roughly human cost.
+What stopped it was `--max-turns 90`.
+
+ARC charges ACTIONS and never turns. A turn cap is purely a harness invention, so a
+turn-capped run is the harness choosing the score -- and every unfinished run in the
+results directory looked identical whether the agent had run out of ideas, out of action
+budget, or out of turns.
+
+Runs now stamp `stopped` as won / patience / action_cap / max_turns, with `turns_used`.
+Check that field before reading any unfinished result as a limit of the agent.
