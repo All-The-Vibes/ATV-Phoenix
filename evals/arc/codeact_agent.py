@@ -1655,16 +1655,35 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
                 # agent running out of ideas, when it had run out of quota with 7,700 of
                 # its 8,000 actions unspent. Waiting costs wall-clock; not waiting costs
                 # the run.
-                text = str(exc)
-                if not ("429" in text or "rate limit" in text.lower()):
+                #
+                # A TIMEOUT UNDER LOAD IS THE SAME SIGNAL WEARING A DIFFERENT NAME. This
+                # test used to match only "429"/"rate limit", so an APITimeoutError fell
+                # through to call_error, raised, and burned one of the three model-failure
+                # strikes that end a run. Measured: a four-run batch ALL died that way --
+                # lp85 at 7/8 with 90 turns and 2 deaths left in it, su15, sc25 and vc33
+                # likewise -- every one of them filed as "max_turns" while sitting at
+                # roughly a third of its turn budget. Congestion must go to the ladder.
+                text = str(exc).lower()
+                congested = (
+                    "429" in text
+                    or "rate limit" in text
+                    or "timeout" in text
+                    or "timed out" in text
+                    or "connection" in text
+                    or "temporarily unavailable" in text
+                    or "503" in text
+                    or "500" in text
+                    or "overloaded" in text
+                )
+                if not congested:
                     call_error = exc
                     break
                 if attempt == 39:
                     starved = True
                     break
                 nap = min(120, 10 * 2 ** attempt)
-                print(f"  {game} t{turn + 1}: rate limited, waiting {nap}s "
-                      f"(attempt {attempt + 1}/10)", flush=True)
+                print(f"  {game} t{turn + 1}: congested ({type(exc).__name__}), waiting "
+                      f"{nap}s (attempt {attempt + 1}/40)", flush=True)
                 time.sleep(nap)
 
         if starved:
