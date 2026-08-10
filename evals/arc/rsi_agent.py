@@ -44,6 +44,8 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from evals.arc.codeact_agent import Env  # noqa: E402
+from evals.arc.delegate import Delegator  # noqa: E402
+from evals.arc.dropout import DropoutMonitor  # noqa: E402
 from evals.arc.prober import probe, summarize  # noqa: E402
 from evals.arc.render import data_url, palette_legend  # noqa: E402
 from evals.arc.skills import SkillLibrary  # noqa: E402
@@ -72,20 +74,57 @@ API:
     reset()             restart from level 1.
     find(colour)        [(y, x), ...] cells of that colour.
     note(text)          write to your notes.
+    reprobe()           re-run the mechanical probe on the CURRENT level and return it.
+                        CALL THIS EVERY TIME YOU CLEAR A LEVEL. Later levels change the
+                        piece count, the tray layout, and which cells respond. Facts
+                        measured on level 1 are stale afterwards.
+    delegate(question, name="helper")
+                        hand a focused question about the CURRENT board to a sub-agent
+                        and get its finding back as text. The sub-agent can analyse the
+                        board but cannot act on the game, so it is safe to ask freely.
     save_skill(name, source, description)
                         store working code so you and future runs can call it.
 
+USE delegate() WHEN YOU ARE STUCK ON PERCEPTION, not on strategy. Good questions are
+concrete and about what is on the board right now:
+
+    delegate("List every distinct coloured block along the top row, left to right, "
+             "with its colour value and centre x", name="read-targets")
+    delegate("Which cells look like empty slots waiting to be filled, and where", name="find-slots")
+    delegate("Compare the top row order against the bottom row order and tell me the "
+             "permutation that maps one to the other", name="mapping")
+
+Delegating is cheap and reading the board wrong is what loses levels. When your own
+parse disagrees with what you see in the image, ask.
+
 HOW TO ACTUALLY WIN:
+
+PLAY THE GAME. These are games, not puzzles to be admired. A human needs hundreds of
+actions to clear a single level, so a turn that takes three actions and prints a nice
+analysis has done nothing. Inspecting the board is free and worth nothing on its own.
+Every turn should spend real actions attempting real progress.
 
 Read the board with code, not with your eyes. `grid()` is exact; the image is a hint.
 Find the pieces, find the targets, compute the mapping, then act. Hard-coded coordinates
 break on the next level. Code that re-reads the board does not.
 
+Some boards have a button that redraws everything, which you will see in the probe as a
+click changing several hundred cells. That is usually how a level starts. Click it, then
+re-read the board.
+
+Watch out for a colour that is both scenery and a piece. If a container outline is cyan
+and one of the pieces is also cyan, filtering that colour out loses a piece and every
+mapping you build afterwards is off by one.
+
+When a level does not accept your arrangement, the arrangement is wrong, not the
+mechanic. Print what you read, count the pieces against the targets against the slots,
+and check they agree before clicking anything.
+
 Write CLOSED-LOOP code. Check `alive()` and `levels()` as you go and stop when something
 works or something kills you.
 
 When a level falls, IMMEDIATELY call save_skill with a function that solves it by reading
-the board. The next level is usually the same game, bigger.
+the board, then call reprobe() to see what the next level actually is.
 
 Reply with ONLY a Python block:
 
@@ -127,13 +166,36 @@ def make_client():
     )
 
 
-def play(arc, game, client, deployment, max_turns, patience, library) -> dict:
+def play(arc, game, client, deployment, max_turns, patience, library, probe_budget=180) -> dict:
     raw = arc.make(game, include_frame_data=True)
     env = Env(raw, raw.reset())
 
+    # The API publishes how many actions a human needed per level. It is public metadata,
+    # not a solution, and it is the honest yardstick for "are you actually playing".
+    human_actions = []
+    for meta in arc.get_environments():
+        if meta.game_id.split("-")[0] == game:
+            human_actions = list(meta.baseline_actions or [])
+            break
+    human_level1 = human_actions[0] if human_actions else 100
+    human_total = sum(human_actions) if human_actions else 800
+
     print(f"  probing {game} (no tokens)...", flush=True)
-    report = probe(env, click_step=6)
-    probe_text = summarize(report)
+    # Probe only when the library has nothing for this game. Probe actions are charged by
+    # RHAE, and the arithmetic is brutal: on sb26 a 9-action solve behind a 141-action
+    # probe scores 0.06 percent, while the same solve with no probe hits the 1.15 cap and
+    # scores 3.19 percent. The mechanics are the same every run, so paying for them again
+    # is pure loss. Learn once, then read them from the library for free.
+    known = library.mechanics_for(game)
+    if known:
+        probe_text = known
+        report = {"actions": {}, "click_rows": [], "drag_and_drop": [], "kills_you": False}
+        print("    using learned mechanics (0 actions)", flush=True)
+    else:
+        report = probe(env, budget=probe_budget)
+        probe_text = summarize(report)
+        library.remember_mechanics(game, probe_text)
+        print(f"    probed in {report['actions_spent_probing']} actions", flush=True)
     print("   ", probe_text.replace("\n", "\n    "), flush=True)
 
     tags = ["click"] if report["drag_and_drop"] else []
@@ -147,10 +209,30 @@ def play(arc, game, client, deployment, max_turns, patience, library) -> dict:
         saved.append(name)
         return f"saved skill {name}"
 
+    def reprobe():
+        """Re-characterise the CURRENT level and refresh the probe text.
+
+        Levels are not variations of one puzzle: level 2 of sb26 has a different piece
+        count, a different tray layout, and a button that redraws the whole board. A
+        probe taken once at level 1 is stale the moment a level is cleared, and acting
+        on stale facts is what stalled every earlier run.
+        """
+        nonlocal probe_text
+        fresh = probe(env, budget=probe_budget)
+        probe_text = summarize(fresh)
+        return probe_text
+
+    delegator = Delegator(client)
+
+    def delegate(question, name="helper"):
+        """Hand a sub-question to a cheaper sub-agent and get its finding back."""
+        return delegator.delegate(question, env.grid(), name=name)
+
     ns = {
         "press": env.press, "click": env.click, "look": env.look, "grid": env.grid,
         "alive": env.alive, "levels": env.levels, "reset": env.reset,
         "find": env.find, "note": env.note, "np": np, "save_skill": save_skill,
+        "reprobe": reprobe, "delegate": delegate,
     }
     installed = library.install(ns, game, tags)
     if installed:
@@ -161,13 +243,31 @@ def play(arc, game, client, deployment, max_turns, patience, library) -> dict:
     tried: list[str] = []
     last_output = "(nothing run yet)"
     started = time.time()
+    monitor = DropoutMonitor()
+    stopped_because = ""
     env.reset()
 
     for turn in range(max_turns):
         before_levels = env.best
+        before_spent = env.spent
+        env.begin_turn()
         notes = "\n".join(f"- {n}" for n in env.notes[-20:]) or "(none)"
         stuck = STUCK.format(turns=stale, tried="\n".join(f"  - {t}" for t in tried[-6:])) \
             if stale >= patience else ""
+
+        # Under-acting is the dominant failure across the corpus: on keyboard games the
+        # agent spends about a tenth of the actions a human needs, so it never reaches
+        # the end of level 1 and cannot possibly clear it.
+        pace = ""
+        if turn > 0 and env.spent < human_level1:
+            pace = (
+                f"\nPACE WARNING: you have taken {env.spent} actions. A human clears "
+                f"level 1 of this game in about {human_level1} actions, and the whole "
+                f"game in {human_total}. You are not playing enough to reach the end of "
+                f"a level. Inspecting the board costs nothing and achieves nothing. "
+                f"Spend actions: hundreds of them, in loops, checking levels() and "
+                f"alive() as you go.\n"
+            )
 
         content = [
             {
@@ -176,7 +276,10 @@ def play(arc, game, client, deployment, max_turns, patience, library) -> dict:
                     f"Game: {game}\n"
                     f"ACTIONS = {env.actions}\n"
                     f"Levels: {env.best} of {env.frame().win_levels}\n"
-                    f"Colours on screen: {palette_legend(env.frame().frame)}\n\n"
+                    f"Actions taken: {env.spent} (a human needs ~{human_level1} for "
+                    f"level 1, ~{human_total} for the game)\n"
+                    f"Colours on screen: {palette_legend(env.frame().frame)}\n"
+                    f"{pace}\n"
                     f"{probe_text}\n\n"
                     f"SKILLS YOU CAN CALL:\n{library.describe(game, tags)}\n\n"
                     f"YOUR NOTES:\n{notes}\n\n"
@@ -224,8 +327,23 @@ def play(arc, game, client, deployment, max_turns, patience, library) -> dict:
             stale = 0
             for name in saved:
                 library.record(name, won=True)
+            # A cleared level means a new board, and every run so far cleared level 1
+            # and then stalled forever on level 2 while acting on level 1's facts. The
+            # re-probe is done here rather than left to the model to request, because
+            # the model reliably did not request it.
+            probe_text = reprobe()
+            print(f"  {game} re-probed after level {env.best}", flush=True)
         else:
             stale += 1
+
+        verdict = monitor.record(
+            code=code,
+            levels=env.best,
+            actions=env.spent,
+            changed=env.spent > before_spent,
+            errored=bool(err),
+            turn_actions=env.spent - before_spent,
+        )
 
         print(
             f"  {game} t{turn + 1}: lv={env.best}/{env.frame().win_levels} "
@@ -236,7 +354,13 @@ def play(arc, game, client, deployment, max_turns, patience, library) -> dict:
 
         if env.best >= env.frame().win_levels:
             break
-        if stale >= patience * 2:
+
+        if verdict:
+            stopped_because = verdict.reason
+            print(f"  {game} DROPPED OUT: {verdict.reason}", flush=True)
+            print(f"    {verdict.diagnosis}", flush=True)
+            print(f"    -> {verdict.advice}", flush=True)
+            env.note(f"gave up: {verdict.reason}. {verdict.advice}")
             break
 
     for name in saved:
@@ -252,6 +376,8 @@ def play(arc, game, client, deployment, max_turns, patience, library) -> dict:
         "deaths": env.deaths,
         "tokens": tokens,
         "skills_saved": saved,
+        **delegator.summary(),
+        "stopped_because": stopped_because,
         "elapsed_s": round(time.time() - started, 1),
     }
 

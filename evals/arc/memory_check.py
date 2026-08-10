@@ -104,6 +104,28 @@ def main() -> int:
     print(f"        (for reference: {len(long_level) // 2} of 45 turns of raw trajectory "
           f"survive; the ledger and notes are what cover the rest)")
 
+    # ── one assignment, two shapes, one answer ───────────────────────────────────────
+    #
+    # `try_assignment` accepts a list of (colour, (x, y)) pairs OR a {(x, y): colour}
+    # dict. `refuted` accepted only the first and raised
+    # `TypeError: 'int' object is not subscriptable` on the second. Measured on a
+    # level-7 debug session, an agent that had just been handed that flexibility used the
+    # dict form and lost a turn to a crash inside the harness. Accepting a shape in one
+    # function and crashing on it in the next is the harness's bug, not the caller's.
+    from evals.arc.codeact_agent import _as_pairs
+
+    as_pairs = fake_attempt(tried[0], pads)
+    as_dict = {p: c for c, p in as_pairs}
+    good = sorted(_as_pairs(as_pairs)) == sorted(_as_pairs(as_dict))
+    print(f"{'PASS' if good else 'FAIL'}  both assignment shapes normalise to the same "
+          f"thing")
+    ok = ok and good
+
+    good = gate.already_refuted(_as_pairs(as_dict))
+    print(f"{'PASS' if good else 'FAIL'}  an assignment refuted as a list is recognised "
+          f"when offered as a dict")
+    ok = ok and good
+
     print()
     print("ALL GREEN" if ok else "SOMETHING IS RED")
     return 0 if ok else 1

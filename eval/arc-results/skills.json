@@ -3,12 +3,70 @@
     {
       "name": "solve_sb26",
       "game": "sb26",
-      "source": "import numpy as np\ndef _sb26_comps(a, colour):\n    mask = (a == colour)\n    seen = np.zeros(mask.shape, bool)\n    out = []\n    for y, x in zip(*np.where(mask)):\n        if seen[y,x]: continue\n        stack=[(y,x)]; seen[y,x]=True; comp=[]\n        while stack:\n            yy,xx=stack.pop(); comp.append((yy,xx))\n            for dy,dx in ((1,0),(-1,0),(0,1),(0,-1)):\n                ny,nx=yy+dy,xx+dx\n                if 0<=ny<64 and 0<=nx<64 and mask[ny,nx] and not seen[ny,nx]:\n                    seen[ny,nx]=True; stack.append((ny,nx))\n        out.append(comp)\n    return out\n\ndef solve_sb26():\n    g=grid(); start=levels()\n    sources={}\n    for c in np.unique(g):\n        c=int(c)\n        if c in (0,2,4,5,8): continue\n        for comp in _sb26_comps(g,c):\n            ys=[p[0] for p in comp]; xs=[p[1] for p in comp]\n            if min(ys)>=54 and len(comp)>=8:\n                sources[c]=(round(sum(xs)/len(xs)),round(sum(ys)/len(ys)))\n    targets=[]\n    for c in np.unique(g):\n        c=int(c)\n        if c in (0,2,4,5,8): continue\n        for comp in _sb26_comps(g,c):\n            ys=[p[0] for p in comp]; xs=[p[1] for p in comp]\n            if max(ys)<11 and len(comp)>=8:\n                targets.append((sum(xs)/len(xs),c))\n    targets.sort()\n    pads=[]\n    for comp in _sb26_comps(g,2):\n        ys=[p[0] for p in comp]; xs=[p[1] for p in comp]\n        if 24<=min(ys) and max(ys)<=36 and len(comp)>=2:\n            pads.append((round(sum(xs)/len(xs)),round(sum(ys)/len(ys))))\n    pads.sort()\n    for (_,c),dst in zip(targets,pads):\n        if not alive() or levels()!=start: break\n        click(*sources[c]); click(*dst)\n    if alive() and levels()==start: press(5)\n    return levels()>start\n",
-      "description": "Reads bottom piece colors, top target order, and central red pads; drags matching pieces to pads and submits with action 5.",
-      "wins": 1,
+      "source": "def solve_sb26():\n    import numpy as np\n    g = grid()\n\n    # Piece sources are the colored blocks in the bottom tray.\n    sources = []\n    for y in range(54, 64):\n        for x in range(1, 63):\n            c = int(g[y, x])\n            if c not in (0, 4, 5, 14, 15):\n                same = np.argwhere(g[54:64] == c)\n                if len(same) >= 12:\n                    sources.append((c, x, y))\n    by_color = {}\n    for c, x, y in sources:\n        by_color.setdefault(c, []).append((x, y))\n    sources = [(c, int(round(sum(x for x, y in pts)/len(pts))),\n                   int(round(sum(y for x, y in pts)/len(pts))))\n               for c, pts in by_color.items()]\n\n    # Target colors are the framed blocks across the top.\n    targets = []\n    seen = set()\n    for x in range(1, 63):\n        vals = [int(g[y, x]) for y in range(2, 10)]\n        useful = [c for c in vals if c not in (0, 4, 5, 14, 15)]\n        if useful:\n            c = max(set(useful), key=useful.count)\n            if c not in seen:\n                targets.append(c)\n                seen.add(c)\n\n    # Central red pads, ordered left to right.\n    red = np.argwhere(g == 2)\n    pads = []\n    for y, x in red:\n        if 20 < y < 40:\n            if not pads or x - pads[-1][0] > 3:\n                pads.append((int(x), int(y)))\n    # Collapse each pad to its component center.\n    comps = []\n    todo = {(int(y), int(x)) for y, x in red if 20 < y < 40}\n    while todo:\n        seed = todo.pop()\n        stack = [seed]\n        comp = [seed]\n        while stack:\n            yy, xx = stack.pop()\n            for nb in ((yy-1,xx),(yy+1,xx),(yy,xx-1),(yy,xx+1)):\n                if nb in todo:\n                    todo.remove(nb); stack.append(nb); comp.append(nb)\n        comps.append((sum(x for y,x in comp)//len(comp),\n                      sum(y for y,x in comp)//len(comp)))\n    comps.sort()\n\n    smap = {c:(x,y) for c,x,y in sources}\n    for c, dest in zip(targets, comps):\n        if c in smap:\n            click(*smap[c])\n            click(*dest)\n    press(5)\n",
+      "description": "Reads bottom-tray piece colors, ordered top targets, and central red pads; drags matching pieces and submits.",
+      "wins": 0,
       "losses": 0,
       "tags": [
         "click"
+      ]
+    },
+    {
+      "name": "solve_sb26_level1",
+      "game": "sb26",
+      "source": "def solve_sb26_level1():\n    return solve_sb26()\n",
+      "description": "Solves sb26 level 1 by re-reading pieces, targets, and pads.",
+      "wins": 0,
+      "losses": 0,
+      "tags": [
+        "click"
+      ]
+    },
+    {
+      "name": "solve_vc33_level",
+      "game": "vc33",
+      "source": "import numpy as np\ndef _vc33_comps(col):\n    a=grid(); m=(a==col); seen=np.zeros_like(m,bool); out=[]\n    for y,x in zip(*np.where(m)):\n        if seen[y,x]: continue\n        st=[(y,x)]; seen[y,x]=1; pts=[]\n        while st:\n            yy,xx=st.pop(); pts.append((yy,xx))\n            for dy,dx in ((1,0),(-1,0),(0,1),(0,-1)):\n                ny,nx=yy+dy,xx+dx\n                if 0<=ny<64 and 0<=nx<64 and m[ny,nx] and not seen[ny,nx]:\n                    seen[ny,nx]=1; st.append((ny,nx))\n        ys=[p[0] for p in pts]; xs=[p[1] for p in pts]\n        out.append({\"cx\":sum(xs)/len(xs),\"cy\":sum(ys)/len(ys)})\n    return out\ndef solve_vc33_level():\n    start=levels()\n    for _ in range(40):\n        if not alive() or levels()>start: return levels()>start\n        p=_vc33_comps(11); b=_vc33_comps(9)\n        if len(p)<2 or len(b)<2: return False\n        target=min(p,key=lambda z:z[\"cy\"]); mover=max(p,key=lambda z:z[\"cy\"])\n        if abs(mover[\"cx\"]-target[\"cx\"])<1:\n            press(6)\n        else:\n            upper=min(b,key=lambda z:z[\"cy\"]); lower=max(b,key=lambda z:z[\"cy\"])\n            q=upper if mover[\"cx\"]<target[\"cx\"] else lower\n            click(round(q[\"cx\"]),round(q[\"cy\"]))\n    return levels()>start\n",
+      "description": "Reads the purple target and movable connector, uses the upper/lower maroon controls to align them, then presses action 6.",
+      "wins": 1,
+      "losses": 0,
+      "tags": []
+    },
+    {
+      "name": "solve_vc33_level_1",
+      "game": "vc33",
+      "source": "def solve_vc33_level_1():\n    return solve_vc33_level()\n",
+      "description": "Solves vc33 level 1 by reading the board and aligning the connector.",
+      "wins": 0,
+      "losses": 0,
+      "tags": []
+    },
+    {
+      "name": "solve_vc33_level_0",
+      "game": "vc33",
+      "source": "def solve_vc33_saved_level():\n    return solve_vc33_level()\n",
+      "description": "Reads the board and solves vc33 level 0 by aligning the movable connector with the purple target.",
+      "wins": 0,
+      "losses": 0,
+      "tags": []
+    },
+    {
+      "name": "solve_ft09_binary_level",
+      "game": "ft09",
+      "source": "def solve_ft09_binary_level(cells):\n    \"\"\"Try every binary setting of the supplied clickable tile centers.\"\"\"\n    start = levels()\n    press(6)\n    previous = 0\n    for i in range(1, 1 << len(cells)):\n        if levels() > start or not alive():\n            return levels() > start\n        gray = i ^ (i >> 1)\n        bitmask = gray ^ previous\n        bit = (bitmask & -bitmask).bit_length() - 1\n        click(*cells[bit])\n        previous = gray\n        press(6)\n    return levels() > start\n",
+      "description": "Exhausts all binary configurations of measured clickable tile centers using Gray-code traversal and submits each with action 6.",
+      "wins": 1,
+      "losses": 0,
+      "tags": []
+    },
+    {
+      "name": "sp80_generic",
+      "game": "sp80",
+      "source": "def sp80_generic(limit=5000):\n    import random\n    old = levels()\n    for i in range(limit):\n        if not alive():\n            reset()\n        press(random.choice([1,2,2,3,4,6]))\n        if levels() > old:\n            reprobe()\n            return True\n    return False\n",
+      "description": "Closed-loop randomized controller biased toward the high-motion action.",
+      "wins": 1,
+      "losses": 0,
+      "tags": [
+        "deadly"
       ]
     }
   ]

@@ -87,6 +87,18 @@ TEXT = """MECHANICAL FACTS. These are how the GAME and the harness behave -- thi
 
   seated() TELLS YOU WHICH COLOUR IS ON WHICH PAD right now, also for no action.
 
+  TWO BUDGETS BIND A TURN, AND THEY ARE NOT THE SAME. The bar counts DROPS and SUBMITS.
+  The turn also has an ACTION cap, and clicks that cost no bar cell -- picking a piece up,
+  lifting one off a pad -- still cost actions. turn_budget() reports the actions left and
+  costs nothing to call.
+
+  Which one binds depends on how you test. Rebuilding a board costs about 2 actions per
+  pad, so the bar runs out first. Differential testing costs about 3 actions per attempt
+  and 1 to 3 cells, so the two run out at about the same time. Measured: a debug turn
+  planned its batch against the bar alone, hit the action cap partway through
+  try_assignment, and lost the rest of the batch AND left the board half-arranged. Check
+  BOTH before you commit to a batch size.
+
   try_assignment(mapping) PLAYS A HYPOTHESIS FOR THE FEWEST CELLS, and on a level you are
   searching it is the difference between seven attempts per life and roughly twenty. Hand
   it either shape you already write -- a list of (colour, (x, y)) pairs, or a
@@ -128,16 +140,32 @@ TEXT = """MECHANICAL FACTS. These are how the GAME and the harness behave -- thi
   Make each attempt rule out a family of answers rather than a single arrangement,
   because the bar charges you per attempt.
 
-  THE CLUE ROW IS NOT ALWAYS ONE RING PER PAD. Some levels draw more rings than there are
-  pads, some fewer, and on those levels the ring colours do not match the tray as a
-  multiset. CHECK the counts rather than assuming; writing `assert len(clues) ==
-  len(pads)` and giving up when it fails is a measured failure mode that cost several runs
-  a whole level. layout()["clue_structure"] reports the SHAPE of the row -- whether it is
-  one ring per pad, and if a contiguous block of colours repeats, which block and where.
+  THE CLUE ROW IS NOT ALWAYS ONE RING PER PAD, AND IS NOT ALWAYS ONE ROW. Some levels draw
+  more rings than there are pads, some fewer, and on those levels the ring colours do not
+  match the tray as a multiset. CHECK the counts rather than assuming; writing `assert
+  len(clues) == len(pads)` and giving up when it fails is a measured failure mode that cost
+  several runs a whole level. layout()["clue_structure"] reports the SHAPE of the row --
+  whether it is one ring per pad, and if a contiguous block of colours repeats, which block
+  and where. Its `grid` field reports {rows, cols, drawn}: when rows > 1 the extra rows
+  RESTATE the first and carry no colour of their own, and `colours` is already the collapsed
+  per-column reading. Reading the raw `drawn` list as a rank, or fusing its repetition with
+  the tray's duplicate pieces, is a measured dead end that cost a level.
   It does not tell you what the row MEANS. Which pads a reduced row addresses, which pads
   take a block, and what colour belongs on a collapsed position are yours to work out, and
   the tray is the lever: it holds exactly one piece per pad, so whatever it has left over
   once the spelled-out colours are accounted for is what the gaps take.
+
+  TWO PIECES OF ONE COLOUR NEED NOT BE INTERCHANGEABLE. Some trays hold the same colour
+  twice, and when they do, one piece can be SOLID and the other HOLLOW (a ring). Measured
+  on level 8, whose tray holds two 8s and two 9s: of the four solid/hollow choices on ONE
+  AND THE SAME colour arrangement, exactly one clears the level -- the same colour map was
+  refused twice in one run and cleared the level in another. So a refused colour map you
+  have good reason to believe in is not necessarily wrong; check seated_variants() and
+  loose_variants(), which report (colour, hollow) for free, before abandoning it. Say which
+  piece you want by writing (colour, "hollow") or (colour, "solid") wherever a bare colour
+  goes in an assignment; a bare colour still means "any piece of it".
+  A hollow piece's CENTRE IS ITS HOLE, so clicking the centre picks nothing up -- lift it
+  by a pixel on its ring.
 
   grid() IS STALE FOR ONE FRAME after a level change. The first read on a new level can
   still show the old board. Spend one action, then re-read before you trust coordinates."""

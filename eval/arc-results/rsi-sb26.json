@@ -7,19 +7,31 @@
   "games": 1,
   "levels_completed": 1,
   "levels_available": 8,
-  "tokens": 20305,
-  "wall_clock_s": 113.9,
+  "tokens": 29521,
+  "wall_clock_s": 136.8,
   "runs": [
     {
       "game": "sb26",
       "agent": "gpt-5.6-sol",
       "levels_completed": 1,
       "win_levels": 8,
-      "actions_spent": 656,
+      "actions_spent": 7633,
       "deaths": 0,
-      "tokens": 20305,
-      "skills_saved": [],
-      "elapsed_s": 112.8
+      "tokens": 29521,
+      "skills_saved": [
+        "solve_sb26",
+        "solve_sb26",
+        "solve_sb26_level1",
+        "solve_sb26_level1",
+        "solve_sb26_level1",
+        "solve_sb26_level1",
+        "solve_sb26_level1",
+        "solve_sb26_level1",
+        "solve_sb26_level1",
+        "solve_sb26_level1",
+        "solve_sb26_level1"
+      ],
+      "elapsed_s": 135.9
     }
   ]
 }

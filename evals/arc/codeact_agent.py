@@ -53,7 +53,6 @@ from evals.arc.boardread import diff as diff_board  # noqa: E402
 from evals.arc.boardread import objects as board_objects  # noqa: E402
 from evals.arc.frames import budget as frame_budget  # noqa: E402
 from evals.arc.frames import parse as frame_parse  # noqa: E402
-from evals.arc.frames import plan as frame_plan  # noqa: E402
 from evals.arc.phoenix_loop import PhoenixLoop  # noqa: E402
 from evals.arc.policies import CLICK_ACTION, frame_key  # noqa: E402
 from evals.arc.render import data_url, palette_legend  # noqa: E402
@@ -99,19 +98,43 @@ API available to your code:
                            FREE.
                            layout()["clue_structure"] describes the SHAPE OF THE CLUE ROW,
                            because the row is not always one ring per pad. It reports
-                           {flat, colours, block, at, reduced}: `flat` is False when the
-                           row is longer than the pad count, `block` is the run of colours
-                           that repeats, `at` where its occurrences start, and `reduced`
-                           is the row with each occurrence replaced by a single None.
+                           {flat, colours, block, at, reduced, grid}: `flat` is False when
+                           the row is longer than the pad count, `block` is the run of
+                           colours that repeats, `at` where its occurrences start, and
+                           `reduced` is the row with each occurrence replaced by a single
+                           None.
                            Measured on level 5: nine rings over eight pads read as
                            colours=[6,14,8,8,14,8,8,11,15], block=[14,8,8],
                            reduced=[6,None,None,11,15].
+                           `grid` reports how the clue is DRAWN: {rows, cols, drawn}.
+                           The clue is not always one row. When rows > 1 and every column
+                           holds one colour down all its rows, the extra rows RESTATE the
+                           first and carry no colour of their own -- `colours` is then the
+                           per-column reading, already collapsed, and `drawn` is the raw
+                           ring list. Measured on level 8: twelve rings drawn 2x6 over
+                           eight pads, drawn=[8,8,11,11,12,12,9,9,14,14,15,15] and
+                           colours=[8,11,12,9,14,15]. Reading `drawn` as a rank of twelve,
+                           or fusing its doubling with the tray's, is a dead end that has
+                           cost a full level.
                            It tells you the row's SHAPE, not its meaning. Which pads the
                            reduced row addresses, which pads take the block, and what
                            colour belongs on a None are yours to work out -- and the tray
                            is the lever, because it holds exactly one piece per pad, so
                            whatever it has left over after the spelled-out colours are
                            accounted for is what the holes take.
+    seated_variants()   -> {(x, y): (colour, hollow)} per pad. loose_variants() is the
+                           same for tray slots. Both FREE.
+                           TWO PIECES OF ONE COLOUR NEED NOT BE INTERCHANGEABLE: one can
+                           be SOLID and one HOLLOW (a ring). Measured on level 8, whose
+                           tray holds two 8s and two 9s -- of the four solid/hollow
+                           choices on ONE AND THE SAME colour map, exactly one clears the
+                           level. The same colour map was submitted and refused twice in
+                           one run and cleared the level in another. So if a colour map
+                           you have good reason to believe in is refused, check the
+                           variants before abandoning it.
+                           Say which one you want by writing (colour, "hollow") or
+                           (colour, "solid") wherever a bare colour goes in an
+                           assignment. A bare colour still means "any piece of it".
     note(text)          -> write to your notes, which you keep seeing.
     sense(claim, ok)    -> record one trial of a belief. FREE.
     accept(claim)       -> {'ok': bool, 'reason': str}: is that belief actually proven?
@@ -344,10 +367,9 @@ class Env:
         # still loose. A per-level property like the bar's length, so it is cleared on a
         # level change rather than carried over.
         self._empty_pad_colour = None
-        # The pad geometry, also learned at level start. See `seated` for why it cannot
-        # be re-derived from a half-built board.
         self._pad_boxes = None
         self._tray_boxes = None
+        self._piece_grow = 0
 
     def begin_turn(self) -> None:
         self._turn_spent = 0
@@ -418,6 +440,7 @@ class Env:
             self._empty_pad_colour = None
             self._pad_boxes = None
             self._tray_boxes = None
+            self._piece_grow = 0
             raise LevelCleared(
                 f"LEVEL {self._frame.levels_completed} CLEARED in {actions} actions. "
                 "The board below is a DIFFERENT level. Coordinates and helper functions "
@@ -575,6 +598,12 @@ class Env:
                  for t in layout["tray"]),
                 key=lambda t: (t["cx"], t["cy"]),
             )
+            # How far a piece overhangs the pad it sits on. Pieces are drawn larger than
+            # pads, and a hollow one hides its hole exactly over the pad, so a pad has to
+            # be read over the piece's footprint or an occupied pad looks empty.
+            pad_w = self._pad_boxes[0]["x1"] - self._pad_boxes[0]["x0"] + 1
+            piece_w = max(t["x1"] - t["x0"] + 1 for t in self._tray_boxes)
+            self._piece_grow = max(0, (piece_w - pad_w) // 2)
         pads = self._pad_boxes
         if pads is None:
             return {}
@@ -594,27 +623,80 @@ class Env:
             seen = [dominant(p) for p in pads]
             self._empty_pad_colour = max(set(seen), key=seen.count)
 
-        def box_colour(pad):
+        def box_piece(pad):
             """The colour of the piece sitting here, or None if the pad is empty.
 
-            Not the majority colour of the pad's box, which is what an earlier version
-            used and what broke on level 5. From level 4 the game draws some pieces
-            HOLLOW -- a ring with its middle punched out -- so the commonest colour
-            inside the box is the hole, which reads as the board background. Two pads
-            holding c9 rings were reported as background, the executor concluded they
-            were empty, and the arrangement it built was never the one it was asked for.
+            Read over the PIECE's footprint, not the pad's. A pad is drawn 2x2 and a
+            piece 4x4, and from level 4 some pieces are HOLLOW -- a ring with a 2x2 hole.
+            Placed on a pad, such a piece puts its hole exactly over the pad box and its
+            ring entirely outside it, so reading the pad's own pixels sees nothing but
+            the hole. Measured on level 7: after placing a hollow c14, the pad box read
+            `{4: 4}` -- four pixels of background, no trace of the piece. `seated()`
+            called two occupied pads empty and the agent had to work around it by hand.
 
-            The piece is whatever ink is present that is neither the background nor the
-            colour an empty pad draws in. That is the same reading `frames.parse` reaches
-            by lifting each clue to its enclosing ring.
+            Within that footprint the piece is whatever ink is neither the background nor
+            the colour an empty pad draws in, which is the same reading `frames.parse`
+            reaches by lifting each clue to its enclosing ring.
             """
-            patch = grid[pad["y0"]:pad["y1"] + 1, pad["x0"]:pad["x1"] + 1]
+            grow = self._piece_grow
+            y0 = max(0, pad["y0"] - grow)
+            y1 = min(grid.shape[0] - 1, pad["y1"] + grow)
+            x0 = max(0, pad["x0"] - grow)
+            x1 = min(grid.shape[1] - 1, pad["x1"] + grow)
+            patch = grid[y0:y1 + 1, x0:x1 + 1]
             vals, cnts = np.unique(patch, return_counts=True)
             ink = [(int(c), int(v)) for v, c in zip(vals, cnts)
                    if int(v) not in (background, self._empty_pad_colour)]
-            return max(ink)[1] if ink else None
+            if not ink:
+                return None
+            count, colour = max(ink)
+            # HOLLOW OR SOLID, and it matters. A ring covers fewer pixels of the same
+            # footprint than a solid piece. Level 8's tray holds two 8s and two 9s where
+            # one of each pair is hollow, and the pair is NOT interchangeable: measured,
+            # of the four solid/hollow choices on one winning colour map, exactly one
+            # clears the level. A reading that reports only colour therefore cannot tell
+            # a winning board from a losing one.
+            return (colour, count < int(patch.size))
 
-        return {(pad["cx"], pad["cy"]): box_colour(pad) for pad in pads}
+        full = {(pad["cx"], pad["cy"]): box_piece(pad) for pad in pads}
+        self._seated_full = full
+        return {xy: (v[0] if v else None) for xy, v in full.items()}
+
+    def seated_variants(self):
+        """Which PIECE sits on which pad: {(x, y): (colour, hollow)} or None. Free.
+
+        `seated` answers with colour alone, which is enough on every level whose tray
+        holds one piece per colour and wrong on the ones that do not.
+        """
+        self.seated()
+        return dict(getattr(self, "_seated_full", {}))
+
+    def loose_variants(self):
+        """The same reading for tray slots: {(x, y): (colour, hollow)}. Free."""
+        self.loose()
+        return dict(getattr(self, "_loose_full", {}))
+
+    def _grab(self, xy):
+        """A pixel certainly ON the piece at (x, y), for picking it up.
+
+        A hollow piece's centre is its HOLE, and clicking a hole picks nothing up.
+        Measured on level 7: two placements of hollow pieces silently did nothing and
+        the board stayed two pads short while the executor reported it had moved them.
+        The top-left corner of the piece's own footprint is on the drawn ring.
+        """
+        xy = (int(xy[0]), int(xy[1]))
+        piece = {**getattr(self, "_loose_full", {}),
+                 **getattr(self, "_seated_full", {})}.get(xy)
+        if not piece or not piece[1]:
+            return xy
+        for box in (self._tray_boxes or []):
+            if (int(box["cx"]), int(box["cy"])) == xy:
+                return (int(box["x0"]), int(box["y0"]))
+        for box in (self._pad_boxes or []):
+            if (int(box["cx"]), int(box["cy"])) == xy:
+                grow = self._piece_grow
+                return (max(0, int(box["x0"]) - grow), max(0, int(box["y0"]) - grow))
+        return xy
 
     def loose(self):
         """Tray slots that still hold a piece: {(x, y): colour}. Costs no action.
@@ -641,12 +723,16 @@ class Env:
         values, counts = np.unique(grid, return_counts=True)
         background = int(values[np.argmax(counts)])
         out = {}
+        full = {}
         for slot in self._tray_boxes:
             patch = grid[slot["y0"]:slot["y1"] + 1, slot["x0"]:slot["x1"] + 1]
             vals, cnts = np.unique(patch, return_counts=True)
             ink = [(int(c), int(v)) for v, c in zip(vals, cnts) if int(v) != background]
             if ink:
-                out[(slot["cx"], slot["cy"])] = max(ink)[1]
+                count, colour = max(ink)
+                out[(slot["cx"], slot["cy"])] = colour
+                full[(slot["cx"], slot["cy"])] = (colour, count < int(patch.size))
+        self._loose_full = full
         return out
 
     def try_assignment(self, mapping, submit=True):
@@ -679,58 +765,69 @@ class Env:
 
         Accepts either shape the agent already writes: a list of (colour, (x, y)) pairs,
         which is what every rule in this harness returns, or a {(x, y): colour} dict.
+
+        A colour may be QUALIFIED as `(colour, "hollow")` or `(colour, "solid")` when the
+        tray holds more than one piece of it and they are drawn differently. Plain
+        `colour` keeps its meaning -- any piece of that colour -- so nothing already
+        written changes. The qualifier exists because on level 8 it is the whole answer:
+        the colour map `8,11,12,9 / 9,14,15,8` was submitted and rejected twice in one
+        run and cleared the level in another, and the difference was only which 8 and
+        which 9 were used. Without a way to say it, the agent could neither state the
+        answer nor learn anything from being refused.
         """
-        if isinstance(mapping, dict):
-            target = {(int(k[0]), int(k[1])): int(v) for k, v in mapping.items()}
-        else:
-            target = {(int(p[0]), int(p[1])): int(c) for c, p in mapping}
+        target = {pad: _spec(colour) for colour, pad in _as_pairs(mapping)}
 
         before_bar = (self.clock() or {}).get("left")
         if not self.seated():
             return {"ok": False, "why": "board did not parse"}
 
+        def satisfied(have, want):
+            """Does the piece `have` = (colour, hollow) meet the spec `want`?"""
+            if have is None:
+                return False
+            return have[0] == want[0] and (want[1] is None or have[1] == want[1])
+
         # Seat anything still loose first: a tray piece cannot be swapped with a pad.
         # Bounded by the pad count, not looped until stable, so a mechanic that does not
         # behave as measured cannot spin here.
         for _ in range(len(target) + 1):
-            current = self.seated()
+            current = self.seated_variants()
             empties = [p for p in target if current.get(p) is None]
             if not empties:
                 break
-            spare: dict[int, list] = {}
-            for slot, colour in self.loose().items():
-                spare.setdefault(colour, []).append(slot)
+            spare = self.loose_variants()
             if not spare:
                 break
             for pad in empties:
                 want = target[pad]
-                slot = (spare.get(want) or [None])[0]
+                slot = next((s for s, piece in spare.items()
+                             if satisfied(piece, want)), None)
                 if slot is None:
-                    # No loose piece of the wanted colour; seat any piece here and let
-                    # the swap pass below move it where it belongs.
-                    slot = next(iter(s for group in spare.values() for s in group))
+                    # No loose piece meeting the spec; seat any piece here and let the
+                    # swap pass below move it where it belongs.
+                    slot = next(iter(spare))
                     pad = empties[0]
-                self.click(slot[0], slot[1])
+                self.click(*self._grab(slot))
                 self.click(pad[0], pad[1])
                 break
 
         # Every pad now holds something and the target is a permutation of what is
         # there, so one swap fixes at least one pad for one cell.
         for _ in range(len(target) + 1):
-            current = self.seated()
-            wrong = [p for p in target if current.get(p) != target[p]]
+            current = self.seated_variants()
+            wrong = [p for p in target if not satisfied(current.get(p), target[p])]
             if not wrong:
                 break
             pad = wrong[0]
             donor = next((q for q in wrong
-                          if q != pad and current.get(q) == target[pad]), None)
+                          if q != pad and satisfied(current.get(q), target[pad])), None)
             if donor is None:
                 break
-            self.click(pad[0], pad[1])        # lift a placed piece: free
+            self.click(*self._grab(pad))      # lift a placed piece: free
             self.click(donor[0], donor[1])    # drop on an occupied pad: swap, 1 cell
 
-        current = self.seated()
-        placed = all(current.get(p) == target[p] for p in target)
+        current = self.seated_variants()
+        placed = all(satisfied(current.get(p), target[p]) for p in target)
         won = False
         if submit and placed:
             self.press(SUBMIT_ACTION)
@@ -867,6 +964,56 @@ def prune(history: list[dict], keep_images: int = 2, budget: int = 120_000) -> l
     return trimmed
 
 
+def _spec(colour):
+    """Normalise a target colour into (colour, hollow) where hollow may be None = any.
+
+    Accepts a bare colour, or a qualified `(colour, "hollow")` / `(colour, "solid")` /
+    `(colour, True|False)`. A bare colour keeps meaning "any piece of this colour", so
+    every rule already written behaves exactly as before.
+    """
+    if isinstance(colour, (tuple, list)) and len(colour) == 2:
+        base, qual = colour
+        if isinstance(qual, str):
+            qual = qual.strip().lower()
+            if qual in ("hollow", "ring", "open"):
+                return (int(base), True)
+            if qual in ("solid", "filled", "full"):
+                return (int(base), False)
+            raise ValueError(f"unknown piece qualifier {colour[1]!r}; "
+                             "use 'hollow' or 'solid'")
+        if isinstance(qual, bool):
+            return (int(base), qual)
+    return (int(colour), None)
+
+
+def _as_pairs(assignment):
+    """Normalise an assignment to [(colour, (x, y)), ...], whichever shape came in.
+
+    The harness offers two shapes -- a list of (colour, (x, y)) pairs, which is what every
+    rule in this repo returns, and a {(x, y): colour} dict, which is the natural way to
+    write one by hand. `try_assignment` accepted both from the start; `refuted` accepted
+    only the first and raised `TypeError: 'int' object is not subscriptable` on the other.
+    Measured on a level-7 debug session, that cost a turn. Accepting one shape in one
+    function and crashing on it in the next is the harness's bug, so both go through here.
+
+    A colour may arrive QUALIFIED as `(colour, "hollow")` or `(colour, "solid")`. It is
+    passed through unchanged rather than coerced with `int`, which would raise. That also
+    makes the refutation ledger variant-aware: refusing one variant of a colour map must
+    not mark the other three as tried, or the ledger rules out the answer. Measured on
+    level 8, where exactly one of four variants of one colour map wins.
+    """
+    def colour(c):
+        if isinstance(c, (tuple, list)) and len(c) == 2:
+            return (int(c[0]), c[1])
+        return int(c)
+
+    if assignment is None:
+        return []
+    if isinstance(assignment, dict):
+        return [(colour(c), (int(p[0]), int(p[1]))) for p, c in assignment.items()]
+    return [(colour(c), (int(p[0]), int(p[1]))) for c, p in assignment]
+
+
 def _parsed(grid):
     """Parse a stored grid and keep the grid with it, or None if it does not parse.
 
@@ -882,14 +1029,39 @@ def _parsed(grid):
 
 
 def play(arc, game, client, deployment, max_turns, patience, action_cap,
-         trace_path: str = "", seed: int = 0) -> dict:
+         trace_path: str = "", seed: int = 0, start_level: int = 1) -> dict:
     raw = arc.make(game, include_frame_data=True)
+    frame = raw.reset()
+
+    # `start_level` is a DEBUG affordance and nothing else: it lets harness work on a late
+    # level be iterated in seconds instead of paying the ~215 actions and dozen model calls
+    # it costs to reach level 7 honestly. It cannot inflate a score -- `levels_completed`
+    # stays at zero for every level that was skipped, which is the field every result
+    # artifact in this repo reports -- and the result dict below is stamped so a jumped run
+    # cannot be mistaken for a measurement later.
+    jumped = start_level > 1
+    if jumped:
+        engine = getattr(raw, "_game", None)
+        if engine is None or not hasattr(engine, "set_level"):
+            raise RuntimeError("this engine exposes no set_level; start from level 1")
+        engine.set_level(start_level - 1)
+        # The board materialises on the next step, as it does after a real transition.
+        # It must be a FREE one: action 5 is submit and costs a cell of the move bar, so
+        # stepping with it opened the session on a partly-eaten bar whose full colour was
+        # never learned, and clock() then read unconfirmed for the whole level.
+        free = next((a for a in raw.action_space if int(a.value) == 7),
+                    raw.action_space[-1])
+        frame = raw.step(free) or frame
+        print(f"  [debug session: started on level {start_level}; "
+              f"levels_completed={frame.levels_completed} and stays uncredited]",
+              flush=True)
+
     # 4000 per turn let a single search loop swallow the whole run: one measured turn
     # spent 2075 actions and died 25 times inside it. RHAE squares the action count, so
     # a turn that large is unrecoverable no matter what the rest of the run does. 120 is
     # far above any honest solve here (level 1 needs 9, level 2 needs 15) and far below
     # the point where a loop stops being a mistake and becomes the whole run.
-    env = Env(raw, raw.reset(), turn_action_cap=120)
+    env = Env(raw, frame, turn_action_cap=120)
 
     # Mechanics already learned on a previous run, replayed for zero actions. RHAE charges
     # every input that alters the game, so re-measuring facts we already hold is pure loss:
@@ -913,8 +1085,17 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
         return rules.propose(rule)
 
     def refuted(order):
-        """Has this exact placement order already been played here and failed? FREE."""
-        return rules.already_refuted(order)
+        """Has this assignment already been played here and failed? FREE.
+
+        Accepts either shape the agent writes. `try_assignment` takes a list of
+        (colour, (x, y)) pairs OR a {(x, y): colour} dict, and an agent that had just
+        been handed that flexibility naturally passed the dict here too -- and got
+        `TypeError: 'int' object is not subscriptable` from inside the harness. Measured
+        on a level-7 debug session: it cost the agent a whole turn on the second turn of
+        the level. An interface that accepts a shape in one function and crashes on it in
+        the next is a harness defect, not a mistake by the caller.
+        """
+        return rules.already_refuted(_as_pairs(order))
 
     # Persistent namespace: this is the REPL the model keeps across turns.
     ns = {
@@ -923,6 +1104,9 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
         "find": env.find, "note": env.note, "np": np,
         "clock": env.clock,
         "seated": env.seated,
+        "seated_variants": env.seated_variants,
+        "loose_variants": env.loose_variants,
+        "turn_budget": env.turn_budget,
         "try_assignment": env.try_assignment,
         "objects": lambda: board_objects(env.grid()),
         "board": lambda: describe_board(env.grid()),
@@ -1240,6 +1424,10 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
         "elapsed_s": round(time.time() - started, 1),
         "seed": seed,
         "phoenix_proven": phoenix.established(),
+        # Stamped so a debug session cannot be read as a measurement months from now.
+        # `scorable` is the field to check before quoting anything from this dict.
+        "start_level": start_level,
+        "scorable": not jumped,
     }
 
 
@@ -1254,6 +1442,11 @@ def main() -> int:
     ap.add_argument("--out", default="")
     ap.add_argument("--trace", default="")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument(
+        "--start-level", type=int, default=1,
+        help="DEBUG ONLY: begin on this level. Skipped levels are never credited, so a "
+             "jumped run reports scorable=false and must not be quoted as a result.",
+    )
     args = ap.parse_args()
 
     import arc_agi
@@ -1269,7 +1462,7 @@ def main() -> int:
         print(f"[{game}]", flush=True)
         runs.append(
             play(arc, game, client, args.deployment, args.max_turns, args.patience,
-                 args.action_cap, args.trace, args.seed)
+                 args.action_cap, args.trace, args.seed, args.start_level)
         )
         if args.out:
             Path(args.out).write_text(

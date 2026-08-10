@@ -132,7 +132,16 @@ def parse(grid):
     Everything is derived from shape and repetition, never from a colour constant or a
     row index, because those move between levels and that is what broke every earlier
     parser.
+
+    Returns None on a board this cannot describe. That includes the BLANK board the game
+    draws once the last level is cleared: it has no rows to unpack, and raising there
+    turned finishing the game into a traceback on the very turn that finished it.
     """
+    import numpy as _np
+
+    grid = _np.asarray(grid)
+    if grid.ndim != 2 or grid.size == 0:
+        return None
     blobs = objects(grid)
     h, w = grid.shape
 
@@ -208,10 +217,50 @@ def parse(grid):
     # follows, so its horizontal centre IS its insertion point. `traverse` uses that
     # and needs no marker.
     return {"frames": frames, "pads": pads, "clues": clues, "tray": tray,
-            "clue_structure": _clue_structure([c["colour"] for c in clues], len(pads))}
+            "clue_structure": _clue_structure(clues, len(pads))}
 
 
-def _clue_structure(colours, n_pads):
+def _collapse_clue_rows(clues):
+    """Collapse a clue drawn over several rows into the one row it repeats.
+
+    The clue is not always a single row of rings. Level 8 draws TWELVE rings over
+    EIGHT pads in two rows of six, and every column holds the same colour in both
+    rows -- the second row restates the first and carries no colour of its own.
+    Flattened, that reads `8,8,11,11,12,12,9,9,14,14,15,15`, and the doubling is
+    indistinguishable from a tray that happens to hold two of something. Measured on
+    level 8: the agent fused the clue's doubling with the tray's and searched a rank
+    of eight it had invented, spending 228 actions over nine turns without once
+    testing a six-entry reading.
+
+    So the rows are collapsed here, where the coordinates still exist, rather than
+    guessed at later from a flat list where they do not. Returns
+    (per_column_colours, n_rows, n_cols), and n_rows == 1 whenever the clue really is
+    one row or its columns disagree -- a disagreeing column means the rows differ and
+    the duplication reading would be a lie.
+    """
+    rows = sorted({int(round(float(c["cy"]))) for c in clues})
+    cols = sorted({int(round(float(c["cx"]))) for c in clues})
+    if len(rows) < 2 or len(clues) != len(rows) * len(cols):
+        return [int(c["colour"]) for c in clues], 1, len(clues)
+
+    grid = {}
+    for c in clues:
+        grid[(int(round(float(c["cx"]))), int(round(float(c["cy"]))))] = int(c["colour"])
+    if len(grid) != len(clues):
+        return [int(c["colour"]) for c in clues], 1, len(clues)
+
+    per_column = []
+    for x in cols:
+        seen = {grid.get((x, y)) for y in rows}
+        if len(seen) != 1 or None in seen:
+            # The rows are not restatements of each other, so there is nothing to
+            # collapse and saying otherwise would discard real colours.
+            return [int(c["colour"]) for c in clues], 1, len(clues)
+        per_column.append(seen.pop())
+    return per_column, len(rows), len(cols)
+
+
+def _clue_structure(clues, n_pads):
     """Describe the clue row's shape: a flat list, or a row containing a repeated block.
 
     From level 5 the row stops being one ring per pad. Level 5 draws NINE rings over
@@ -232,8 +281,14 @@ def _clue_structure(colours, n_pads):
     the block fills, and what colour belongs on a collapsed position are not answered
     here; the None is a hole the agent has to fill from the board and the tray.
     """
+    colours, n_rows, n_cols = _collapse_clue_rows(clues)
+    drawn = [int(c["colour"]) for c in clues]
+    # What the collapse found, carried on every reading below so the agent is never
+    # told a row is flat without also being told it was two rows a moment ago.
+    grid = {"rows": n_rows, "cols": n_cols, "drawn": drawn}
+
     flat = {"flat": True, "colours": list(colours), "block": None,
-            "at": [], "reduced": list(colours)}
+            "at": [], "reduced": list(colours), "grid": grid}
     if len(colours) == n_pads:
         return flat
 
@@ -244,7 +299,7 @@ def _clue_structure(colours, n_pads):
     # names two of each. No block decomposition explains a short row, so none is offered;
     # what is reported is that the row is not one ring per pad.
     unexplained = {"flat": False, "colours": list(colours), "block": None,
-                   "at": [], "reduced": list(colours)}
+                   "at": [], "reduced": list(colours), "grid": grid}
     over = len(colours) - n_pads
     if over <= 0:
         return unexplained
@@ -284,7 +339,7 @@ def _clue_structure(colours, n_pads):
             # is a coincidence rather than the row's structure.
             if len(reduced) == n_pads - size:
                 return {"flat": False, "colours": list(colours), "block": list(block),
-                        "at": hits, "reduced": reduced}
+                        "at": hits, "reduced": reduced, "grid": grid}
     return unexplained
 
 

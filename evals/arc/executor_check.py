@@ -118,58 +118,53 @@ def main() -> int:
 
     # ── and it must survive a HOLLOW piece ───────────────────────────────────────────
     #
-    # The measured break. From level 4 the game draws some pieces as a ring with its
-    # middle punched out, so the commonest colour inside the box is the HOLE, which reads
-    # as the board background. On level 5 two pads holding c9 rings were reported empty,
-    # the executor built an arrangement that was not the one it was asked for, and the
-    # eight cells it spent bought nothing.
+    # The measured break, in two stages. First: reading a pad by the commonest colour in
+    # its box returns the HOLE of a hollow piece, which is the board background. Second,
+    # and worse: a pad is drawn 2x2 while a piece is 4x4, so a hollow piece places its
+    # hole exactly over the pad box and its ring entirely OUTSIDE it -- the pad's own
+    # pixels then contain no trace of the piece at all. Measured on level 7: after
+    # placing a hollow c14 the pad box read `{4: 4}`, `seated()` called two occupied pads
+    # empty, and the agent had to work around the harness by hand to clear the level.
     #
-    # Asserted against a crafted board rather than by playing forward to level 5, because
-    # reaching that level requires solving levels 1-4 and this check must not depend on
-    # the agent being right. A pad box is written by hand with a ring of piece colour
-    # around a hole of background, which is exactly what the game draws.
-    print("\nhollow piece, on a crafted board:")
-    raw2 = arc_agi.Arcade().make("sb26", include_frame_data=True)
-    probe = Env(raw2, raw2.reset(), turn_action_cap=10)
-    probe.seated()  # learn geometry and the empty-pad colour from the pristine board
-    board = probe.grid().copy()
-    values, counts = np.unique(board, return_counts=True)
-    background = int(values[np.argmax(counts)])
-    pad = probe._pad_boxes[0]
-    ring = 9
-    # Background-dominant on purpose. A 4x4 box with a 2x2 hole still has more ring than
-    # hole, so it would not exercise the bug; what broke on level 5 is a pad box whose
-    # commonest colour is the background, and that is what is built here.
-    board[pad["y0"]:pad["y1"] + 1, pad["x0"]:pad["x1"] + 1] = background
-    board[pad["y0"], pad["x0"]] = ring
-    board[pad["y1"], pad["x1"]] = ring
+    # Asserted against the live game on the board that actually draws hollow pieces,
+    # reached with the debug jump so this check does not depend on the agent solving
+    # six levels first.
+    print("\nhollow piece, on the level that draws one:")
+    from evals.arc.level_jump import make_at_level
 
-    class Frozen:
-        frame = [board.tolist()]
+    raw7, frame7, _ = make_at_level("sb26", 7)
+    seven = Env(raw7, frame7, turn_action_cap=200)
+    seven.seated()
+    layout7 = parse(seven.grid())
+    widest = max(int(t["px"]) for t in layout7["tray"])
+    hollow = [t for t in layout7["tray"] if int(t["px"]) < widest]
 
-    probe._frame = Frozen()
-    reading = probe.seated()[(pad["cx"], pad["cy"])]
-    good = reading == ring
-    print(f"  {'PASS' if good else 'FAIL'}  ink of {ring} in a box dominated by "
-          f"{background} reads as {reading}, expected {ring}")
-    ok = ok and good
+    if not hollow:
+        print("  (level 7 drew no hollow piece this time; nothing asserted)")
+    else:
+        pad7 = seven._pad_boxes[0]
+        key = (pad7["cx"], pad7["cy"])
+        good = seven.seated()[key] is None
+        print(f"  {'PASS' if good else 'FAIL'}  an empty pad reads as empty "
+              f"({seven.seated()[key]})")
+        ok = ok and good
 
-    patch = board[pad["y0"]:pad["y1"] + 1, pad["x0"]:pad["x1"] + 1]
-    vals, cnts = np.unique(patch, return_counts=True)
-    hole_majority = int(vals[np.argmax(cnts)])
-    good = hole_majority == background
-    print(f"  {'PASS' if good else 'FAIL'}  and the naive majority reading really would "
-          f"have said {hole_majority} (that is the bug this replaces)")
-    ok = ok and good
+        piece = hollow[0]
+        seven.click(int(piece["cx"]), int(piece["cy"]))
+        seven.click(pad7["cx"], pad7["cy"])
+        got = seven.seated()[key]
+        good = got == int(piece["colour"])
+        print(f"  {'PASS' if good else 'FAIL'}  a hollow c{piece['colour']} on a pad "
+              f"reads as {got}, expected {int(piece['colour'])}")
+        ok = ok and good
 
-    # An empty pad must still read as empty, or the executor seats pieces it already has.
-    probe2 = Env(*(lambda r: (r, r.reset()))(
-        arc_agi.Arcade().make("sb26", include_frame_data=True)), turn_action_cap=10)
-    empties = probe2.seated()
-    good = all(v is None for v in empties.values())
-    print(f"  {'PASS' if good else 'FAIL'}  an empty pad still reads as empty, not as "
-          f"its own outline ({sum(v is None for v in empties.values())}/{len(empties)})")
-    ok = ok and good
+        patch = seven.grid()[pad7["y0"]:pad7["y1"] + 1, pad7["x0"]:pad7["x1"] + 1]
+        vals, cnts = np.unique(patch, return_counts=True)
+        naive = int(vals[np.argmax(cnts)])
+        good = naive != int(piece["colour"])
+        print(f"  {'PASS' if good else 'FAIL'}  and reading the pad's own box really "
+              f"would have said {naive} (that is the bug this replaces)")
+        ok = ok and good
 
     print()
     print("ALL GREEN" if ok else "SOMETHING IS RED")

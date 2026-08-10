@@ -20,12 +20,66 @@ from evals.arc.frames import parse, plan  # noqa: E402
 # What the row is drawn as, read off the board by hand. Level 5 is the one that is not
 # flat: `6,[14,8,8],[14,8,8],11,15` over eight pads.
 EXPECTED = {
-    5: {"flat": False, "block": [14, 8, 8], "reduced": [6, None, None, 11, 15]},
+    5: {"flat": False, "block": [14, 8, 8], "reduced": [6, None, None, 11, 15],
+        "rows": 1, "cols": 9},
     # Level 7 goes the other way: SEVEN rings over EIGHT pads, a palindrome over three
     # sibling frames. No block decomposition explains a short row, but calling it flat
     # would be the same lie that cost eleven runs on level 5.
-    7: {"flat": False, "block": None, "reduced": [8, 9, 14, 11, 14, 9, 8]},
+    7: {"flat": False, "block": None, "reduced": [8, 9, 14, 11, 14, 9, 8],
+        "rows": 1, "cols": 7},
+    # Level 8 is the third shape: TWELVE rings over EIGHT pads, drawn as two rows of six
+    # where the second row restates the first. Flattened it reads
+    # 8,8,11,11,12,12,9,9,14,14,15,15 and the doubling is indistinguishable from a tray
+    # holding two of something -- measured, the agent fused the two and searched a rank
+    # of eight it had invented. Collapsed, it is a six-colour row over eight pads.
+    8: {"flat": False, "block": None, "reduced": [8, 11, 12, 9, 14, 15],
+        "rows": 2, "cols": 6},
 }
+
+
+def check_by_jump(levels=range(1, 9)) -> bool:
+    """Verify the clue report on EVERY level, including the ones the planner cannot reach.
+
+    The walk below stops where the planner stops, which is level 6, so levels 7 and 8
+    were never actually checked by this file -- their expectations sat in EXPECTED and
+    were never compared against anything. Jumping straight to a level costs no actions
+    and no tokens, so there is no reason for the two hardest boards to be the two that
+    go unverified.
+    """
+    from evals.arc.level_jump import make_at_level
+
+    ok = True
+    for level in levels:
+        raw, frame, _ = make_at_level("sb26", level, 0)
+        env = Env(raw, frame, inert_limit=10_000, death_limit=10_000,
+                  turn_action_cap=100_000)
+        L = parse(env.grid())
+        if not L:
+            print(f"FAIL  level {level}: does not parse")
+            ok = False
+            continue
+        s = L["clue_structure"]
+        grid = s["grid"]
+        want = EXPECTED.get(level)
+        if want is None:
+            want = {"flat": True, "block": None,
+                    "reduced": list(s["colours"]), "rows": 1,
+                    "cols": len(L["pads"])}
+            good = s["flat"] and len(s["colours"]) == len(L["pads"])
+        else:
+            good = (s["flat"] == want["flat"] and s["block"] == want["block"]
+                    and s["reduced"] == want["reduced"])
+        good = good and grid["rows"] == want["rows"] and grid["cols"] == want["cols"]
+        # Collapsing must never invent or lose a ring.
+        good = good and grid["rows"] * grid["cols"] == len(grid["drawn"])
+        print(f"{'PASS' if good else 'FAIL'}  level {level}: {len(grid['drawn'])} rings "
+              f"drawn {grid['rows']}x{grid['cols']} over {len(L['pads'])} pads "
+              f"-> {s['colours']}")
+        if not good:
+            print(f"        wanted flat={want['flat']} block={want['block']} "
+                  f"reduced={want['reduced']} {want['rows']}x{want['cols']}")
+        ok = ok and good
+    return ok
 
 
 def main(max_levels=7) -> int:
@@ -100,6 +154,10 @@ def main(max_levels=7) -> int:
                 pass
             continue
         break
+
+    print()
+    print("every level, jumped (the planner stops at 6, these do not):")
+    ok = check_by_jump() and ok
 
     print()
     print("ALL GREEN" if ok else "SOMETHING IS RED")
