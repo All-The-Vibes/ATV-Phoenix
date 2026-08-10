@@ -1423,7 +1423,8 @@ def _parsed(grid):
 
 
 def play(arc, game, client, deployment, max_turns, patience, action_cap,
-         trace_path: str = "", seed: int = 0, start_level: int = 1) -> dict:
+         trace_path: str = "", seed: int = 0, start_level: int = 1,
+         out_path: str = "") -> dict:
     raw = arc.make(game, include_frame_data=True)
     frame = raw.reset()
 
@@ -1995,6 +1996,47 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
                     "bar_colour": env._bar_colour,
                 }) + "\n")
 
+        # CHECKPOINT THE SCORECARD, because until now it was written once, after
+        # the run returned, and a run that did not return left nothing at all.
+        # Measured today: two runs were stopped deliberately and both vanished --
+        # no scorecard, no record that the game had been played. The same hole
+        # swallows a crash, a reboot, a killed shell, or an endpoint that stays
+        # down past the retry ladder, and each of those costs about two hours and
+        # four million tokens. The trace survived every one of those; the result
+        # did not, which is backwards -- the trace is the diagnostic and the
+        # scorecard is the deliverable.
+        #
+        # Written whole to a temporary file and moved into place, so a kill
+        # landing mid-write cannot leave a half-written JSON file where the
+        # standings scorer expects a valid one. A truncated scorecard would be
+        # read as a malformed artifact and skipped, which is the same loss with
+        # extra steps.
+        if out_path:
+            snapshot = dict(
+                game=game, agent=deployment, levels_completed=env.best,
+                win_levels=env.frame().win_levels, actions_spent=env.spent,
+                level_actions=env.level_actions, deaths=env.deaths,
+                tokens=tokens, elapsed_s=round(time.time() - started, 1),
+                seed=seed, turns_used=turn + 1, max_turns=max_turns,
+                mechanics_learned=list(env.mechanics_learned),
+                bar_row=env._bar_row, bar_colour=env._bar_colour,
+                start_level=start_level, scorable=not jumped,
+                stopped="in_progress",
+            )
+            try:
+                tmp = Path(out_path).with_suffix(".partial")
+                tmp.write_text(json.dumps({
+                    "agent": deployment, "games": 1,
+                    "levels_completed": env.best,
+                    "levels_available": env.frame().win_levels,
+                    "tokens": tokens, "runs": [snapshot],
+                }, indent=2), encoding="utf-8")
+                tmp.replace(Path(out_path))
+            except OSError:
+                # A run must never die because its bookkeeping could not be
+                # saved. The trace still has everything needed to reconstruct.
+                pass
+
         print(
             f"  {game} t{turn + 1}: acts={env.spent - before_spent} total={env.spent} "
             f"deaths={env.deaths} lv={env.best}/{env.frame().win_levels} tok={tokens}"
@@ -2075,7 +2117,12 @@ def main() -> int:
         print(f"[{game}]", flush=True)
         runs.append(
             play(arc, game, client, args.deployment, args.max_turns, args.patience,
-                 args.action_cap, args.trace, args.seed, args.start_level)
+                 args.action_cap, args.trace, args.seed, args.start_level,
+                 # Only checkpoint into the output file when this run owns it. A
+                 # multi-game batch shares one path, and a per-turn snapshot of
+                 # the game in progress would overwrite the games already
+                 # finished -- trading one loss for a worse one.
+                 args.out if len(games) == 1 else "")
         )
         if args.out:
             Path(args.out).write_text(
