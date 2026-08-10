@@ -1630,7 +1630,12 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
         reply = None
         call_error = None
         starved = False
-        for attempt in range(10):
+        # Measured on tu93: six concurrent runs share one endpoint's tokens-per-minute,
+        # so process count buys no throughput -- it splits the same quota and adds 429
+        # churn. The old ten-attempt ladder gave up after ~12 minutes and ended tu93 at
+        # 1/9 with 280 of its 8,000 actions unspent. Wall-clock is the cheapest thing we
+        # spend; a run is worth ~4M tokens. Wait far longer before conceding.
+        for attempt in range(40):
             try:
                 reply = client.chat.completions.create(
                     model=deployment,
@@ -1654,7 +1659,7 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
                 if not ("429" in text or "rate limit" in text.lower()):
                     call_error = exc
                     break
-                if attempt == 9:
+                if attempt == 39:
                     starved = True
                     break
                 nap = min(120, 10 * 2 ** attempt)
@@ -1665,9 +1670,12 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
         if starved:
             # Running out of quota is not the same as running out of ideas, and it must
             # not be recorded as though it were. An earlier version re-raised here, which
-            # killed the process and threw away a finished 6/8 run on its way out.
-            print(f"  {game}: still rate limited after 10 tries; ending the run and "
-                  f"keeping {env.best}/{env.frame().win_levels}", flush=True)
+            # killed the process and threw away a finished 6/8 run on its way out. It
+            # also left `stopped` at its initial "max_turns", so tu93 -- which died on a
+            # 429 at turn 29 of 160 -- was filed as having exhausted its turn budget.
+            stopped = "rate_limited"
+            print(f"  {game}: still rate limited after {attempt + 1} tries; ending the "
+                  f"run and keeping {env.best}/{env.frame().win_levels}", flush=True)
             history.pop()
             break
 
@@ -1691,6 +1699,7 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
                   f"{str(exc)[:160]}) [{model_failures} in a row]", flush=True)
             history.pop()
             if model_failures >= 3:
+                stopped = "model_failures"
                 print(f"  {game}: three model calls failed in a row; stopping the run "
                       f"rather than burning {max_turns - turn - 1} turns in silence",
                       flush=True)
