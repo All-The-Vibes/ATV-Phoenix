@@ -474,6 +474,10 @@ class Env:
         # same kind of invention this harness exists to remove.
         self._bar_colour = None
         self._bar_row = None
+        # The bar's previous reading, as (row, {colour: cells}). The direction the bar
+        # drains is not visible in one frame but is unambiguous across two, so the
+        # harness watches rather than waiting to be told.
+        self._bar_seen = None
         # The colour an EMPTY pad draws in, learned at level start when every piece is
         # still loose. A per-level property like the bar's length, so it is cleared on a
         # level change rather than carried over.
@@ -553,6 +557,11 @@ class Env:
             # colour an empty pad draws in.
             self._bar_colour = None
             self._bar_row = None
+            # The bar's previous reading, as (row, {colour: cells}), used to tell the
+            # remaining segment from the spent one by watching which way it moves. Held
+            # only within a life: every rebuild refills the bar, and a comparison across
+            # a refill names the wrong half with full confidence.
+            self._bar_seen = None
             self._empty_pad_colour = None
             self._pad_boxes = None
             self._tray_boxes = None
@@ -565,6 +574,22 @@ class Env:
 
         if changed:
             self._inert = 0
+            # WATCH THE BAR DRAIN, because one frame cannot say which way it drains.
+            # A full-width two-segment row is bar-SHAPED, but which segment is the
+            # remaining one is not visible in a single reading, so `frames.budget`
+            # honestly refuses to guess and returns confirmed: False. It resolves
+            # that by asking the caller for the colour seen when the bar was full --
+            # and the caller is the agent, so on any game where the agent never
+            # thinks to call clock() the bar is never identified at all. Measured on
+            # bp35: eleven deaths, no clock() call in the entire run, and the death
+            # notice therefore told it "this game DRAWS NO MOVE BAR" while row 63 was
+            # visibly draining 63 -> 43 -> 38 -> 29 the whole time. That is the Gap 7
+            # shape again: could-not-read reported as nothing-to-read.
+            #
+            # The harness does not need to be told. It sees every frame, so it can
+            # watch instead of ask: over two frames the remaining segment SHRINKS and
+            # the spent one grows, and that is a measurement rather than a guess.
+            self._learn_bar_direction()
         else:
             self._inert += 1
             if self._inert >= self.inert_limit:
@@ -613,6 +638,10 @@ class Env:
                 self._frame = self._env.reset()
                 self._bar_colour = None
                 self._bar_row = None
+                # The bar just refilled. Carrying its pre-death reading forward would
+                # show the remaining segment GROWING and name the spent colour as the
+                # budget -- a confident reading of exactly the wrong half.
+                self._bar_seen = None
                 self._inert = 0
                 # The board has just been rebuilt underneath whatever code is running.
                 # Letting the loop continue is the same silent corruption `LevelCleared`
@@ -708,6 +737,96 @@ class Env:
 
     def look(self):
         return self._observe()
+
+    def _learn_bar_direction(self):
+        """Identify the remaining segment of the move bar by watching it shrink.
+
+        `frames.budget` can find a bar-SHAPED row on its own -- full width, one or
+        two colours, at most two runs -- but it cannot tell from a single frame
+        which of the two segments is the budget that is left and which is the part
+        already spent. It refuses to guess, and asks the caller to hand back the
+        colour the row showed while the bar was still full.
+
+        That put the whole mechanism behind the agent's own curiosity. On sb26 and
+        cd82 the agent called `clock()` early and the bar was identified; on bp35 it
+        never called `clock()` once in thirty turns, so nothing was ever handed back,
+        nothing was ever identified, and every death notice told it the game DRAWS NO
+        MOVE BAR -- while row 63 drained 63 -> 43 -> 38 -> 29 in its own printed
+        output. The harness turned "I could not read it" into "there is nothing to
+        read", which is the same failure as `parse` describing one game and answering
+        confidently for twenty-four.
+
+        Nothing had to be asked. The harness holds every frame, and across two of
+        them the ambiguity disappears: the remaining segment loses cells and the
+        spent one gains exactly as many. So this watches every bar-shaped row and
+        concludes on that conservation -- a bar keeps its width, so a cell leaving
+        one segment arrives in the other, while a row that merely changes because
+        an object crossed it does not balance.
+
+        The previous reading is dropped wherever the board is rebuilt -- level
+        change, death, manual reset -- because the bar REFILLS there. Comparing
+        across a refill would show the remaining segment growing and name the spent
+        colour as the budget, which is worse than not knowing: it is a confident
+        reading of the wrong half.
+        """
+        if self._bar_colour is not None:
+            return
+        grid = self.grid()
+
+        # A board that is still pristine answers outright: an untouched bar is a
+        # single full-width run in a colour reserved for it, which is what the
+        # strict pass in `frames.budget` already finds. bp35 opens exactly like
+        # this, so this branch alone would have identified its bar on frame one --
+        # nobody had ever looked.
+        state = frame_budget(grid, None, self._bar_row)
+        if state.get("confirmed") and state.get("full_colour") is not None:
+            self._bar_colour = state["full_colour"]
+            self._bar_row = state.get("row")
+            return
+
+        # Otherwise watch. Every full-width row of at most two colours and at most
+        # two runs is a candidate; the real bar is the one that CONSERVES width as
+        # it moves. Candidates are gathered here rather than through `budget`
+        # because that function only offers a two-segment reading once it is told
+        # which row to look at, and being told is the dependency this removes.
+        h, w = grid.shape
+        now: dict[int, dict[int, int]] = {}
+        for y in range(h):
+            cells = grid[y].tolist()
+            seen = set(cells)
+            if not 1 <= len(seen) <= 2:
+                continue
+            if 1 + sum(1 for a, b in zip(cells, cells[1:]) if a != b) > 2:
+                continue
+            now[y] = {c: cells.count(c) for c in seen}
+
+        previous = self._bar_seen
+        self._bar_seen = now
+        if not previous:
+            return
+
+        found = []
+        for y, after in now.items():
+            before = previous.get(y)
+            if not before or set(before) != set(after):
+                continue
+            shrank = [c for c, n in after.items() if n < before[c]]
+            grew = [c for c, n in after.items() if n > before[c]]
+            if len(shrank) != 1 or len(grew) != 1:
+                continue
+            # Conservation: what one segment lost, the other gained. A row redrawn
+            # by something moving through it will not balance, and that is the
+            # difference between a bar and ordinary board furniture that happens
+            # to be two-toned.
+            if before[shrank[0]] - after[shrank[0]] != after[grew[0]] - before[grew[0]]:
+                continue
+            found.append((y, shrank[0]))
+
+        # Two rows draining at once means the board is doing something this rule
+        # cannot read. Naming one of them would be a guess, and a guess reported as
+        # a reading is the failure this whole file exists to remove.
+        if len(found) == 1:
+            self._bar_row, self._bar_colour = found[0]
 
     def clock(self):
         """The move-bar as the board draws it: cells left, used, total, fraction.
@@ -1027,6 +1146,9 @@ class Env:
         # worse than reporting nothing, because a constant reads as a confident answer.
         self._bar_colour = None
         self._bar_row = None
+        # And the bar refilled with the board, so its previous reading is now the
+        # wrong side of a discontinuity, exactly as on the death path.
+        self._bar_seen = None
         # A reset changes the board wholesale. Carrying the inert counter across it would
         # let a stall the reset just ended fire on the next action.
         self._inert = 0
