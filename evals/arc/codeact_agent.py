@@ -1983,6 +1983,16 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
                     "output": last_output[-1500:],
                     "notes": env.notes[-8:],
                     "mechanics": list(env.mechanics_learned),
+                    # WHETHER THIS GAME DRAWS A MOVE BAR, as measured rather than as
+                    # assumed. Eight games are on record as bar-less, but that record
+                    # was written by runs whose agents never called clock() -- bp35
+                    # went sixteen deaths without asking once. Now that the harness
+                    # identifies the bar by watching, the answer is a by-product of
+                    # playing, and recording it here settles the question for free
+                    # instead of costing another run to ask.
+                    "deaths": env.deaths,
+                    "bar_row": env._bar_row,
+                    "bar_colour": env._bar_colour,
                 }) + "\n")
 
         print(

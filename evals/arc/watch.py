@@ -52,9 +52,12 @@ def read(run: str) -> dict | None:
         "turn": last.get("turn", len(rows)),
         "levels": last.get("levels", 0),
         "actions": last.get("total_actions", 0),
-        "deaths": deaths,
+        # Prefer the counter the run keeps over counting death notices in the
+        # output, which only sees the deaths whose message survived truncation.
+        "deaths": last.get("deaths", deaths),
         "mechanics": len(last.get("mechanics") or []),
         "notes": len(last.get("notes") or []),
+        "bar": last.get("bar_colour"),
     }
 
 
@@ -73,10 +76,14 @@ def main(runs: list[str]) -> int:
             pace = f"  {per:.0f} act/lvl vs par ~{par // max(1, s['levels'])}"
         else:
             pace = ""
+        # Whether the bar was ever identified. On the eight games recorded as
+        # bar-less this is the measurement that settles it, and it now comes free
+        # with any run rather than costing one to ask.
+        bar = "bar" if s.get("bar") is not None else "no-bar"
         print(
             f"{spec:<9} t{s['turn']:<4} lv={s['levels']:<3} "
             f"acts={s['actions']:<5} deaths={s['deaths']:<3} "
-            f"mech={s['mechanics']:<3} notes={s['notes']:<3}{pace}"
+            f"mech={s['mechanics']:<3} {bar:<7}{pace}"
         )
     return 0
 
