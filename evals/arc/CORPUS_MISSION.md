@@ -105,6 +105,49 @@ Where sb26's remaining 43 points actually sit, if someone does want them: levels
 score 0.142 and 0.103 against a 1.15 cap, and carry weights 6 and 8. Everything else is
 already at cap or near it.
 
+### A fourth consequence, and it decides how to spend attempts
+
+Read from the scorer rather than the docs, in `arc_agi/scorecard.py`:
+
+    class EnvironmentScoreList:
+        @property
+        def score(self) -> float:
+            """Return the average score of the runs."""
+            return max(run.score for run in self.runs)
+
+The docstring says average and the code returns **max**. The code is what runs. So
+**outside Competition Mode a game is worth its BEST run**, and a bad attempt costs
+tokens and wall clock but never score.
+
+That resolves the variance question we have been treating as the core risk. cd82 across
+seven runs on identical code went 1/6, 5/6, 6/6, 2/6, 4/6, 6/6, 2/6 -- and under
+max-of-runs that game is worth its 6/6. Prime Agent's three reported sweeps, [95.0, 95.2,
+95.5], are the same arithmetic: the headline is the best one.
+
+Two regimes, and the same number means different things in each:
+
+* **Open scoring** -- variance is not a penalty. Throughput is the lever: more attempts
+  on a game we have not beaten strictly help, and there is no reason to hold a run back.
+* **Competition Mode** -- `has_environment(game_id)` refuses a second play, so it is one
+  shot per game and variance is the entire game. Reliability only becomes the objective
+  here.
+
+We are optimising the first today. Do not import conclusions about reliability from one
+regime into the other.
+
+### RESET is free, and the agent was told it was fatal
+
+Also read from the scorer: `update_scorecard` dispatches on the id of the action taken.
+Id 0 is RESET and routes to `inc_reset_count`; ids 1-7 route to `inc_action_count`. RHAE
+divides by the action count. **A reset never enters it.** And a reset restarts the
+CURRENT level -- across 59 recorded traces the level count never once fell, including
+sc25 holding levels=3 through ten consecutive deaths.
+
+The prompt described this as `reset() -> restart from level 1`, and 53 of 61 recorded
+runs never called it once. See Gap 10. What it buys is the BOARD, never the BUDGET:
+actions already spent stay spent, so the rule is arithmetic -- reset when undoing by hand
+costs more actions than replaying from pristine.
+
 ## The rules. Adhere strictly; these are not guidelines
 
 ### Competition Mode (<https://docs.arcprize.org/toolkit/competition_mode.md>)
