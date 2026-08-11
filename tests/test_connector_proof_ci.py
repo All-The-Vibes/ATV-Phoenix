@@ -124,6 +124,7 @@ def assert_required_commands(yaml_text: str) -> None:
     required = {
         "connector acceptance": r"(?m)(?:^|[;&|]\s*)python\s+-m\s+pytest\s+tests/test_phoenix_learn\.py(?:\s|$)",
         "trace verification": r"(?m)(?:^|[;&|]\s*)phoenix-mcp\s+verify-trace(?:\s|$)",
+        "rust parity": r"(?m)(?:^|[;&|]\s*)cargo\s+test\b[^\n]*--test\s+accept_parity(?:\s|$)",
     }
     missing = [name for name, pattern in required.items() if not re.search(pattern, commands)]
     assert not missing, f"missing executable command(s): {', '.join(missing)}"
@@ -143,7 +144,14 @@ def test_real_workflow_runs_connector_test_and_verifies_trace():
     active_yaml = "\n".join(
         line for line in text.splitlines() if not line.lstrip().startswith("#")
     )
-    for path in ("src/**", "Cargo.toml", "Cargo.lock", "tests/test_connector_proof_ci.py"):
+    for path in (
+        "src/**",
+        "Cargo.toml",
+        "Cargo.lock",
+        "tests/test_connector_proof_ci.py",
+        "tests/accept_parity.rs",
+        "tests/accept_parity_cases.json",
+    ):
         assert f'"{path}"' in active_yaml
 
 
@@ -252,6 +260,8 @@ def test_jobs_steps_without_job_key_do_not_count():
     [
         ("python -m pytest tests/test_phoenix_learn.py", "trace verification"),
         ("phoenix-mcp verify-trace", "connector acceptance"),
+        ("cargo test --release --locked --test accept_parity", "connector acceptance"),
+        ("python -m pytest tests/test_phoenix_learn.py", "rust parity"),
     ],
 )
 def test_workflow_missing_either_required_command_fails(only_command, missing):

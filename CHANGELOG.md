@@ -66,6 +66,15 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Issue #184.
 
 ### Changed
+- **The Rust half of the failure-first parity contract now runs in CI.** `tests/accept_parity.rs`,
+  `tests/accept_parity_cases.json` and `tests/test_accept_parity.py` landed together so the Rust
+  gate in `src/accept.rs` and the Python gate in `phoenix_learn/accept.py` answer one shared
+  fixture, but only the Python side ever executed on a pull request. `cargo test --release
+  --locked --test accept_parity` is now a step in `.github/workflows/connector-proof.yml`, and
+  both fixture files are on that workflow's push and pull_request path filters, so a Rust-side
+  change that diverges from the fixture fails the check instead of merging quietly. The contract
+  test `tests/test_connector_proof_ci.py` asserts the step and the path filters exist, using the
+  same run-step parser that already rejects commands hidden in comments and heredocs. Issue #182.
 
 - **Tier 3 scope is derived from the diff instead of asserted by the caller.** `scripts/eval-gate.ps1`
   previously waived the gate whenever a caller passed `-Exempt`, so whoever invoked the gate decided
