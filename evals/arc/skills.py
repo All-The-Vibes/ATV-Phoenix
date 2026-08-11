@@ -90,15 +90,24 @@ class SkillLibrary:
         self.save()
 
     def available(self, game: str, tags: list[str] | None = None) -> list[Skill]:
-        """Skills worth offering: this game's first, then transferable ones."""
+        """Skills worth offering: this game's first, then anything transferable.
+
+        Cross-game transfer is the point. "Read the board into connected components" and
+        "find the drag mapping" are facts about this benchmark, not about one environment,
+        and a library that only ever offers same-game skills compounds nothing across the
+        corpus. A skill earns transfer by having won somewhere; one that has never won is
+        only offered on the game it came from.
+        """
         wanted = set(tags or [])
         out = []
         for skill in self.skills.values():
             if skill.retired:
                 continue
-            if skill.game == game or (wanted and wanted & set(skill.tags)):
+            if skill.game == game:
                 out.append(skill)
-        return sorted(out, key=lambda s: (s.game != game, -s.score))
+            elif skill.wins > 0 and (not wanted or wanted & set(skill.tags)):
+                out.append(skill)
+        return sorted(out, key=lambda s: (s.game != game, -s.score, -s.wins))
 
     def install(self, namespace: dict, game: str, tags=None) -> list[str]:
         """Execute available skills into the namespace so they can be called."""
@@ -123,3 +132,30 @@ class SkillLibrary:
                 f"[{origin}, {skill.wins}W/{skill.losses}L]"
             )
         return "\n".join(lines)
+
+    # ── learned mechanics ────────────────────────────────────────────────────────────
+    #
+    # Probe results are worth exactly as much on run 2 as on run 1 and cost real score to
+    # re-acquire, because RHAE charges every action that alters the game. Storing the
+    # summary makes the second run free.
+
+    def mechanics_for(self, game: str) -> str:
+        path = self.path.parent / "mechanics.json"
+        if not path.exists():
+            return ""
+        try:
+            return json.loads(path.read_text(encoding="utf-8")).get(game, "")
+        except json.JSONDecodeError:
+            return ""
+
+    def remember_mechanics(self, game: str, summary: str) -> None:
+        path = self.path.parent / "mechanics.json"
+        known = {}
+        if path.exists():
+            try:
+                known = json.loads(path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                known = {}
+        known[game] = summary
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(known, indent=2), encoding="utf-8")

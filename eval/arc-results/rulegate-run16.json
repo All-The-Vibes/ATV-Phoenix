@@ -1,0 +1,34 @@
+{
+  "agent": "gpt-5.6-sol",
+  "auth": "managed_identity",
+  "action_space": "executable_python",
+  "games": 1,
+  "levels_completed": 8,
+  "levels_available": 8,
+  "tokens": 1351804,
+  "wall_clock_s": 1236.5,
+  "runs": [
+    {
+      "game": "sb26",
+      "agent": "gpt-5.6-sol",
+      "levels_completed": 8,
+      "win_levels": 8,
+      "actions_spent": 1824,
+      "level_actions": [
+        9,
+        16,
+        38,
+        16,
+        18,
+        48,
+        43,
+        1636
+      ],
+      "deaths": 9,
+      "tokens": 1351804,
+      "elapsed_s": 1235.9,
+      "seed": 0,
+      "phoenix_proven": []
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "agent": "gpt-5.6-sol",
+  "auth": "managed_identity",
+  "action_space": "executable_python",
+  "games": 1,
+  "levels_completed": 1,
+  "levels_available": 6,
+  "tokens": 3468243,
+  "wall_clock_s": 5481.9,
+  "runs": [
+    {
+      "game": "r11l",
+      "agent": "gpt-5.6-sol",
+      "levels_completed": 1,
+      "win_levels": 6,
+      "actions_spent": 690,
+      "level_actions": [
+        38
+      ],
+      "deaths": 17,
+      "tokens": 3468243,
+      "elapsed_s": 5481.0,
+      "seed": 0,
+      "phoenix_proven": [
+        "magenta selection followed by a free-space coordinate steers the selected creature"
+      ],
+      "start_level": 1,
+      "scorable": true
+    }
+  ]
+}
