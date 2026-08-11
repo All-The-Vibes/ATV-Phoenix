@@ -429,3 +429,109 @@ a harness that translates that honesty into a claim about the world on the agent
 that into "no bar exists". The failure mode of this harness is never silence — it is a
 confident wrong answer, and it is usually produced one layer above the component that was
 being careful.
+
+---
+
+## Gap 15 — a counter that falls was read as a counter that counts
+
+The SDK's `frame.levels_completed` is **not monotone**. On `s5i5` it oscillates inside a
+single level, and the harness gated the level transition on the only rule that looks
+obviously safe:
+
+```python
+if self._frame.levels_completed > before_levels:   # WRONG
+```
+
+Measured on `trace-s5i5-b.jsonl`, a run that cleared **two** levels: the transition fired
+**nine** times, carrying level numbers **1, 1, 1, 2, 1, 1, 1, 1, 1**. Reading 1 after
+having read 2 is only possible if the counter fell and climbed again.
+
+Three consequences, none of them visible in the scorecard:
+
+1. **Attribution.** The action mark restarted on every false fire, so `level_actions`
+   came out as nine entries. `score_run` slices `[:levels_completed]`, so level 2 was
+   charged the **last 49** of the **375** actions it actually cost. Under a squared
+   penalty that is not a rounding error.
+2. **The harness lied to the agent.** Seven of the nine said *"LEVEL 1 CLEARED — the
+   board below is a DIFFERENT level"* while the agent was standing on level 3.
+3. **Knowledge destroyed on a schedule.** The transition branch wipes level notes,
+   retractions, bar colour, pad boxes and tray boxes. Nine wipes for two real boundaries.
+
+**Why every existing check missed it.** `reset_check` watches the trace's per-turn
+`levels` field — and that field logs `self.best`, a running maximum. The oscillation
+happens *between actions inside one turn*, so a per-turn sample is monotone even while the
+counter is not. The instrument was sampling at a resolution coarser than the damage.
+
+**Fixed:** gate on a new high-water mark. A new maximum is the only reading that means *a
+level I had never finished before*, which is exactly what RHAE credits — the scorecard
+reports `env.best`. It also makes `len(level_actions) == levels_completed` true by
+construction, and it charges a level every action spent on it including replays. That is
+the honest reading: **a replay buys back the board, never the budget.**
+
+**Pinned by:** `python -m evals.arc.level_monotonic_check` — pins the gate by source
+shape, replays the real s5i5 tick sequence through both rules (old: 9 entries; new:
+`[107, 375]`), and sweeps disk for the invariant.
+
+**Blast radius, measured:** 4 scorecards (`cd82-d`, `cd82-e`, `tu93-a`, `vc33-a`) and 10
+traces recorded a level they had already cleared. Those artifacts cannot be repaired by
+re-reading them — the actions were charged to the wrong level before the file was written.
+So results now carry `harness: 2`, the invariant binds what this build produces, and older
+artifacts are **quarantined by name and counted** rather than silently trusted or silently
+excused.
+
+---
+
+## Gap 11 — the lesson a death teaches is the lesson a death destroys
+
+`Died` aborts the agent's cell where it stands. Every statement after the dying action is
+skipped — and the statement after a dying action is, reliably, the one recording what
+killed it.
+
+`bp35-b` called `mechanic()` **seventeen** times and finished with an **empty** mechanics
+list. Swept across all 41 traces on disk: **96** calls to `mechanic`/`note`/`retract` sat
+after an action on a turn that died, and every one was lost. The games that die most are
+the games that learn least, which is exactly backwards.
+
+**Why the obvious fix is only half a fix.** Reading the writes out of the cell before it
+runs recovers only the ones whose arguments are literals: **49 of 96**. The other 47 build
+their text from local variables, and they cluster in `r11l` and `su15` — the two
+death-heaviest runs in the corpus. A fix that skips the death-heavy games is not a fix for
+this defect.
+
+**Fixed:** recover them *afterwards*. The exec namespace outlives the exception with every
+pre-action local still bound, so replaying the unreached statement means now what it would
+have meant then. Only statements whose calls are **all** ledger calls are replayed —
+decided by the shape of the statement, not by a deny-list that would rot — which keeps a
+salvage off the board, since after a death the board is pristine and would answer about a
+different world. Lines that already wrote are skipped, so a half-executed cell cannot
+double-record.
+
+**Pinned by:** `python evals/arc/ledger_salvage_check.py` — five checks, including the
+computed-text case a pre-scan cannot reach, and proof that a salvage never reads the
+board. Measured with `python evals/arc/ledger_loss_probe.py`.
+
+---
+
+## Gap 16 — eight games were never played, and the standings said they had failed
+
+Twelve games showed **0.00%** and were read as twelve failures. Eight of them
+(`wa30 sk48 re86 m0r0 ls20 lf52 g50t dc22`) have **no agent trace on disk at all**.
+
+Their scores all came from one source: `novelty.json`, dated 2026-08-08, carrying
+`policy` and `budget_per_game` keys, **0 turns and 0 tokens for every game**. It is a
+random-policy sweep. The model was never called.
+
+Nothing in the standings table said so. A zero from a policy baseline and a zero from an
+agent that tried and failed print identically, and the difference is the whole strategy:
+one is a capability ceiling, the other is an empty chair.
+
+**The shape, again.** Every gap in this file is the same failure — a confident answer
+standing in for a missing measurement, produced one layer above the component that was
+being careful. `novelty.json` never claimed to be an agent run. The standings table is
+what turned "not attempted" into "attempted and scored zero".
+
+**Fixed:** `evals/arc/queue_runner.py` keeps three agents alive until a queue drains,
+admitting a game only when fewer than N agents are alive **anywhere on the machine**, so
+it cooperates with hand-launched runs instead of doubling the load. Every run gets `--out`
+and `--trace`, because a run that dies without either leaves no record it was ever played
+— which is how this gap was created in the first place.
