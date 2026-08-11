@@ -1454,7 +1454,7 @@ def make_client():
     )
 
 
-def prune(history: list[dict], keep_images: int = 2, budget: int = 120_000) -> list[dict]:
+def prune(history: list[dict], keep_images: int = 2, budget: int = 480_000) -> list[dict]:
     """Recent turns in full, images only on the newest, older turns dropped.
 
     A 64x64 board as a data URL is expensive and a board from twelve turns ago is not the
@@ -1475,6 +1475,17 @@ def prune(history: list[dict], keep_images: int = 2, budget: int = 120_000) -> l
     bought seventeen turns before the endpoint started refusing calls, and the run ended
     on quota rather than on ideas, holding 6/8 with 7,700 of its 8,000 actions unspent.
     Context is not free context; every turn's history is re-sent on the next call.
+
+    120,000 chars was that lesson over-applied. The model's window is a million tokens
+    and the trajectory was capped at roughly thirty thousand, so a run lost its own
+    reasoning after about twenty turns while runs were going 130-190 turns long -- the
+    agent spent the back half of every long game re-deriving what it had already proved,
+    and a re-derivation costs ACTIONS, which is the one thing RHAE squares. Measured
+    across the corpus: 41,781 tokens per turn against a budget that could hold twelve
+    times that.
+
+    480,000 chars is ~120,000 tokens: four times the memory, still an eighth of the
+    window, and still bounded so the fuse this docstring describes cannot be relit.
 
     What the budget is spent ON is a separate question from how big it is, and getting
     that wrong cost a level. The size of a message was its raw character count, so a
