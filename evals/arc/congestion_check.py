@@ -49,6 +49,15 @@ CONGESTION = [
     "Error code: 503 - Service temporarily unavailable",
     "Error code: 500 - The server had an error processing your request",
     "The engine is currently overloaded, please try again later",
+    # A credential refresh under load is congestion wearing a third name. Three
+    # concurrent runs refresh against one Azure CLI, contend, and one loses. Measured:
+    # ar25 was at 5/8 with level 5 cleared in 59 actions -- still solving, and solving
+    # fast -- when three of these in a row spent all three model-failure strikes and
+    # ended the run. It was filed as `model_failures`, which reads as the model
+    # breaking rather than as a token that was busy for ninety seconds.
+    "CredentialUnavailableError: Failed to invoke the Azure CLI",
+    "CredentialUnavailableError: Azure CLI not found on path",
+    "ClientAuthenticationError: token expired and refresh failed",
 ]
 
 # What a real defect says. None of these should be retried -- forty naps would

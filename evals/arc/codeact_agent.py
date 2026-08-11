@@ -1906,7 +1906,19 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
                 # lp85 at 7/8 with 90 turns and 2 deaths left in it, su15, sc25 and vc33
                 # likewise -- every one of them filed as "max_turns" while sitting at
                 # roughly a third of its turn budget. Congestion must go to the ladder.
-                text = str(exc).lower()
+                # A CREDENTIAL REFRESH UNDER LOAD IS THE SAME SIGNAL AGAIN. Three
+                # concurrent runs refresh their tokens against one Azure CLI, contend,
+                # and one of them gets `CredentialUnavailableError: Failed to invoke the
+                # Azure CLI`. Nothing about the run is wrong and the next attempt
+                # succeeds. Measured: ar25 was at 5/8 with level 5 cleared in 59 actions
+                # -- still solving, and solving fast -- when three of these in a row
+                # spent all three model-failure strikes and ended it. The scorecard filed
+                # that as `model_failures`, which reads as the model breaking rather than
+                # as a token that was busy for ninety seconds.
+                # Classify on the type name as well as the message. `CredentialUnavailable`
+                # is the durable half of that signal; the sentence after it is the Azure
+                # CLI's wording and is not ours to depend on.
+                text = f"{type(exc).__name__} {exc}".lower()
                 congested = (
                     "429" in text
                     or "rate limit" in text
@@ -1917,6 +1929,10 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
                     or "503" in text
                     or "500" in text
                     or "overloaded" in text
+                    or "credentialunavailable" in text
+                    or "failed to invoke the azure cli" in text
+                    or "azure cli" in text
+                    or "token" in text and "expired" in text
                 )
                 if not congested:
                     call_error = exc
