@@ -1,0 +1,15 @@
+{
+  "_contract": "Given an intact trace and a live check whose result equals the last recorded observation, src/accept.rs::verify_gate and phoenix_learn.accept.verify_gate must agree on saw_red, green_after_red, currently_green and ok. Issue #182. Both tests/test_accept_parity.py and tests/accept_parity.rs read THIS file, so a rule change on one side that is not made on the other fails one of them.",
+  "_trials": "true is a GREEN observation, false is a RED one, in the order they were recorded.",
+  "cases": [
+    {"name": "never_tested",            "trials": [],                     "saw_red": false, "green_after_red": false, "currently_green": false, "ok": false},
+    {"name": "green_only_is_vacuous",   "trials": [true],                 "saw_red": false, "green_after_red": false, "currently_green": true,  "ok": false},
+    {"name": "red_only",                "trials": [false],                "saw_red": true,  "green_after_red": false, "currently_green": false, "ok": false},
+    {"name": "one_red_then_one_green",  "trials": [false, true],          "saw_red": true,  "green_after_red": true,  "currently_green": true,  "ok": true},
+    {"name": "green_then_red",          "trials": [true, false],          "saw_red": true,  "green_after_red": false, "currently_green": false, "ok": false},
+    {"name": "fix_regressed",           "trials": [false, true, false],   "saw_red": true,  "green_after_red": true,  "currently_green": false, "ok": false},
+    {"name": "regressed_then_refixed",  "trials": [false, true, false, true], "saw_red": true, "green_after_red": true, "currently_green": true, "ok": true},
+    {"name": "green_red_green",         "trials": [true, false, true],    "saw_red": true,  "green_after_red": true,  "currently_green": true,  "ok": true},
+    {"name": "greens_then_red",         "trials": [true, true, false],    "saw_red": true,  "green_after_red": false, "currently_green": false, "ok": false}
+  ]
+}
