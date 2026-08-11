@@ -44,8 +44,18 @@ pub fn verify_gate(workspace: &Path, check: &Check) -> GateResult {
     // 2. Walk the trace in order: find a RED sense for THIS exact check, then a later GREEN.
     let mut saw_red = false;
     let mut green_after_red = false;
+    // #173: RED rows belonging to a DIFFERENT canonical digest. They can never satisfy this gate,
+    // and counting them is what lets the reason below tell a moved digest from a check that was
+    // simply never run failing.
+    let mut red_under_other_digest = 0usize;
     for ev in tr.read_all() {
-        if ev.tool != "sense" || ev.input_digest != digest {
+        if ev.tool != "sense" {
+            continue;
+        }
+        if ev.input_digest != digest {
+            if !ev.ok {
+                red_under_other_digest += 1;
+            }
             continue;
         }
         if !ev.ok {
@@ -61,6 +71,15 @@ pub fn verify_gate(workspace: &Path, check: &Check) -> GateResult {
     let ok = trace_intact && saw_red && green_after_red && currently_green;
     let reason = if !trace_intact {
         format!("trace chain broken at row {:?} — completion cannot be trusted", v.broken_at)
+    } else if !saw_red && red_under_other_digest > 0 {
+        format!(
+            "no RED observation for this check's digest {}, and the trace holds {} RED sense row(s) \
+             under a different digest. The canonical digest folds every file named in `target` (#158), \
+             so adding or editing one of those files moves the digest and an earlier RED stops binding \
+             this check. Re-observe RED against the check as it stands now.",
+            &digest[..16.min(digest.len())],
+            red_under_other_digest
+        )
     } else if !saw_red {
         "no RED observation for this check in the trace — a gate never seen failing proves nothing \
          (vacuous-check guard). Reproduce the failure first, then fix it."

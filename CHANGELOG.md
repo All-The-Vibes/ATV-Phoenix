@@ -9,6 +9,32 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`accept` says the digest moved instead of blaming the author.** When `verify_gate` finds no
+  RED for a check's digest and the trace does hold RED sense rows under a different digest, the
+  reason now names the digest, counts those rows, and points at the file-folding rule from #158
+  as the cause. The old message told the author to reproduce a failure they had already
+  reproduced, which is the message `phoenix-proof` printed on run 31201312829 of PR #172 when
+  the check named a test file the pull request added. `ok`, `saw_red`, `green_after_red` and
+  `currently_green` are computed exactly as before, so the gate refuses in the same cases it
+  refused before and only the diagnostic changed. Closes part of #173; the base-sense fix
+  itself is still an open design call on that issue. Issue #173.
+
+- **An environment-characterisation primitive, so the next domain does not rebuild one.**
+  `phoenix_learn.discover.characterise(actions, snapshot, apply, reset=None)` presses each
+  action once, diffs the state, and reports what each one did. `diff_regions` says WHERE the
+  state changed: a grid reports the bounding box of the differing cells plus how many differ,
+  a mapping reports the changed keys, a flat sequence reports the changed indices. A 64x64
+  grid that flips one cell no longer reads the same as one that repainted everything.
+  `inert` names the actions that changed nothing, the cheap disproof the ARC traces show was
+  never bought: one run pressed a single action 56 times on an untested theory that it
+  advanced a timer and then died, and another spent 2,075 actions in one turn permuting 22
+  orderings of a theory it never tested. The procedure costs one action per action.
+  Aliases are reported only when a `reset` is supplied, because without one the actions run in
+  sequence from whatever the previous action left behind, so `aliases_known` is False and the
+  list stays empty instead of reading as evidence. The only dependencies are the two
+  callables, so the same primitive covers an ARC grid and a shell agent whose state is the
+  filesystem and the process table. Issue #183.
+
 - **Seeds are part of the episodic gate's evidence.** `decide_episodic()` accepts a run as
   `{"score": float, "seed": hashable}`. A run that cannot name its seed cannot be re-run, so the
   verdict is the new `REJECT_UNREPRODUCIBLE` rather than green, and that objection outranks thin
