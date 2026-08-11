@@ -43,6 +43,10 @@ AGENT = Path("evals/arc/codeact_agent.py")
 RESULTS = Path("eval/arc-results")
 CLEARED = re.compile(r"LEVEL (\d+) CLEARED in (\d+) actions")
 
+# Read from the harness rather than restated here, so bumping the version in one place
+# cannot leave this check silently binding the wrong generation of artifact.
+from evals.arc.codeact_agent import HARNESS_VERSION as CURRENT_HARNESS  # noqa: E402
+
 
 def _fail(msg: str) -> str:
     return f"FAIL  {msg}"
@@ -139,13 +143,42 @@ def check_attribution_on_a_replay() -> tuple[bool, list[str]]:
     return True, out
 
 
+def _harness_of(run: dict, blob) -> int:
+    """Which harness wrote this record. Unstamped means version 1, by definition."""
+    if isinstance(run, dict) and "harness" in run:
+        return int(run.get("harness") or 1)
+    if isinstance(blob, dict) and "harness" in blob:
+        return int(blob.get("harness") or 1)
+    return 1
+
+
+def _trace_harness(trace: Path) -> int:
+    """A trace inherits the stamp of the scorecard written beside it, same run."""
+    card = trace.with_name(trace.name[len("trace-"):]).with_suffix(".json")
+    try:
+        blob = json.loads(card.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return 1
+    runs = blob if isinstance(blob, list) else (blob.get("runs") or [])
+    stamps = [_harness_of(r, blob) for r in runs if isinstance(r, dict)]
+    return min(stamps) if stamps else _harness_of({}, blob)
+
+
 def check_scorecards_hold_the_invariant() -> tuple[bool, list[str]]:
-    """On disk, every run must charge exactly one action count per cleared level."""
+    """On disk, every run must charge exactly one action count per cleared level.
+
+    Scoped to cards this harness wrote. A version-1 card recorded a level count the
+    harness had already mis-attributed, and nothing readable in the file can undo that
+    -- the actions were charged to the wrong level before it was ever written. Failing
+    on them forever would only train the reader to ignore a red check, so they are
+    QUARANTINED: named, counted, and excluded from the verdict. The invariant itself is
+    not relaxed by one inch for anything version 2 produces.
+    """
     cards = sorted(RESULTS.glob("*.json"))
     if not cards:
         return True, ["skip  no scorecards on disk"]
 
-    seen, broken = 0, []
+    seen, broken, legacy = 0, [], []
     for path in cards:
         try:
             blob = json.loads(path.read_text(encoding="utf-8"))
@@ -158,17 +191,27 @@ def check_scorecards_hold_the_invariant() -> tuple[bool, list[str]]:
             per_level = run.get("level_actions")
             if per_level is None:
                 continue
-            seen += 1
             done = run.get("levels_completed", 0)
-            if len(per_level) != done:
-                broken.append(f"{path.name} ({run.get('game')}): "
-                              f"{len(per_level)} entries for {done} levels")
+            if len(per_level) == done:
+                seen += 1
+                continue
+            entry = (f"{path.name} ({run.get('game')}): "
+                     f"{len(per_level)} entries for {done} levels")
+            if _harness_of(run, blob) < CURRENT_HARNESS:
+                legacy.append(entry)
+            else:
+                broken.append(entry)
 
     if broken:
         lines = [_fail("level_actions disagrees with levels_completed:")]
         lines += [f"        {b}" for b in broken[:10]]
         return False, lines
-    return True, [_ok(f"{seen} recorded run(s) charge one action count per cleared level")]
+    out = [_ok(f"{seen} recorded run(s) charge one action count per cleared level")]
+    if legacy:
+        out.append(f"        quarantined: {len(legacy)} pre-v{CURRENT_HARNESS} card(s) "
+                   f"whose attribution cannot be trusted -- re-run to replace")
+        out += [f"          {b}" for b in legacy[:10]]
+    return True, out
 
 
 def check_traces_never_reclear_a_level() -> tuple[bool, list[str]]:
@@ -177,7 +220,7 @@ def check_traces_never_reclear_a_level() -> tuple[bool, list[str]]:
     if not traces:
         return True, ["skip  no traces on disk"]
 
-    examined, offenders = 0, []
+    examined, offenders, legacy = 0, [], []
     for path in traces:
         announced: list[int] = []
         try:
@@ -202,7 +245,13 @@ def check_traces_never_reclear_a_level() -> tuple[bool, list[str]]:
         examined += 1
         for a, b in zip(announced, announced[1:]):
             if b <= a:
-                offenders.append(f"{path.name}: announced {announced}")
+                entry = f"{path.name}: announced {announced}"
+                # A trace carries no stamp of its own, so it inherits the verdict of
+                # the scorecard written beside it -- same run, same harness.
+                if _trace_harness(path) < CURRENT_HARNESS:
+                    legacy.append(entry)
+                else:
+                    offenders.append(entry)
                 break
 
     if not examined:
@@ -216,13 +265,16 @@ def check_traces_never_reclear_a_level() -> tuple[bool, list[str]]:
         ]
         lines += [f"        {o}" for o in offenders[:6]]
         lines.append(
-            "        (traces recorded BEFORE the fix are expected here; re-run the game "
-            "or move the stale trace aside)"
+            f"        (these were written by harness v{CURRENT_HARNESS}, which is "
+            "supposed to make this impossible -- the gate has regressed)"
         )
         return False, lines
-    return True, [
-        _ok(f"{examined} recorded run(s) announced each level once, in ascending order")
-    ]
+    out = [_ok(f"{examined} recorded run(s) announced each level once, in ascending order")]
+    if legacy:
+        out.append(f"        quarantined: {len(legacy)} pre-v{CURRENT_HARNESS} trace(s) "
+                   f"whose level announcements were made by the broken gate")
+        out += [f"          {o}" for o in legacy[:6]]
+    return True, out
 
 
 def main() -> int:

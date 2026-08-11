@@ -33,6 +33,7 @@ Usage::
 from __future__ import annotations
 
 import argparse
+import ast
 import contextlib
 import io
 import json
@@ -421,6 +422,71 @@ class Died(RuntimeError):
     """
 
 
+#: Ledger methods -- pure memory, no board access, safe to replay after an abort.
+LEDGER_METHODS = frozenset({"mechanic", "unmechanic", "note", "retract"})
+
+#: Bumped when a defect changes what a recorded result MEANS, not merely how well the
+#: agent plays. Version 2 is the level counter: the SDK's `levels_completed` can fall,
+#: the harness gated the level transition on "greater than last frame", and so a card
+#: written by version 1 can charge a level a fraction of the actions it truly cost.
+HARNESS_VERSION = 2
+
+
+def _salvage_ledger(code, ns, env):
+    """Re-run the ledger writes the aborted cell never reached.
+
+    `Died`, `LevelCleared` and `StallDetected` each abort the agent's cell part-way
+    through, and every statement after the raise is skipped. Measured across 41 traces:
+    96 calls to `mechanic`/`note`/`retract` sat after an action on a turn that died, and
+    all 96 were lost. On `bp35-b` that was 17 of 17 -- the run recorded an EMPTY
+    mechanics list while its own code had called `mechanic()` seventeen times. On a
+    death-heavy game the lesson a death teaches is exactly the lesson a death destroys.
+
+    Half of those calls build their text from local variables, so knowing the write
+    before the cell runs is not possible. Re-running it afterwards is: the exec
+    namespace survives the exception with every pre-action local still bound, so the
+    statement means the same thing now as it would have meant then.
+
+    Only statements whose calls are ALL ledger calls are replayed. That excludes
+    anything touching the board -- after a death the board is pristine, so a re-read
+    would answer about a different world -- and it is decided by the shape of the
+    statement rather than by trusting a deny-list to stay complete. Lines that already
+    wrote are skipped via `env._ledger_lines`, so a half-executed cell cannot
+    double-record.
+    """
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return 0
+
+    saved = 0
+    for stmt in tree.body:
+        calls = [n for n in ast.walk(stmt) if isinstance(n, ast.Call)]
+        if not calls:
+            continue
+        names = set()
+        for call in calls:
+            fn = call.func
+            if isinstance(fn, ast.Attribute):
+                names.add(fn.attr)
+            elif isinstance(fn, ast.Name):
+                names.add(fn.id)
+            else:
+                names.add("?")
+        if not names <= LEDGER_METHODS:
+            continue
+        if {c.lineno for c in calls} & env._ledger_lines:
+            continue
+        try:
+            exec(compile(ast.Module(body=[stmt], type_ignores=[]),  # noqa: S102
+                         "<salvaged>", "exec"), ns)
+            saved += 1
+        except Exception:
+            # A salvage that fails must cost nothing; the write was already lost.
+            pass
+    return saved
+
+
 class Env:
     """The handle the model's code drives. Counts actions and deaths honestly."""
 
@@ -467,6 +533,10 @@ class Env:
         self.level_just_changed = False
         self.game_won = False
         self.deaths_this_turn = 0
+        # Which lines of the CURRENT cell have already written to the ledger. A death
+        # aborts the cell, and the salvage pass below re-runs the writes it never
+        # reached; without this the writes that DID run would be replayed as duplicates.
+        self._ledger_lines = set()
         # The colour a FULL move-bar is drawn in. A level always opens with the bar
         # untouched and therefore one colour, so it is learned there and handed back to
         # `budget` on every later read; without it a partly-eaten bar cannot say which of
@@ -1173,6 +1243,19 @@ class Env:
         ys, xs = np.where(self.grid() == int(colour))
         return list(zip(ys.tolist(), xs.tolist()))
 
+    def _mark_ledger(self):
+        """Remember that this line of the cell has already written to the ledger.
+
+        Called from the ledger methods themselves rather than from the executor,
+        because the write can happen inside a helper the agent defined this turn and
+        the only honest record of "this one ran" is the frame that ran it.
+        """
+        try:
+            self._ledger_lines.add(sys._getframe(2).f_lineno)
+        except Exception:
+            # Never let bookkeeping end a two-hour run.
+            pass
+
     def mechanic(self, text, claim=None):
         """Record a rule of the GAME, which survives the level boundary.
 
@@ -1206,6 +1289,7 @@ class Env:
         entry = str(text)[:200]
         if entry in self.mechanics_learned:
             return {"ok": False, "why": "already recorded", "n": self.mechanics_learned.index(entry) + 1}
+        self._mark_ledger()
         self.mechanics_learned.append(entry)
         out = {"ok": True, "n": len(self.mechanics_learned)}
         if claim:
@@ -1223,6 +1307,7 @@ class Env:
                     "why": f"no mechanic {number}; {len(self.mechanics_learned)} recorded"}
         dead = self.mechanics_learned.pop(index)
         reason = str(because)[:160] or "no evidence given"
+        self._mark_ledger()
         self.retracted.append(f"GAME RULE: {dead[:110]}  -- DISPROVED: {reason}")
         return {"ok": True, "retracted": dead, "because": reason,
                 "remaining": len(self.mechanics_learned)}
@@ -1243,6 +1328,7 @@ class Env:
 
         Returns the note's NUMBER on this board, which is what `retract` takes.
         """
+        self._mark_ledger()
         self.notes.append(str(text)[:200])
         self.level_notes.append(str(text)[:200])
         return len(self.level_notes)
@@ -1279,6 +1365,7 @@ class Env:
                 del self.notes[i]
                 break
         reason = str(because)[:160] or "no evidence given"
+        self._mark_ledger()
         self.retracted.append(f"{dead[:120]}  -- DISPROVED: {reason}")
         return {"ok": True, "retracted": dead, "because": reason,
                 "remaining": len(self.level_notes)}
@@ -1888,6 +1975,7 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
         buffer = io.StringIO()
         cleared = ""
         advanced = False
+        env._ledger_lines = set()
         try:
             with contextlib.redirect_stdout(buffer):
                 exec(code, ns)  # noqa: S102 - executing model code is the design
@@ -1898,6 +1986,7 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
             err = ""
             cleared = str(exc)
             advanced = True
+            _salvage_ledger(code, ns, env)
             # Bank the board and the order that cleared it, so any rule proposed later
             # has to reproduce this level too. Placements are read back from the click
             # log, which keeps the agent free to write whatever code it likes rather
@@ -1913,10 +2002,17 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
         except StallDetected as exc:
             err = ""
             cleared = str(exc)
+            _salvage_ledger(code, ns, env)
         except Died as exc:
             # A death is feedback about the game, not a crash in the agent's code.
             err = ""
             cleared = str(exc)
+            # The conclusions this cell was about to record are the ones a death is
+            # worth. Recover them before the turn is summarised.
+            rescued = _salvage_ledger(code, ns, env)
+            if rescued:
+                cleared += (f"\n({rescued} ledger write(s) your code had not reached when "
+                            "you died were recorded anyway.)")
         except Exception:
             err = traceback.format_exc(limit=3)
 
@@ -2031,7 +2127,7 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
                 mechanics_learned=list(env.mechanics_learned),
                 bar_row=env._bar_row, bar_colour=env._bar_colour,
                 start_level=start_level, scorable=not jumped,
-                stopped="in_progress",
+                stopped="in_progress", harness=HARNESS_VERSION,
             )
             try:
                 tmp = Path(out_path).with_suffix(".partial")
@@ -2040,6 +2136,7 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
                     "levels_completed": env.best,
                     "levels_available": env.frame().win_levels,
                     "tokens": tokens, "runs": [snapshot],
+                    "harness": HARNESS_VERSION,
                 }, indent=2), encoding="utf-8")
                 tmp.replace(Path(out_path))
             except OSError:
@@ -2093,6 +2190,12 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
         # `scorable` is the field to check before quoting anything from this dict.
         "start_level": start_level,
         "scorable": not jumped,
+        # Which harness produced this card. The level counter was treated as monotone
+        # until HARNESS_VERSION 2, so every card written before it may charge a level
+        # the wrong number of actions -- and no amount of re-reading the file can tell.
+        # Stamping forward is the only honest fix: the invariant binds what this build
+        # writes, and older cards are quarantined by name rather than silently trusted.
+        "harness": HARNESS_VERSION,
     }
 
 

@@ -36,6 +36,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from evals.arc.codeact_agent import HARNESS_VERSION  # noqa: E402
 from evals.arc.rhae import load_baselines  # noqa: E402
 
 RESULTS = Path(__file__).resolve().parents[2] / "eval" / "arc-results"
@@ -120,6 +121,7 @@ def rescue(run: str, baselines: dict[str, list[int]]) -> dict | None:
         "levels_completed": levels,
         "levels_available": len(baselines[game]),
         "rescued": True,
+        "harness": HARNESS_VERSION,
         "runs": [
             {
                 "game": game,
@@ -136,6 +138,11 @@ def rescue(run: str, baselines: dict[str, list[int]]) -> dict | None:
                 "start_level": 1,
                 "scorable": True,
                 "rescued": True,
+                # The trace's per-turn `levels` field records `self.best`, a running
+                # maximum, so a reconstruction from it cannot inherit the non-monotone
+                # counter that version 1 mistook for a level change. A rescued card is
+                # version-2 correct by construction, not by having been re-run.
+                "harness": HARNESS_VERSION,
                 "rescue_note": (
                     "Rebuilt from the per-turn trace after the run was interrupted "
                     "without writing a scorecard. level_actions is attributed at turn "
