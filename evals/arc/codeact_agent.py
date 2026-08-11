@@ -533,14 +533,24 @@ class Env:
             return False
         if nxt is None:
             return False
-        before_levels = self._frame.levels_completed
+        before_best = self.best
         self.spent += 1
         self._turn_spent += 1
         changed = frame_key(nxt) != frame_key(self._frame)
         self._frame = nxt
         self.best = max(self.best, self._frame.levels_completed)
 
-        if self._frame.levels_completed > before_levels:
+        # The SDK's levels_completed is NOT monotone. On some games it falls back and
+        # climbs again inside a single level, so "greater than last frame" fires on a
+        # replay exactly as readily as on a first clear. Measured on s5i5-b: nine
+        # transitions for two real levels, and the agent was told "LEVEL 1 CLEARED"
+        # seven times while standing on level 3 -- each one wiping the level-scoped
+        # notes and retractions it had just paid for, and each one restarting the
+        # action mark so level 2 was charged the last 49 of the 375 actions it truly
+        # cost. A new high-water mark is the only reading that means "a level I had
+        # never finished before", which is precisely what RHAE credits, and it holds
+        # len(level_actions) == levels_completed by construction.
+        if self.best > before_best:
             actions = self.spent - self._level_mark
             self.level_actions.append(actions)
             self._level_mark = self.spent
@@ -567,7 +577,7 @@ class Env:
             self._tray_boxes = None
             self._piece_grow = 0
             raise LevelCleared(
-                f"LEVEL {self._frame.levels_completed} CLEARED in {actions} actions. "
+                f"LEVEL {self.best} CLEARED in {actions} actions. "
                 "The board below is a DIFFERENT level. Coordinates and helper functions "
                 "from the previous level are presumed INVALID until you re-verify them."
             )
