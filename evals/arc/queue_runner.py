@@ -30,7 +30,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 RESULTS = ROOT / "eval" / "arc-results"
-STATUS = RESULTS / "queue-status.json"
 
 _CIM = (
     "Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" "
@@ -53,11 +52,11 @@ def agents_running() -> int:
         return 10 ** 6
 
 
-def write_status(state: dict) -> None:
+def write_status(state: dict, path: Path) -> None:
     try:
-        tmp = STATUS.with_suffix(".partial")
+        tmp = path.with_suffix(".partial")
         tmp.write_text(json.dumps(state, indent=2), encoding="utf-8")
-        tmp.replace(STATUS)
+        tmp.replace(path)
     except OSError:
         pass
 
@@ -74,6 +73,11 @@ def main() -> int:
 
     queue = [g.strip() for g in args.games.split(",") if g.strip()]
     RESULTS.mkdir(parents=True, exist_ok=True)
+    # Per-tag, so two runners can drain two queues without overwriting each other's
+    # status. Admission was already safe -- it counts live agents rather than reading
+    # this file -- but a status file that flips between two writers is a file nobody
+    # can trust, and an untrustworthy instrument is worse than none.
+    status_path = RESULTS / f"queue-status-{args.tag}.json"
 
     started: list[dict] = []
     running: list[tuple[str, subprocess.Popen]] = []
@@ -87,7 +91,7 @@ def main() -> int:
             "queued": list(pending),
             "running": [g for g, _ in running],
             "started": started,
-        })
+        }, status_path)
 
     snapshot("waiting for a free slot")
     print(f"queue: {' '.join(pending)} (concurrency {args.concurrency})", flush=True)
