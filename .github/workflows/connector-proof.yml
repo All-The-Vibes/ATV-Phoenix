@@ -9,6 +9,8 @@ on:
       - "src/**"
       - "tests/test_phoenix_learn*.py"
       - "tests/test_connector_proof_ci.py"
+      - "tests/accept_parity.rs"
+      - "tests/accept_parity_cases.json"
       - "Cargo.toml"
       - "Cargo.lock"
       - "build.rs"
@@ -19,6 +21,8 @@ on:
       - "src/**"
       - "tests/test_phoenix_learn*.py"
       - "tests/test_connector_proof_ci.py"
+      - "tests/accept_parity.rs"
+      - "tests/accept_parity_cases.json"
       - "Cargo.toml"
       - "Cargo.lock"
       - "build.rs"
@@ -45,6 +49,11 @@ jobs:
         run: |
           cargo build --release --locked --bin phoenix-mcp
           echo "$PWD/target/release" >> "$GITHUB_PATH"
+      # Release profile on purpose: the step above already built the crate that way, so
+      # this reuses those artifacts. A debug `cargo test` would recompile the whole
+      # dependency graph, and rust.yml no longer auto-triggers on pull requests.
+      - name: Run the Rust half of the accept parity contract
+        run: cargo test --release --locked --test accept_parity
       - name: Record connector proof and verify trace
         run: |
           python - <<'PY'
