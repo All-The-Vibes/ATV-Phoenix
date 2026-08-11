@@ -17,10 +17,13 @@ from __future__ import annotations
 import inspect
 import json
 import re
+import sys
 import tempfile
 from pathlib import Path
 
-from evals.arc.codeact_agent import play
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from evals.arc.codeact_agent import play  # noqa: E402
 
 
 def check_play_accepts_an_output_path() -> None:

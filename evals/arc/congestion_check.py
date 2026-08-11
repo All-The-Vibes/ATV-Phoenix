@@ -28,8 +28,11 @@ from __future__ import annotations
 import inspect
 import re
 import sys
+from pathlib import Path
 
-from evals.arc import codeact_agent
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from evals.arc import codeact_agent  # noqa: E402
 
 
 # What the endpoint says when it is busy. Every one of these has to reach the

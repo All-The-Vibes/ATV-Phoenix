@@ -31,9 +31,12 @@ questions we set.
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
-from evals.arc.rhae import load_baselines, score_run
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from evals.arc.rhae import load_baselines, score_run  # noqa: E402
 
 RESULTS = Path(__file__).resolve().parents[2] / "eval" / "arc-results"
 PRIME_AGENT = 0.955
