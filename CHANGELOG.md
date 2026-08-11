@@ -9,6 +9,16 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`accept` says the digest moved instead of blaming the author.** When `verify_gate` finds no
+  RED for a check's digest and the trace does hold RED sense rows under a different digest, the
+  reason now names the digest, counts those rows, and points at the file-folding rule from #158
+  as the cause. The old message told the author to reproduce a failure they had already
+  reproduced, which is the message `phoenix-proof` printed on run 31201312829 of PR #172 when
+  the check named a test file the pull request added. `ok`, `saw_red`, `green_after_red` and
+  `currently_green` are computed exactly as before, so the gate refuses in the same cases it
+  refused before and only the diagnostic changed. Closes part of #173; the base-sense fix
+  itself is still an open design call on that issue. Issue #173.
+
 - **An environment-characterisation primitive, so the next domain does not rebuild one.**
   `phoenix_learn.discover.characterise(actions, snapshot, apply, reset=None)` presses each
   action once, diffs the state, and reports what each one did. `diff_regions` says WHERE the
