@@ -182,6 +182,16 @@ API available to your code:
                            (colour, "solid") wherever a bare colour goes in an
                            assignment. A bare colour still means "any piece of it".
     note(text)          -> write to your notes, which you keep seeing. Returns its NUMBER.
+                           This is the DEFAULT and it is where most of what you learn
+                           belongs: where things sit, which cell is the exit, what this
+                           board's layout is, what you just tried and what it did. Notes
+                           are numbered so retract(n, because=...) can retire one, and
+                           they are cleared at the level boundary because that is when
+                           they stop being true. Measured: twelve runs called note() ZERO
+                           times while calling mechanic() up to 111 times, and they are
+                           the games that are stuck -- every board fact they learned went
+                           into a list nothing can ever clear, so level 1's geometry was
+                           still steering them on level 3.
     retract(n, because) -> RETIRE note n: you have disproved it. The claim moves to a
                            DISPROVED list you keep seeing, so you do not spend the rest of
                            the level re-deriving it. Use this the moment two of your notes
@@ -194,7 +204,12 @@ API available to your code:
                            mechanics do not. The test is "would this still be true if the
                            board were redrawn?" -- "the exit is top-right" is a note,
                            "obstacles reflect particles" and "action 3 moves you north"
-                           are mechanics. Costs nothing, and it is the difference between
+                           are mechanics. A COORDINATE IS NEVER A MECHANIC: "cross near
+                           x=25" is a fact about one board, and written here it survives
+                           every board after it and cannot be retracted by the level
+                           change that disproved it. Measured on one game: level 1 fell
+                           in 40 actions, its geometry was stored as rules of the game,
+                           and the next level took 2,732 actions and never fell. Costs nothing, and it is the difference between
                            carrying the physics to level 2 and buying it again with
                            actions you are scored on. Measured: one run had 59 beliefs
                            retired at a level change, physics among them, and then spent
@@ -256,9 +271,11 @@ board. On a pads-and-clues game, write that as rule(layout) and propose() it: if
 an earlier level, that failure is the most useful thing you will see all run, because it
 tells you exactly which part of your understanding is a coincidence. On every OTHER game
 the lesson is the same and the instrument is different -- there is no rule gate to replay
-against, so the thing you write the answer into is mechanic(), which is the only memory
+against, so the thing you write the REASON into is mechanic(), which is the only memory
 that survives the next board, and the only test available is whether it still holds when
-that board arrives. Either way the deliverable is the reason, never the coordinates.
+that board arrives. What you write into note() is everything else, which is most of it:
+where things are, what this board looks like, what you just tried. Either way the
+deliverable is the reason, never the coordinates.
 
 PASSING propose() IS NECESSARY, NOT SUFFICIENT. Measured: on one level the agent proposed
 twelve different orders, all twelve reproduced every solved level and were accepted, and
@@ -424,6 +441,40 @@ class Died(RuntimeError):
 
 #: Ledger methods -- pure memory, no board access, safe to replay after an abort.
 LEDGER_METHODS = frozenset({"mechanic", "unmechanic", "note", "retract"})
+
+#: Coordinates written into a permanent rule. `x=25`, `(31,16)`, `row 44`, `col 7`.
+#: Deliberately not matched: a bare number, which is usually a step size ("moves you
+#: 3 cells") and is a real mechanic.
+_COORD = re.compile(
+    r"\b[xy]\s*[=:]\s*-?\d+"
+    r"|\(\s*-?\d+\s*,\s*-?\d+\s*\)"
+    r"|\b(?:row|col|column)\s+-?\d+"
+    r"|\bat\s+-?\d+\s*,\s*-?\d+",
+    re.I,
+)
+
+
+def _looks_board_specific(text: str) -> str:
+    """Mark a rule that named a coordinate, because that rule cannot be true twice.
+
+    A mechanic is the one belief no level change ever clears. That is its value and
+    it is also the whole risk: a fact about where something sits on THIS board,
+    written as a rule of the game, is a lie that survives every board after it and
+    cannot be retracted by the level boundary that disproved it.
+
+    Measured on ka59: the run cleared level 1 in 40 actions, then recorded "enter the
+    central vertical shaft near x=25, rise to y=26" and "align near y=44" as rules of
+    the game, and spent 2,732 further actions on level 2 steering by level 1's
+    geometry. Twelve runs across the corpus called mechanic() and note() zero times
+    -- ar25, bp35, cn04, g50t, ka59, ls20, sp80 -- and they are, without exception,
+    the games that are stuck.
+
+    Marked rather than refused. "moves you 3 cells" is a real mechanic and a number is
+    not evidence of anything by itself; the agent is the one that can tell a step size
+    from a location, and it can only do that if it is shown which rules were flagged.
+    """
+    return "   <- names a coordinate; is this true on a REDRAWN board?" if _COORD.search(
+        str(text)) else ""
 
 #: Bumped when a defect changes what a recorded result MEANS, not merely how well the
 #: agent plays. Version 2 is the level counter: the SDK's `levels_completed` can fall,
@@ -1292,6 +1343,14 @@ class Env:
         self._mark_ledger()
         self.mechanics_learned.append(entry)
         out = {"ok": True, "n": len(self.mechanics_learned)}
+        if _COORD.search(entry):
+            out["warning"] = (
+                "this names a coordinate, so it is probably a note() about THIS board "
+                "rather than a rule of the game. A mechanic is never cleared by a level "
+                "change, so a board fact written here is wrong on every board after it "
+                "and cannot be retracted. If it would not survive a redraw, "
+                f"unmechanic({len(self.mechanics_learned)}) and note() it instead."
+            )
         if claim:
             out["belief"] = self._keep(str(claim))
         return out
@@ -1691,7 +1750,8 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
                 lines.append(f"--- HOW THIS GAME WORKS ({len(env.mechanics_learned)}, "
                              f"survives every level; unmechanic(n, because=...) to drop "
                              f"one) ---")
-                lines += [f"({i + 1}) {m}" for i, m in enumerate(env.mechanics_learned)]
+                lines += [f"({i + 1}) {m}{_looks_board_specific(m)}"
+                          for i, m in enumerate(env.mechanics_learned)]
                 lines.append("--- facts about earlier boards ---")
             lines += [f"- {n}" for n in earlier[-8:]]
             if env.level_notes:
