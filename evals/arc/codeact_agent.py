@@ -68,6 +68,14 @@ ENDPOINT = os.environ.get(
     "AOAI_ENDPOINT", "https://ai-shyamsridhar-2008.cognitiveservices.azure.com/"
 )
 DEPLOYMENT = os.environ.get("AOAI_DEPLOYMENT", "gpt-5.6-sol")
+#: Azure spells the output cap `max_completion_tokens`; OpenAI-compatible hosts such as
+#: Fireworks reject that name and want `max_tokens`. Resolved once at import so a
+#: provider swap is an environment variable, never an edit.
+_TOKEN_LIMIT = (
+    {"max_tokens": 16000}
+    if os.environ.get("ARC_PROVIDER", "azure").lower() in ("fireworks", "openai", "compat")
+    else {"max_completion_tokens": 16000}
+)
 TERMINAL = ("GameState.WIN", "GameState.GAME_OVER")
 # Measured, not assumed: with a level arranged correctly, press(7) does not clear it and
 # a stray click does not clear it, but press(5) clears it immediately.
@@ -1441,15 +1449,42 @@ def extract_code(text: str) -> str:
 
 
 def make_client():
+    """The endpoint decides the auth, because a key and a token are not interchangeable.
+
+    Azure OpenAI authenticates with a bearer token from the local credential chain;
+    Fireworks (and any other OpenAI-compatible host) authenticates with an API key and
+    a plain base_url. Hardwiring the Azure path meant swapping models required editing
+    the module, and an edit is a chance to break a running corpus.
+
+    Set ARC_PROVIDER=fireworks with FIREWORKS_API_KEY, or leave it unset for Azure.
+    """
+    provider = os.environ.get("ARC_PROVIDER", "azure").lower()
+
+    if provider in ("fireworks", "openai", "compat"):
+        from openai import OpenAI
+
+        key = (os.environ.get("FIREWORKS_API_KEY")
+               or os.environ.get("OPENAI_API_KEY", ""))
+        if not key:
+            raise RuntimeError(
+                f"ARC_PROVIDER={provider} needs FIREWORKS_API_KEY (or OPENAI_API_KEY) "
+                "in the environment. Failing here rather than at turn 1 of a two-hour run."
+            )
+        base = os.environ.get(
+            "ARC_BASE_URL",
+            "https://api.fireworks.ai/inference/v1" if provider == "fireworks" else None,
+        )
+        return OpenAI(api_key=key, base_url=base) if base else OpenAI(api_key=key)
+
     from azure.identity import DefaultAzureCredential, get_bearer_token_provider
     from openai import AzureOpenAI
 
-    provider = get_bearer_token_provider(
+    token = get_bearer_token_provider(
         DefaultAzureCredential(), "https://cognitiveservices.azure.com/.default"
     )
     return AzureOpenAI(
         azure_endpoint=ENDPOINT,
-        azure_ad_token_provider=provider,
+        azure_ad_token_provider=token,
         api_version="2024-12-01-preview",
     )
 
@@ -1850,20 +1885,36 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
                      f"{since} since the last one. Treat that as your budget and bank "
                      f"progress before you reach it.\n")
 
-        if died and env.level_notes:
+        # NOT GATED ON HAVING NOTES, WHICH IS THE WHOLE POINT. Both of these used to read
+        # `and env.level_notes`, so an agent with an empty notebook was told nothing --
+        # and an empty notebook is not a sign of an agent that needs no help, it is the
+        # signature of the ones that are stuck. Measured: bp35 died 20 times across 45
+        # turns holding zero notes and zero mechanics, and received neither message; ka59
+        # cleared level 1 at turn 6 and spent 90 further turns, 2,732 actions and 99% of
+        # its budget without one. Corpus-wide, 62% of every action ever spent came after
+        # the run's last level clear. The guidance was gated on the agent having already
+        # done the thing the guidance exists to ask for.
+        if died:
             consolidate = (
                 f"\nYOU DIED {died}x SINCE YOUR LAST TURN, and a death costs a whole bar.\n"
-                "Something you currently believe predicted that would work. Before you "
-                "spend another action, find the note that is wrong and retract(n, "
-                "because=...) it. If you are unsure which, retract the one you were acting "
-                "on when you died: a wrong disproof is cheap and a repeated death is not.\n"
+                + ("Something you currently believe predicted that would work. Before you "
+                   "spend another action, find the note that is wrong and retract(n, "
+                   "because=...) it. If you are unsure which, retract the one you were acting "
+                   "on when you died: a wrong disproof is cheap and a repeated death is not.\n"
+                   if env.level_notes else
+                   "YOU ARE HOLDING NO NOTES, so there is nothing here to correct -- and "
+                   "that is the problem, not a clean slate. You died believing something, "
+                   "and because it was never written down you will believe it again next "
+                   "turn and die the same way. Write what you expected and what happened "
+                   "instead with note(text) -- it is FREE, it costs no action, and it is "
+                   "the only thing that makes the next death a different death.\n")
                 + ("Check the HOW THIS GAME WORKS list first. Those are the beliefs no "
                    "level change has ever cleared out from under you, so a rule that was "
                    "only ever true of one board can survive there indefinitely and steer "
                    "every plan you make. unmechanic(n, because=...) drops one.\n"
                    if env.mechanics_learned else "")
             )
-        elif stalled >= 6 and env.level_notes:
+        elif stalled >= 6:
             # BEING STUCK IS THE COMMON FAILURE, AND IT USED TO TRIGGER NOTHING. The
             # death-only prompt above fires on a rare event; grinding is the frequent one.
             # Measured on cd82: one run spent 66 consecutive turns and ~700 actions on a
@@ -1881,10 +1932,19 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
             # warns against buying information with actions.
             consolidate = (
                 f"\nYOU HAVE SPENT {stalled} TURNS ON THIS LEVEL WITHOUT CLEARING IT.\n"
-                "That is evidence about your BELIEFS, not your effort: one of the notes "
-                "above is wrong, and while you keep it you are searching a space that does "
-                "not contain the answer.\n"
-                "Do this with FREE tools before you spend another action -- looking costs "
+                + ("That is evidence about your BELIEFS, not your effort: one of the notes "
+                   "above is wrong, and while you keep it you are searching a space that does "
+                   "not contain the answer.\n"
+                   if env.level_notes else
+                   "That is evidence about your BELIEFS, not your effort. YOU ARE HOLDING NO "
+                   "NOTES, so every turn starts from the same place the last one did and "
+                   "re-derives what it already learned -- which is why this level is not "
+                   "moving. Measured across the corpus: 62% of every action ever spent came "
+                   "after the run's last cleared level, and the runs that never wrote a note "
+                   "are the ones that never cleared another. Write down what you believe "
+                   "about this board with note(text) BEFORE your next action; it is free, "
+                   "and you cannot retract a belief you never recorded.\n")
+                + "Do this with FREE tools before you spend another action -- looking costs "
                 "nothing and every action is squared against your score. Re-read the board "
                 "with objects() and board() as if you had just arrived at it, decide which "
                 "note that reading contradicts, and retract(n, because=...) it. Then act "
@@ -1954,13 +2014,17 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
                 reply = client.chat.completions.create(
                     model=deployment,
                     messages=[{"role": "system", "content": SYSTEM}, *prune(history)],
-                    max_completion_tokens=16000,
                     # gpt-5.6-sol rejects temperature and top_p (HTTP 400: only the default
                     # is supported) but honours seed and returns byte-identical output for
                     # it. The Arcade already defaults to seed=0, so fixing this one makes a
                     # whole run reproducible, which is what turns "it scored 3.1%" into a
                     # measurement rather than an anecdote.
                     seed=seed + turn,
+                    # `max_completion_tokens` is the Azure spelling and OpenAI-compatible
+                    # hosts reject it. Named once, here, so swapping providers is an
+                    # environment variable rather than an edit to a file a corpus is
+                    # mid-run against.
+                    **_TOKEN_LIMIT,
                 )
                 break
             except Exception as exc:
