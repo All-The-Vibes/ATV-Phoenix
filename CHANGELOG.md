@@ -9,6 +9,15 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Cross-episode memory that a fact has to earn.** `phoenix_learn.memory.Memory` stores a
+  claim only when the trials behind it clear `phoenix_learn.accept.verify_gate`, so asserting
+  a fact does not store it and there is no argument that skips the gate. Facts are keyed by
+  scope and `enter(scope)` retires everything earned under the previous one, which is the
+  storage half of the belief-invalidation rule in #181. The admitting trials and gate verdict
+  stay with the fact, so `evidence(key)` answers across scopes and re-earning after a scope
+  change is one confirming trial rather than a rediscovery. Domain-agnostic on purpose:
+  `evals/arc/skills.py` keys on `game` and tags and is unusable by a shell or refactoring
+  agent, which is the duplication #186 records.
 - **`accept` says the digest moved instead of blaming the author.** When `verify_gate` finds no
   RED for a check's digest and the trace does hold RED sense rows under a different digest, the
   reason now names the digest, counts those rows, and points at the file-folding rule from #158
