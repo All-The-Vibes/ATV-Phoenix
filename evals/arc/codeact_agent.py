@@ -449,6 +449,100 @@ class Died(RuntimeError):
     """
 
 
+def _death_forensics(prev_grid, term_grid, recent_actions) -> str:
+    """What the world did in the instant the agent died.
+
+    A death used to report a COUNT and a LIFE LENGTH. Neither says what killed you,
+    and on `bp35-r3` that cost twenty-five deaths for three learned mechanics, all
+    three of them movement primitives: the agent knew how to move and never learned
+    what to avoid. It cannot be blamed for that. Nothing it could call would say.
+
+    The evidence exists for exactly one statement. `_step` holds the outgoing frame
+    while it computes `changed` and overwrites it on the next line, and the death
+    handler then hands the terminal frame to `reset()`. So the two boards either
+    side of the killing action are both in memory, and the difference between them
+    IS the cause, expressed in the only vocabulary the game has: cells and colours.
+
+    Deliberately game-agnostic. It does not know what a player is, or a hazard, or a
+    road -- inventing those per game is how `parse` came to describe one game and
+    answer for twenty-four. It reports what moved, from which colour to which, and
+    where. On a crossing game that reads as "9 replaced 4 at x=5,y=2", which is the
+    hazard naming itself.
+
+    Never raises. A forensic sentence must not end a two-hour run, so every failure
+    path returns a string -- an empty one if there is genuinely nothing to say.
+    """
+    try:
+        import numpy as _np
+
+        def _flat(g):
+            if g is None:
+                return None
+            try:
+                arr = _np.array(g)
+            except Exception:
+                return None  # ragged: modern numpy refuses outright
+            if arr.dtype == object:
+                return None  # ragged: older numpy builds an object array instead
+            if not _np.issubdtype(arr.dtype, _np.number):
+                return None  # a string, or anything else that is not a board
+            if arr.ndim == 3:
+                arr = arr[0]
+            if arr.ndim != 2:
+                return None
+            return arr.astype(_np.int16)
+
+        acts = [a for a in (recent_actions or []) if isinstance(a, int)]
+        head = []
+        if acts:
+            head.append(f"  the action that killed you : {acts[-1]}")
+            if len(acts) > 1:
+                run_up = ", ".join(str(a) for a in acts[-9:-1])
+                head.append(f"  the actions before it      : {run_up}")
+        else:
+            head.append("  the action that killed you : not recorded")
+
+        a, b = _flat(prev_grid), _flat(term_grid)
+        if a is None or b is None or a.shape != b.shape:
+            body = ["  the board                  : could not be compared, so the cause "
+                    "is not recorded here"]
+        else:
+            ys, xs = _np.where(a != b)
+            n = int(len(xs))
+            if n == 0:
+                body = ["  the board                  : NO CELLS CHANGED on the action "
+                        "that killed you, so whatever ended the life is not drawn on the "
+                        "board. A budget running out looks exactly like this."]
+            else:
+                pairs = {}
+                for y, x in zip(ys.tolist(), xs.tolist()):
+                    pairs[(int(a[y][x]), int(b[y][x]))] = \
+                        pairs.get((int(a[y][x]), int(b[y][x])), 0) + 1
+                top = sorted(pairs.items(), key=lambda kv: -kv[1])[:6]
+                shown = ", ".join(f"{f}->{t} x{c}" for (f, t), c in top)
+                body = [
+                    f"  cells that changed         : {n}",
+                    f"  colour changes             : {shown}",
+                    f"  where                      : x {int(xs.min())}..{int(xs.max())}, "
+                    f"y {int(ys.min())}..{int(ys.max())}",
+                ]
+                # The single most likely cause: a colour that ARRIVED on top of another.
+                arrivals = [((f, t), c) for (f, t), c in pairs.items() if f != 0 and t != 0]
+                if arrivals:
+                    (f, t), c = max(arrivals, key=lambda kv: kv[1])
+                    body.append(
+                        f"  colour {t} landed on colour {f} in {c} cell(s) -- if one of "
+                        f"those is you, {t} is what to avoid")
+
+        return ("\nWHAT CHANGED IN THE INSTANT YOU DIED (the terminal board, read before "
+                "it was rebuilt):\n" + "\n".join(head + body) +
+                "\nThis is the only record of the board that killed you. The next board "
+                "is pristine, so a rule you do not write down now is gone.\n")
+    except Exception:
+        # A crash HERE would end a two-hour run over a sentence.
+        return ""
+
+
 class CodeTimeout(RuntimeError):
     """Raised when a turn's code block outruns its wall-clock budget.
 
@@ -643,6 +737,12 @@ class Env:
         # How many actions each life has lasted, and where the current one began.
         self.lives: list[int] = []
         self._life_mark = 0
+        # The board as it stood before the CURRENT one, and the actions that got here.
+        # Held so a death can be explained: `_step` replaces `self._frame` on the line
+        # after it compares them, so without this the last-alive board is unreachable
+        # by the time the death handler runs. See `_death_forensics`.
+        self._prev_frame = None
+        self._recent_actions: list[int] = []
         # Claims this board has DISPROVED. Kept apart from live notes so a dead theory
         # reads as dead rather than as one more thing that might be true.
         self.retracted: list[str] = []
@@ -754,8 +854,17 @@ class Env:
         self.spent += 1
         self._turn_spent += 1
         changed = frame_key(nxt) != frame_key(self._frame)
+        # The last board the agent was alive on, kept before the line below
+        # overwrites it. It is the other half of the only comparison that can say
+        # what killed you -- see `_death_forensics`.
+        self._prev_frame = self._frame
         self._frame = nxt
         self.best = max(self.best, self._frame.levels_completed)
+        # Recorded after the transition above: this is the action that produced the
+        # frame now in hand, and on a death it is the action that ended the life.
+        self._recent_actions.append(action_value)
+        if len(self._recent_actions) > 24:
+            del self._recent_actions[:-24]
 
         # The SDK's levels_completed is NOT monotone. On some games it falls back and
         # climbs again inside a single level, so "greater than last frame" fires on a
@@ -866,6 +975,16 @@ class Env:
                     # frames.budget has never been exercised against.
                     had_bar = False
                 lifespan = self.lives[-1]
+                # READ THE BOARD THAT KILLED YOU, now, while it still exists. The
+                # reset below rebuilds it and the evidence is gone for good. This is
+                # the same reasoning that already reads the bar here, applied to the
+                # question the bar cannot answer: not "how long did I have" but
+                # "what ended it".
+                forensics = _death_forensics(
+                    self._prev_frame.frame if self._prev_frame is not None else None,
+                    self._frame.frame,
+                    self._recent_actions,
+                )
                 self._frame = self._env.reset()
                 self._bar_colour = None
                 self._bar_row = None
@@ -874,6 +993,10 @@ class Env:
                 # budget -- a confident reading of exactly the wrong half.
                 self._bar_seen = None
                 self._inert = 0
+                # A new life starts on a new board. Carrying the dead life's frame or
+                # its action run-up into the next death would explain the wrong death.
+                self._prev_frame = None
+                self._recent_actions = []
                 # The board has just been rebuilt underneath whatever code is running.
                 # Letting the loop continue is the same silent corruption `LevelCleared`
                 # exists to prevent: every remaining hypothesis in the batch would be
@@ -903,6 +1026,7 @@ class Env:
                        "nothing will. The only budget estimate you have is the length "
                        "of the lives you have already lost, which is reported to you "
                        "each turn. Bank progress before you reach it.\n")
+                    + forensics
                     + ("THE REST OF THAT TURN'S CODE NEVER RAN. This raise happened at "
                        "the action that killed you, so every line after it was "
                        "discarded -- including any note() or mechanic() you had written "
