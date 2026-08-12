@@ -35,11 +35,13 @@ from __future__ import annotations
 import argparse
 import ast
 import contextlib
+import ctypes
 import io
 import json
 import os
 import re
 import sys
+import threading
 import time
 import traceback
 from pathlib import Path
@@ -447,8 +449,81 @@ class Died(RuntimeError):
     """
 
 
+class CodeTimeout(RuntimeError):
+    """Raised when a turn's code block outruns its wall-clock budget.
+
+    `exec` on model-written code had no time limit, and the failure that exposed it was
+    not an infinite loop -- it was an honest search. On ka59 level 2 the model wrote a
+    breadth-first search over the JOINT positions of four pieces on a 64x63 board, with
+    no depth bound, no node cap and no time check. That frontier is around (64*63)**4
+    states. The process ran 6.8 hours, burned 17,767 seconds of CPU and reached
+    **42.5 GB of resident memory** before it was killed by hand.
+
+    Two costs, and the second is the dangerous one. The game held a queue slot the whole
+    time so the wave could not drain. And a 42 GB process on a box running eleven other
+    agents is one OOM away from taking all of them with it -- a single bad cell becomes a
+    corpus-wide outage.
+
+    A wall-clock cap turns both into a normal, teachable turn: the agent is told its
+    search was too big and gets to bound it, which is a thing models do well once asked.
+    """
+
+
 #: Ledger methods -- pure memory, no board access, safe to replay after an abort.
 LEDGER_METHODS = frozenset({"mechanic", "unmechanic", "note", "retract"})
+
+
+def _exec_bounded(code: str, ns: dict, seconds: float) -> None:
+    """`exec(code, ns)` with a wall-clock cap. See `CodeTimeout` for what this cost us.
+
+    The code runs in a daemon thread and its exception, whatever it is, is re-raised here
+    so every existing handler -- LevelCleared, Died, StallDetected -- keeps working
+    unchanged. `sys.stdout` is process-wide, so a `redirect_stdout` installed by the
+    caller still captures the thread's prints.
+
+    On timeout the worker is asked to stop via `PyThreadState_SetAsyncExc`, which raises
+    between bytecodes. That reliably interrupts the pure-Python loops this exists for and
+    cannot interrupt a blocking C call; the thread is a daemon so a stuck one can never
+    hold the process open. The turn ends either way, which is the point -- the alternative
+    was a game that never ends at all.
+    """
+    box: dict[str, BaseException | None] = {"exc": None}
+
+    def run() -> None:
+        try:
+            exec(code, ns)  # noqa: S102 - executing model code is the design
+        except BaseException as exc:  # noqa: BLE001 - re-raised in the caller
+            box["exc"] = exc
+
+    worker = threading.Thread(target=run, daemon=True, name="codeact-cell")
+    worker.start()
+    worker.join(seconds)
+
+    if worker.is_alive():
+        tid = worker.ident
+        if tid is not None:
+            ctypes.pythonapi.PyThreadState_SetAsyncExc(
+                ctypes.c_ulong(tid), ctypes.py_object(CodeTimeout)
+            )
+        # A grace period so the async exception can land and unwind before the turn is
+        # summarised. Not waited on indefinitely: a thread stuck inside a C call would
+        # never come back and the run has to continue regardless.
+        worker.join(5.0)
+        raise CodeTimeout(
+            f"your code was still running after {seconds:.0f}s and was stopped. "
+            "Anything it had already done to the game still counts, and any mechanic() "
+            "or note() it reached was kept.\n\n"
+            "This is almost always an unbounded search. A breadth-first search over the "
+            "JOINT positions of several pieces is astronomically large -- four pieces on "
+            "this board is about (64*63)**4 states -- so it never finishes and spends the "
+            "turn. Bound it: cap the nodes you will expand, cap the depth, or solve one "
+            "piece at a time and keep the others fixed. A search that answers in seconds "
+            "and might be wrong beats one that never answers."
+        )
+
+    if box["exc"] is not None:
+        raise box["exc"]
+
 
 #: Coordinates written into a permanent rule. `x=25`, `(31,16)`, `row 44`, `col 7`.
 #: Deliberately not matched: a bare number, which is usually a step size ("moves you
@@ -1717,7 +1792,7 @@ def _parsed(grid):
 
 def play(arc, game, client, deployment, max_turns, patience, action_cap,
          trace_path: str = "", seed: int = 0, start_level: int = 1,
-         out_path: str = "") -> dict:
+         out_path: str = "", exec_timeout: float = 300.0) -> dict:
     raw = arc.make(game, include_frame_data=True)
     frame = raw.reset()
 
@@ -2224,7 +2299,7 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
         env._ledger_lines = set()
         try:
             with contextlib.redirect_stdout(buffer):
-                exec(code, ns)  # noqa: S102 - executing model code is the design
+                _exec_bounded(code, ns, exec_timeout)
             err = ""
         except LevelCleared as exc:
             # Plain feedback, not a traceback: the model needs to read this as a fact
@@ -2245,6 +2320,13 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
             env.click_log = []
             env.forget_level_board()
             rules.clear_refuted()
+        except CodeTimeout as exc:
+            # Not a crash and not a game event: the cell was too expensive. Reported as
+            # feedback so the agent bounds its next search, and the ledger writes it did
+            # reach are salvaged exactly as on the death path.
+            err = ""
+            cleared = str(exc)
+            _salvage_ledger(code, ns, env)
         except StallDetected as exc:
             err = ""
             cleared = str(exc)
@@ -2470,6 +2552,9 @@ def main() -> int:
     ap.add_argument("--max-turns", type=int, default=20)
     ap.add_argument("--patience", type=int, default=8)
     ap.add_argument("--action-cap", type=int, default=6000)
+    ap.add_argument("--exec-timeout", type=float, default=300.0,
+                    help="wall-clock seconds a single code block may run before it is "
+                         "stopped and reported back to the agent (see CodeTimeout)")
     ap.add_argument("--deployment", default=DEPLOYMENT)
     ap.add_argument("--out", default="")
     ap.add_argument("--trace", default="")
@@ -2499,7 +2584,8 @@ def main() -> int:
                  # multi-game batch shares one path, and a per-turn snapshot of
                  # the game in progress would overwrite the games already
                  # finished -- trading one loss for a worse one.
-                 args.out if len(games) == 1 else "")
+                 args.out if len(games) == 1 else "",
+                 args.exec_timeout)
         )
         if args.out:
             Path(args.out).write_text(
