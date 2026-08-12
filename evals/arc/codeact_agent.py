@@ -574,6 +574,10 @@ class Env:
         self._alive = True
         self._turn_action_cap = turn_action_cap
         self._turn_spent = 0
+        # How many turns this level has resisted. Drives the per-turn cap: a level that
+        # is not falling gets a narrower budget, so the next move has to be a better
+        # idea rather than more attempts.
+        self._turns_on_level = 0
         self.inert_limit = inert_limit
         self.death_limit = death_limit
         self.level_actions: list[int] = []
@@ -617,7 +621,12 @@ class Env:
 
     def begin_turn(self) -> None:
         self._turn_spent = 0
-        self.deaths_this_turn = 0        # alive() answers "did the last action kill me", not "have I ever died". It was
+        self.deaths_this_turn = 0
+        # How long this level has resisted, which sets the per-turn action cap. Counted
+        # here rather than in the turn loop so the Env owns its own budget: a limit whose
+        # counter lives somewhere else is a limit that drifts from what it is limiting.
+        self._turns_on_level += 1
+        # alive() answers "did the last action kill me", not "have I ever died". It was
         # a latch: set False on death and cleared only by an explicit reset(), even
         # though the death handler below already resets the frame and the game is
         # immediately playable again. The prompt teaches `if not alive(): break`, so
@@ -645,10 +654,14 @@ class Env:
         }
 
     def _step(self, action_value, data=None):
-        if self._turn_spent >= self._turn_action_cap:
+        if self._turn_spent >= self._live_turn_cap():
             raise TurnBudgetExhausted(
-                f"this turn already spent {self._turn_spent} actions. You are in a loop "
-                f"with no exit. Check levels() and alive() inside your loops and break."
+                f"this turn already spent {self._turn_spent} actions, and this level has "
+                f"resisted {self._turns_on_level} turns, so the per-turn budget is "
+                f"{self._live_turn_cap()}. That is deliberate: more attempts is the one "
+                f"response this board has already refused. Read it again with board() and "
+                f"objects(), decide which belief that reading contradicts, and spend the "
+                f"next actions on a different IDEA. Looking costs nothing."
             )
         try:
             nxt = (
@@ -685,6 +698,10 @@ class Env:
             self._level_mark = self.spent
             self.level_just_changed = True
             self._inert = 0
+            # A new board earns a full budget again. The narrow cap is a response to THIS
+            # level refusing, and carrying it into a level that has refused nothing would
+            # punish the agent for the previous board's difficulty.
+            self._turns_on_level = 0
             self.level_notes = []
             # Disproofs are scoped to the board that produced them, exactly like the
             # beliefs they killed. A theory refuted on level 1 may well be true on
@@ -871,8 +888,40 @@ class Env:
         Measured: a run stuck on one level tested eight assignments across twelve turns
         and ended with 250 of 8000 actions unspent, because the prompt showed only the run
         budget and the agent sized each turn to a single attempt.
+
+        THE CAP TIGHTENS WHILE A LEVEL REFUSES TO FALL, because a wide budget is only
+        wide enough to brute-force with. At 120 a turn can test six or seven whole
+        candidate solutions, and an agent that CAN search will search: measured on sb26,
+        one model reached turn 11 holding a TRIED set of thirteen permutations and
+        queued six more in a single turn, on a board with 7! = 5,040 of them. The model
+        that cleared that same level did it in 26 actions by reasoning about the clue
+        order instead.
+
+        The number is not a guess. Runs that clear 6-8 levels spend 7-10 actions per
+        turn; runs stuck below 5 spend 3-7 paid calls per turn but keep paying them for
+        ninety turns. 120 was twelve times what a winning turn has ever needed, so it
+        constrained nobody and licensed the one behaviour RHAE punishes quadratically.
+
+        So the budget is generous while progress is happening and narrow once it stops.
+        That is the opposite of what a searcher wants and exactly what a reasoner needs:
+        when the board keeps refusing you, the next thing to change is the IDEA, and
+        ideas are free -- board(), objects() and propose() cost no actions at all.
         """
-        return max(0, self._turn_action_cap - self._turn_spent)
+        return max(0, self._live_turn_cap() - self._turn_spent)
+
+    def _live_turn_cap(self) -> int:
+        """The per-turn action cap, tightened by how long this level has resisted.
+
+        Kept as a method rather than folded into `turn_budget` so `_step` and the
+        prompt read the same number from one place; two callers computing a budget
+        separately is how a limit becomes advisory.
+        """
+        stalled = self._turns_on_level
+        if stalled >= 12:
+            return min(self._turn_action_cap, 12)
+        if stalled >= 6:
+            return min(self._turn_action_cap, 25)
+        return self._turn_action_cap
 
     def look(self):
         return self._observe()
@@ -1982,7 +2031,8 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
                     f"Levels: {env.best} of {env.frame().win_levels}\n"
                     f"{pace}"
                     f"Actions used: {env.spent} (soft budget {action_cap}); "
-                    f"this turn you may spend {env.turn_budget()} more\n"
+                    f"this turn you may spend {env.turn_budget()} more"
+                    f"{'  (NARROWED: this level has resisted ' + str(env._turns_on_level) + ' turns, so more attempts is not the move -- change the IDEA. Reading the board is free.)' if env.turn_budget() < env._turn_action_cap else ''}\n"
                     f"Deaths so far: {env.deaths}\n"
                     f"Colours on screen: {palette_legend(env.frame().frame)}\n"
                     f"{consolidate}\n"
