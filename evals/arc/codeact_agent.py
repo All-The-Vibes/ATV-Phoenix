@@ -1528,6 +1528,22 @@ def make_client():
     from azure.identity import DefaultAzureCredential, get_bearer_token_provider
     from openai import AzureOpenAI
 
+    # A TOKEN HANDED IN BEATS TWELVE PROCESSES FETCHING THEIR OWN. DefaultAzureCredential
+    # shells out to the Azure CLI, and the CLI is a single-process tool: twelve agents
+    # starting together produced ten runs stuck at turn 1 on ClientAuthenticationError,
+    # each burning the retry ladder against contention rather than against a busy model.
+    # Classifying that as congestion (Gap 17) stopped it ending runs, but a run that
+    # retries forever at turn 1 is still a run that never plays. The fix is to stop
+    # asking twelve times: the launcher fetches one token and passes it down, and a
+    # bearer token outlives any run we start.
+    handed = os.environ.get("ARC_AAD_TOKEN", "").strip()
+    if handed:
+        return AzureOpenAI(
+            azure_endpoint=ENDPOINT,
+            azure_ad_token=handed,
+            api_version="2024-12-01-preview",
+        )
+
     token = get_bearer_token_provider(
         DefaultAzureCredential(), "https://cognitiveservices.azure.com/.default"
     )

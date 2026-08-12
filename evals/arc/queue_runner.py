@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import time
@@ -73,6 +74,26 @@ def main() -> int:
 
     queue = [g.strip() for g in args.games.split(",") if g.strip()]
     RESULTS.mkdir(parents=True, exist_ok=True)
+
+    # ONE TOKEN FOR THE WHOLE QUEUE. Every agent otherwise shells out to the Azure CLI
+    # for its own, and the CLI does not survive a dozen callers at once: measured, ten
+    # of twelve runs sat at turn 1 on ClientAuthenticationError while the endpoint was
+    # idle. Fetched here, passed down, and never refreshed -- an AAD token lasts about
+    # an hour and a run at this turn cap takes twenty minutes.
+    child_env = dict(os.environ)
+    if not child_env.get("ARC_AAD_TOKEN"):
+        try:
+            from azure.identity import DefaultAzureCredential
+
+            tok = DefaultAzureCredential().get_token(
+                "https://cognitiveservices.azure.com/.default"
+            )
+            child_env["ARC_AAD_TOKEN"] = tok.token
+            print("  fetched one AAD token for the whole queue", flush=True)
+        except Exception as exc:
+            # Not fatal: each agent can still fetch its own, just less politely.
+            print(f"  could not pre-fetch a token ({type(exc).__name__}); "
+                  f"agents will each fetch their own", flush=True)
     # Per-tag, so two runners can drain two queues without overwriting each other's
     # status. Admission was already safe -- it counts live agents rather than reading
     # this file -- but a status file that flips between two writers is a file nobody
@@ -125,7 +146,7 @@ def main() -> int:
             ]
             handle = log.open("w", encoding="utf-8", buffering=1)
             proc = subprocess.Popen(cmd, cwd=str(ROOT), stdout=handle,
-                                    stderr=subprocess.STDOUT)
+                                    stderr=subprocess.STDOUT, env=child_env)
             running.append((game, proc))
             started.append({
                 "game": game, "run": run, "pid": proc.pid,
@@ -133,9 +154,10 @@ def main() -> int:
             })
             print(f"  {game}: started pid={proc.pid} -> {run}.json", flush=True)
             snapshot(f"{game} started")
-            # Stagger, so three runs do not open their first turn in the same second
-            # and spend it all colliding on the same rate limit.
-            time.sleep(20)
+            # Stagger, so agents do not open their first turn in the same second and
+            # spend it colliding. Short now that the token is handed down: the collision
+            # this used to space out was the credential fetch, not the model call.
+            time.sleep(5)
 
         if pending or running:
             time.sleep(args.poll)
