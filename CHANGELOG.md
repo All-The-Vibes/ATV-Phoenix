@@ -20,6 +20,18 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `doctor::fix_permissions`; gated failure-first by `tests/permissions_doctor.rs` (4 cases). README now
   documents the denial + the CLI-mode fallback (`phoenix-mcp sense @check.json` hits the same gate ledger
   without needing the MCP approval).
+- **The memory store crosses a process boundary.** `phoenix_learn.memory.Memory` gains
+  `save(path)` and `Memory.load(path)`. The word cross-episode in #186 needs this: an ARC
+  episode boundary is a process boundary, and a store held only in a dict forgets everything
+  at exit, so it could not be the thing `evals/arc/skills.py` becomes a view over. `load`
+  re-runs `verify_gate` over the trials it reads instead of trusting the verdict recorded
+  next to them, so a claim hand-written into the JSON with only green trials is refused and
+  its key is reported on `Memory.refused` rather than dropped in silence. That keeps the
+  property the module exists for, that `remember` has no argument which skips the gate, from
+  being walked around with a text editor. Retired facts are written too, because `evidence`
+  answers across scopes and losing them at the file boundary would cost the record that makes
+  re-earning one confirming trial. `save` builds the whole document before opening the file,
+  so a value that will not serialize raises and leaves no truncated store behind. Issue #186.
 - **Cross-episode memory that a fact has to earn.** `phoenix_learn.memory.Memory` stores a
   claim only when the trials behind it clear `phoenix_learn.accept.verify_gate`, so asserting
   a fact does not store it and there is no argument that skips the gate. Facts are keyed by

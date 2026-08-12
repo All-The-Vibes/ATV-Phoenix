@@ -5,9 +5,14 @@ checkable later, and nothing about it is reusable outside ARC. `phoenix_learn.me
 domain-agnostic version with the two properties the ARC library does not have: the only way in
 is `phoenix_learn.accept.verify_gate`, and a fact is keyed by scope so it can be retired.
 
-These tests pin both, plus the audit trail that makes re-earning cheap after a scope change.
+These tests pin both, plus the audit trail that makes re-earning cheap after a scope change,
+plus the file round trip that makes the store cross-episode at all.
 """
 from __future__ import annotations
+
+import json
+
+import pytest
 
 from phoenix_learn.accept import Observation
 from phoenix_learn.memory import Fact, Memory
@@ -115,3 +120,97 @@ def test_summary_names_the_scope_and_says_nothing_when_empty():
     text = m.summary()
     assert "level-1" in text
     assert "targets_on_row_29" in text
+
+
+# ── cross-episode: the store has to outlive the process ──────────────────────────────
+#
+# The title of #186 is "no cross-episode memory primitive". An episode boundary in ARC is a
+# process boundary: each run is a fresh interpreter that reads eval/arc-results/skills.json.
+# A store held only in a dict is cross-SCOPE inside one process and forgets everything at
+# exit, so it cannot be what `evals/arc/skills.py` becomes a view over. These pin the file
+# round trip and, more importantly, that the gate is not something a file can walk past.
+
+
+def test_a_fact_survives_a_round_trip_through_a_file(tmp_path):
+    path = tmp_path / "memory.json"
+    m = Memory(scope="level-1")
+    m.remember("targets_on_row_29", [29], [Observation(False, seed=7, note="row 58 guess"), Observation(True, seed=7)])
+    m.save(path)
+
+    back = Memory.load(path)
+
+    assert back.scope == "level-1", "the store must reopen in the scope it was saved in"
+    assert back.recall("targets_on_row_29").value == [29]
+    assert back.known() == ["targets_on_row_29"]
+
+    ev = back.evidence("targets_on_row_29")
+    assert ev["trials"] == [False, True], "the admitting evidence has to survive too"
+    assert ev["verdict"]["ok"] is True
+    assert ev["scope"] == "level-1"
+
+
+def test_loading_re_runs_the_gate_so_an_edited_file_cannot_launder_a_fact(tmp_path):
+    """The point of the module, restated for the one entrance a file opens.
+
+    `remember` refuses a claim never seen failing. If `load` trusted what it read, writing
+    that same claim into the JSON by hand would put it in the store anyway, and the gate
+    would be a formality anyone with a text editor could skip.
+    """
+    path = tmp_path / "memory.json"
+    path.write_text(
+        json.dumps(
+            {
+                "scope": "level-1",
+                "facts": [
+                    {
+                        "key": "submit_is_action_5",
+                        "value": True,
+                        "scope": "level-1",
+                        "trials": [{"ok": True}, {"ok": True}],
+                        "verdict": {"ok": True, "reason": "trust me"},
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    back = Memory.load(path)
+
+    assert back.recall("submit_is_action_5") is None
+    assert back.known() == []
+    assert back.evidence("submit_is_action_5") is None
+    assert back.refused == ["submit_is_action_5"], "a refusal has to be reported, not silent"
+
+
+def test_scope_retirement_survives_the_round_trip(tmp_path):
+    path = tmp_path / "memory.json"
+    m = Memory(scope="level-1")
+    m.remember("targets_on_row_29", [29], RED_THEN_GREEN)
+    m.enter("level-2")
+    m.save(path)
+
+    back = Memory.load(path)
+
+    assert back.scope == "level-2"
+    assert back.recall("targets_on_row_29") is None, "still not true in this scope after a reload"
+    assert back.evidence("targets_on_row_29")["scope"] == "level-1", "and it still says where it was proved"
+
+
+def test_loading_a_path_that_does_not_exist_is_an_empty_store(tmp_path):
+    """First episode. There is no file yet and that is not an error."""
+    back = Memory.load(tmp_path / "never-written.json", scope="level-1")
+
+    assert back.known() == []
+    assert back.scope == "level-1"
+    assert back.refused == []
+
+
+def test_saving_a_value_that_is_not_json_refuses_instead_of_writing_half_a_store(tmp_path):
+    path = tmp_path / "memory.json"
+    m = Memory(scope="level-1")
+    m.remember("an_open_socket", object(), RED_THEN_GREEN)
+
+    with pytest.raises(TypeError):
+        m.save(path)
+    assert not path.exists(), "a store that cannot be written must not leave a truncated file"

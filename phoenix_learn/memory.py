@@ -22,10 +22,19 @@ says this and the belief scope work land together.
 The admitting evidence stays with the fact. `evidence(key)` returns the trials and the gate
 verdict that let it in, so a stored fact can be audited later instead of being taken on trust,
 and re-earning after a scope change is one confirming trial rather than a rediscovery.
+
+**The store outlives the process.** `save(path)` and `Memory.load(path)` are what make the
+word cross-episode in #186 mean anything: an ARC episode boundary is a process boundary, and
+a dict that dies at exit cannot be the thing `evals/arc/skills.py` becomes a view over. `load`
+re-runs `verify_gate` over the trials it reads rather than trusting the verdict recorded beside
+them, so hand-writing a claim into the JSON does not get it past the gate that `remember`
+enforces. A file is an entrance, and an entrance without the gate on it is the whole hole.
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from phoenix_learn.accept import Observation, verify_gate
@@ -60,6 +69,10 @@ class Memory:
     def __init__(self, scope: Any = None) -> None:
         self.scope = scope
         self.facts: dict[str, Fact] = {}
+        #: Keys read from a file and thrown away because their trials did not clear the gate.
+        #: Empty on a store that was never loaded. Reported rather than logged, so a caller
+        #: can say what it refused instead of quietly holding less than the file claimed.
+        self.refused: list[str] = []
 
     def remember(self, key: str, value: Any, trials, scope: Any = None) -> dict:
         """Offer a fact. It is stored only if `trials` clears the acceptance rule.
@@ -136,3 +149,76 @@ class Memory:
             fact = self.facts[key]
             lines.append(f"  {key} = {fact.value!r}  [{fact.reason}]")
         return "\n".join(lines)
+
+    # ── crossing an episode boundary ─────────────────────────────────────────────────
+
+    def save(self, path) -> Path:
+        """Write the whole store, retired facts included, and return the path.
+
+        Retired facts are kept because `evidence` answers across scopes; dropping them at
+        the file boundary would make a reload lose exactly the record that makes re-earning
+        one confirming trial. The document is built in full before anything is opened, so a
+        value that will not serialize raises and leaves no truncated file behind.
+        """
+        document = json.dumps(
+            {
+                "scope": self.scope,
+                "facts": [
+                    {
+                        "key": fact.key,
+                        "value": fact.value,
+                        "scope": fact.scope,
+                        "trials": [
+                            {"ok": t.ok, "seed": t.seed, "note": t.note} for t in fact.trials
+                        ],
+                        "verdict": fact.verdict,
+                    }
+                    for fact in self.facts.values()
+                ],
+            },
+            indent=2,
+        )
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(document, encoding="utf-8")
+        return path
+
+    @classmethod
+    def load(cls, path, scope: Any = None) -> "Memory":
+        """Reopen a store, re-deciding every fact in it rather than trusting the file.
+
+        The recorded verdict is treated as a claim, not as evidence: the trials are put
+        back through `verify_gate` and anything that does not clear it lands in `refused`
+        instead of in the store. `remember` has no argument that skips the gate, and this
+        keeps a text editor from being one.
+
+        A path that does not exist is an empty store, not an error. That is the first
+        episode, when nothing has been written yet.
+        """
+        path = Path(path)
+        memory = cls(scope=scope)
+        if not path.exists():
+            return memory
+
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        if scope is None:
+            memory.scope = raw.get("scope")
+
+        for entry in raw.get("facts", []):
+            trials = [
+                Observation(bool(t.get("ok")), t.get("seed"), t.get("note", ""))
+                for t in entry.get("trials", [])
+            ]
+            verdict = verify_gate(trials)
+            if not verdict["ok"]:
+                memory.refused.append(entry.get("key"))
+                continue
+            memory.facts[entry["key"]] = Fact(
+                key=entry["key"],
+                value=entry.get("value"),
+                scope=entry.get("scope"),
+                trials=trials,
+                verdict=verdict,
+            )
+        memory.refused.sort()
+        return memory
