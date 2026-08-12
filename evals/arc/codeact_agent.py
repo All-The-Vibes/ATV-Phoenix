@@ -1533,14 +1533,40 @@ def make_client():
     # starting together produced ten runs stuck at turn 1 on ClientAuthenticationError,
     # each burning the retry ladder against contention rather than against a busy model.
     # Classifying that as congestion (Gap 17) stopped it ending runs, but a run that
-    # retries forever at turn 1 is still a run that never plays. The fix is to stop
-    # asking twelve times: the launcher fetches one token and passes it down, and a
-    # bearer token outlives any run we start.
-    handed = os.environ.get("ARC_AAD_TOKEN", "").strip()
-    if handed:
+    # retries forever at turn 1 is still a run that never plays.
+    #
+    # BUT IT MUST BE A PROVIDER, NOT A STRING. `azure_ad_token=<str>` is fixed for the life
+    # of the client, so when it expires the run cannot recover: wave r2 lost twelve agents
+    # mid-flight, every one looping AuthenticationError against a credential that would
+    # never be valid again. `get_token` hands back the CLI's CACHED token too, so the
+    # remaining life is unknown and can be minutes -- r2 died sixteen minutes in. The
+    # launcher now writes a token FILE and refreshes it; this reads that file per request,
+    # so one process fetches (no herd) and every agent still follows the refresh.
+    token_file = os.environ.get("ARC_AAD_TOKEN_FILE", "").strip()
+    if token_file:
+        path = Path(token_file)
+
+        def handed_token() -> str:
+            """Current bearer token from the launcher's file.
+
+            Called by the SDK on every request, so a refresh written by the launcher is
+            picked up without restarting the run. Falls back to this process's own
+            credential when the file is missing or stale -- that is the herd again, but a
+            herd beats a dead run, and it only happens if the launcher stopped refreshing.
+            """
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+                if payload.get("expires_on", 0) - time.time() > 60:
+                    return str(payload["token"])
+            except (json.JSONDecodeError, OSError, KeyError, ValueError):
+                pass
+            return get_bearer_token_provider(
+                DefaultAzureCredential(), "https://cognitiveservices.azure.com/.default"
+            )()
+
         return AzureOpenAI(
             azure_endpoint=ENDPOINT,
-            azure_ad_token=handed,
+            azure_ad_token_provider=handed_token,
             api_version="2024-12-01-preview",
         )
 
@@ -1836,6 +1862,9 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
         env.level_just_changed = False
         before_levels = env.best
         before_spent = env.spent
+        # Patience counts turns since PROGRESS, and a new rule of the game is progress.
+        # See the reset below for why level gain alone was the wrong measure.
+        before_mechanics = len(env.mechanics_learned)
 
         def current_notes() -> str:
             """Everything learned on THIS level, plus a tail of what came before.
@@ -2284,8 +2313,26 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
                 }
             )
 
+        # PATIENCE MEASURES PROGRESS, AND A LEVEL IS NOT THE ONLY KIND. This reset used to
+        # fire only on `gained > 0`, which made patience mean "turns without COMPLETING a
+        # level" -- so any game whose level 1 takes longer than the budget dies no matter
+        # how well it is doing. Measured on wave r2 at --patience 25: five of seventeen
+        # games were cut, four at zero levels while holding correct control models. sk48
+        # died at turn 26 of an 80 turn budget, with zero deaths, holding a complete
+        # strategy: "align the crane centre with a target, extend until contact, then
+        # retract to reel that target left."  That is a solved game killed mid-execution.
+        #
+        # Learning a new rule of the game therefore also counts. It is the right signal
+        # rather than simply a bigger number because it still kills the failure patience
+        # exists for: the cd82 grind of 66 consecutive turns and ~700 actions learned
+        # nothing new, so it would still be cut here, while a slow learner survives.
+        # `mechanic()` rejects duplicates, so a claim cannot be re-registered to buy turns,
+        # and `unmechanic` shrinking the list can never satisfy `> 0`. A determined agent
+        # could still write a slightly different string every turn; `max_turns` remains the
+        # hard ceiling for exactly that reason.
         gained = env.best - before_levels
-        stale = 0 if gained > 0 else stale + 1
+        learned = len(env.mechanics_learned) - before_mechanics
+        stale = 0 if (gained > 0 or learned > 0) else stale + 1
 
         # A zero-action turn gathers no evidence, so the next turn meets the same wall.
         # Measured on sb26: seven straight turns printing "verification mismatch; no

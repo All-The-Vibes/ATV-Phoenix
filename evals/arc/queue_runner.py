@@ -75,25 +75,64 @@ def main() -> int:
     queue = [g.strip() for g in args.games.split(",") if g.strip()]
     RESULTS.mkdir(parents=True, exist_ok=True)
 
-    # ONE TOKEN FOR THE WHOLE QUEUE. Every agent otherwise shells out to the Azure CLI
-    # for its own, and the CLI does not survive a dozen callers at once: measured, ten
-    # of twelve runs sat at turn 1 on ClientAuthenticationError while the endpoint was
-    # idle. Fetched here, passed down, and never refreshed -- an AAD token lasts about
-    # an hour and a run at this turn cap takes twenty minutes.
+    # ONE TOKEN FOR THE WHOLE QUEUE, AND IT HAS TO KEEP BEING VALID. Every agent
+    # otherwise shells out to the Azure CLI for its own, and the CLI does not survive a
+    # dozen callers at once: measured, ten of twelve runs sat at turn 1 on
+    # ClientAuthenticationError while the endpoint was idle.
+    #
+    # Handing down the token STRING solved that and created a worse failure. A string
+    # cannot be refreshed, so when it expires every agent fails forever with no recovery
+    # path -- wave r2 lost twelve agents that way, each burning a 40-step retry ladder
+    # against a credential that could never work again. The reasoning in the old comment
+    # ("a token lasts about an hour and a run takes twenty minutes") was wrong twice: a
+    # QUEUE runs for hours, not one run's worth of minutes, and `get_token` returns the
+    # CLI's CACHED token, which can have any amount of life left. r2 died sixteen minutes
+    # in, not sixty.
+    #
+    # So: still one fetcher, but via a file the children re-read. The parent refreshes it
+    # below on every poll. No herd, and no expiry cliff.
     child_env = dict(os.environ)
-    if not child_env.get("ARC_AAD_TOKEN"):
+    child_env.pop("ARC_AAD_TOKEN", None)  # the static form is the bug; never inherit it
+    token_path = RESULTS / f"aad-token-{args.tag}.txt"
+    child_env["ARC_AAD_TOKEN_FILE"] = str(token_path)
+
+    def refresh_token(force: bool = False) -> None:
+        """Rewrite the token file when it is missing or close to expiry.
+
+        Refreshes on the parent's poll cadence, which is the whole point: a child that
+        reads this file mid-run gets a live credential without ever calling the CLI.
+        Failure is non-fatal -- the children fall back to their own credential, which is
+        impolite but still plays.
+        """
+        try:
+            if not force and token_path.exists():
+                payload = json.loads(token_path.read_text(encoding="utf-8"))
+                # Five minutes of headroom: long enough to cover a slow turn already in
+                # flight when the refresh lands.
+                if payload.get("expires_on", 0) - time.time() > 300:
+                    return
+        except (json.JSONDecodeError, OSError, ValueError):
+            pass  # unreadable is the same as absent: refetch
         try:
             from azure.identity import DefaultAzureCredential
 
             tok = DefaultAzureCredential().get_token(
                 "https://cognitiveservices.azure.com/.default"
             )
-            child_env["ARC_AAD_TOKEN"] = tok.token
-            print("  fetched one AAD token for the whole queue", flush=True)
+            tmp = token_path.with_suffix(".tmp")
+            tmp.write_text(
+                json.dumps({"token": tok.token, "expires_on": tok.expires_on}),
+                encoding="utf-8",
+            )
+            # Atomic, so a child never reads a half-written credential.
+            os.replace(tmp, token_path)
+            left = (tok.expires_on - time.time()) / 60.0
+            print(f"  token refreshed, {left:.0f} min of life", flush=True)
         except Exception as exc:
-            # Not fatal: each agent can still fetch its own, just less politely.
-            print(f"  could not pre-fetch a token ({type(exc).__name__}); "
+            print(f"  could not refresh the token ({type(exc).__name__}); "
                   f"agents will each fetch their own", flush=True)
+
+    refresh_token(force=True)
     # Per-tag, so two runners can drain two queues without overwriting each other's
     # status. Admission was already safe -- it counts live agents rather than reading
     # this file -- but a status file that flips between two writers is a file nobody
@@ -118,6 +157,10 @@ def main() -> int:
     print(f"queue: {' '.join(pending)} (concurrency {args.concurrency})", flush=True)
 
     while pending or running:
+        # BEFORE anything else in the pass, so a game admitted below starts against a live
+        # credential and a game already running picks the new one up on its next turn.
+        refresh_token()
+
         for entry in list(running):
             game, proc = entry
             if proc.poll() is not None:
@@ -164,6 +207,8 @@ def main() -> int:
 
     snapshot("queue drained")
     print("queue drained", flush=True)
+    # The credential outlives the queue otherwise, sitting on disk with real life left.
+    token_path.unlink(missing_ok=True)
     return 0
 
 
