@@ -339,6 +339,71 @@ def check_the_harness_asks_after_a_level_clear() -> tuple[bool, str]:
     )
 
 
+def check_concurrent_saves_do_not_clobber() -> tuple[bool, str]:
+    """Two agents writing the library must not destroy each other's skills.
+
+    Measured on r10, and it destroyed real work. Three agents ran concurrently on
+    ft09, vc33 and tu93 against one `skills.json`. vc33 saved `read_blob_geometry`
+    and `match_embedded_and_loose_connectors` -- both verified present on disk -- and
+    a later save from the tu93 process overwrote the file with ITS view of the
+    library, taken when it started. Both vc33 skills were gone, permanently, with no
+    error anywhere: the agent was told `{"ok": True}`, the write succeeded, and the
+    skill evaporated minutes later.
+
+    `save()` serialises the whole in-memory dict, and every process loads once at
+    startup, so the last writer wins and silently discards everything learned since.
+    A skill library that loses skills under exactly the condition it is used in --
+    a parallel wave -- compounds nothing, which is the entire point of having one.
+
+    The fix is to merge against what is on disk at write time rather than trusting a
+    snapshot from process start. This check simulates the race directly.
+    """
+    tmp = Path(tempfile.mkdtemp()) / "skills.json"
+    a = SkillLibrary(path=tmp)
+    a.add("from_a", "vc33", "def from_a():\n    return 'a'\n", "A's skill",
+          tags=["general"])
+
+    # B starts here, so its in-memory view already contains from_a.
+    b = SkillLibrary(path=tmp)
+    # A learns something else AFTER B loaded -- the race window.
+    a.add("from_a_late", "vc33", "def from_a_late():\n    return 'a2'\n", "A's second",
+          tags=["general"])
+    # Now B writes. Under a whole-file overwrite this erases from_a_late.
+    b.add("from_b", "tu93", "def from_b():\n    return 'b'\n", "B's skill",
+          tags=["general"])
+
+    on_disk = {s.name for s in SkillLibrary(path=tmp).skills.values()}
+    lost = {"from_a", "from_a_late", "from_b"} - on_disk
+    if lost:
+        return False, (
+            f"a concurrent save destroyed {sorted(lost)}. Every parallel wave silently "
+            f"loses skills, and the agent is told the write succeeded."
+        )
+    return True, "concurrent saves merge; no skill is lost to another process's write"
+
+
+def check_concurrent_results_survive() -> tuple[bool, str]:
+    """A win booked by one process must not be reverted by another's save."""
+    tmp = Path(tempfile.mkdtemp()) / "skills.json"
+    a = SkillLibrary(path=tmp)
+    a.add("shared", "vc33", "def shared():\n    return 1\n", "Shared skill",
+          tags=["general"])
+
+    b = SkillLibrary(path=tmp)          # B's view: shared at 0W/0L
+    a.record("shared", won=True)        # A books a win
+    a.record("shared", won=True)
+    b.record("shared", won=False)       # B writes from its stale view
+
+    got = SkillLibrary(path=tmp).skills["shared"]
+    if got.wins < 2:
+        return False, (
+            f"wins were rolled back by a concurrent write: expected >=2W, got "
+            f"{got.wins}W/{got.losses}L. Transfer is gated on wins > 0, so losing "
+            f"them silently keeps the library from ever compounding."
+        )
+    return True, f"results survive a concurrent write ({got.wins}W/{got.losses}L)"
+
+
 CHECKS = [
     ("the playing agent is wired to the library", check_agent_calls_the_library),
     ("learn() is documented where tools are declared",
@@ -349,6 +414,8 @@ CHECKS = [
     ("only GENERAL skills cross games", check_only_general_skills_transfer),
     ("an installed skill is callable", check_install_makes_it_callable),
     ("wins and losses are booked durably", check_results_are_booked),
+    ("concurrent saves do not clobber", check_concurrent_saves_do_not_clobber),
+    ("concurrent results survive", check_concurrent_results_survive),
     ("a broken skill cannot kill the run", check_broken_skill_cannot_kill_the_run),
     ("library shape (advisory)", check_library_is_not_all_solvers),
 ]

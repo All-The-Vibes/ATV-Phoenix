@@ -79,13 +79,70 @@ class SkillLibrary:
             self.skills[skill.name] = skill
 
     def save(self) -> None:
+        """Write the library, MERGING with whatever is on disk right now.
+
+        This used to serialise the in-memory dict straight over the file, and every
+        process loads once at startup, so the last writer won and silently discarded
+        everything learned since it started. Measured on r10 with three concurrent
+        agents: vc33 saved `read_blob_geometry` and `match_embedded_and_loose_connectors`
+        -- both verified present on disk -- and a later save from the tu93 process
+        replaced the file with its own startup view. Both skills were gone permanently.
+        No error was raised anywhere; the agent was told `{"ok": True}` and the write
+        did succeed. It was simply undone minutes later by a peer.
+
+        A skill library that loses skills under exactly the condition it is used in --
+        a parallel wave, which is how every corpus run is executed -- compounds nothing,
+        and compounding is the only reason it exists.
+
+        Merge rules, and both matter:
+          * a skill this process has never heard of is KEPT, not overwritten
+          * win/loss counts take the MAXIMUM of the two views rather than ours
+
+        Max is right because results are monotone -- a win booked is a fact about
+        something that happened, and a stale view can only ever be missing results,
+        never holding extra ones. Taking ours would roll a peer's evidence back, and
+        transfer is gated on `wins > 0`, so a rolled-back win keeps a good skill from
+        ever crossing to another game.
+        """
+        merged: dict[str, Skill] = {}
+        if self.path.exists():
+            try:
+                raw = json.loads(self.path.read_text(encoding="utf-8"))
+                for entry in raw.get("skills", []):
+                    try:
+                        skill = Skill(**entry)
+                    except TypeError:
+                        continue  # a shape we do not understand is not ours to delete
+                    merged[skill.name] = skill
+            except (json.JSONDecodeError, OSError):
+                merged = {}
+
+        for name, mine in self.skills.items():
+            theirs = merged.get(name)
+            if theirs is None:
+                merged[name] = mine
+                continue
+            mine.wins = max(mine.wins, theirs.wins)
+            mine.losses = max(mine.losses, theirs.losses)
+            merged[name] = mine
+
+        self.skills.update({n: s for n, s in merged.items() if n not in self.skills})
+        for name, skill in merged.items():
+            if name in self.skills:
+                self.skills[name].wins = skill.wins
+                self.skills[name].losses = skill.losses
+
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(
+        # Write-then-rename, so a reader never sees a half-written library and a crash
+        # mid-write cannot truncate everything learned so far.
+        tmp = self.path.with_suffix(".json.tmp")
+        tmp.write_text(
             json.dumps(
-                {"skills": [asdict(s) for s in self.skills.values()]}, indent=2
+                {"skills": [asdict(s) for s in merged.values()]}, indent=2
             ),
             encoding="utf-8",
         )
+        tmp.replace(self.path)
 
     def add(self, name, game, source, description, tags=None) -> Skill:
         skill = Skill(
