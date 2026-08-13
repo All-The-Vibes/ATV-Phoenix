@@ -757,6 +757,12 @@ class Env:
         # How many actions each life has lasted, and where the current one began.
         self.lives: list[int] = []
         self._life_mark = 0
+        # EVERY death, not just how many. `deaths` is an integer and an integer cannot be
+        # read for a pattern, which is why a death has only ever been able to teach "that
+        # was wrong". Twenty deaths read TOGETHER say what the game is: dying at 12, then
+        # 41, then 64 actions is a budget; dying wherever colour 9 arrives is a hazard.
+        # Neither is visible one death at a time. See the synthesis ask in `play`.
+        self.death_log: list[dict] = []
         # The board as it stood before the CURRENT one, and the actions that got here.
         # Held so a death can be explained: `_step` replaces `self._frame` on the line
         # after it compares them, so without this the last-alive board is unreachable
@@ -1005,6 +1011,18 @@ class Env:
                     self._frame.frame,
                     self._recent_actions,
                 )
+                # The same read, kept as DATA rather than only as a sentence. The prose
+                # goes to the agent now; this row is what the synthesis reads later, when
+                # there are enough of them to show a pattern.
+                self.death_log.append({
+                    "n": self.deaths,
+                    "level": self.best + 1,
+                    "life_actions": lifespan,
+                    "total_at_death": self.spent,
+                    "last_action": (self._recent_actions or [None])[-1],
+                    "run_up": list(self._recent_actions[-6:]),
+                    "forensics": forensics.strip(),
+                })
                 self._frame = self._env.reset()
                 self._bar_colour = None
                 self._bar_row = None
@@ -2291,6 +2309,55 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
                 f"It costs no actions. Measured: the library holds only per-game solvers "
                 f"today and has therefore transferred NOTHING between games -- every game "
                 f"has paid full price to rediscover what the last one already knew.\n"
+            )
+        # THE FAILURES, READ TOGETHER. Everything above reacts to ONE event: this death,
+        # this stall, this level. That is Reflexion's shape, and ExpeL (AAAI 2024 Oral,
+        # arXiv:2308.10144) measured it as the weaker half -- per-episode reflection plus
+        # a second step that batches many trajectories into one rule-extraction call beat
+        # reflection alone, 0.80 against 0.71 on ALFWorld. We had the first step only.
+        #
+        # It matters here more than it did there. ARC Prize's own analysis names the
+        # dominant failure on this benchmark "True Local Effect, False World Model": the
+        # model sees a real local effect and cannot anchor it in a global rule. bp35 is
+        # our instance and the only game still at zero levels -- three waves produced
+        # three DIFFERENT theories of the same game, each coherent, each built from one
+        # run's worth of evidence, none of them the game.
+        #
+        # A single death says "that was wrong". Twenty deaths, side by side, say what the
+        # game IS -- and the harness had never once shown them side by side.
+        #
+        # Every third death rather than every death: firing each time is per-death
+        # reflection again, and firing once is a single shot at the hardest question in
+        # the run. Three is the smallest number from which a pattern can honestly be
+        # claimed, and it re-asks as the evidence grows.
+        if len(env.death_log) >= 3 and len(env.death_log) % 3 == 0 and not gained_last_turn:
+            rows = []
+            for d in env.death_log[-9:]:
+                bare = " | ".join(
+                    line.strip() for line in (d["forensics"] or "").splitlines()
+                    if ":" in line and "WHAT CHANGED" not in line
+                )
+                rows.append(
+                    f"  death {d['n']} on level {d['level']}: lasted "
+                    f"{d['life_actions']} actions, killed by action {d['last_action']}, "
+                    f"run-up {d['run_up']}\n      {bare[:240]}"
+                )
+            record = "\n".join(rows)
+            consolidate = (
+                f"\nSTOP AND READ YOUR {len(env.death_log)} DEATHS TOGETHER. You have "
+                f"been told about each one as it happened, and one death can only ever "
+                f"tell you that something was wrong. All of them at once tell you what "
+                f"this GAME is.\n{record}\n"
+                f"ANSWER ONE QUESTION before you spend another action: what single rule, "
+                f"had you known it from the start, would have prevented ALL of these -- "
+                f"not the last one. Look for what does NOT vary. If the lives lasted "
+                f"similar numbers of actions, that is a budget and not a hazard. If the "
+                f"same colour arrived on you each time, that is the hazard and its name "
+                f"is in the rows above. If the same action ended most of them, that "
+                f"action is not safe where you are using it.\n"
+                f"Then write that one rule with mechanic(text) BEFORE you act, and "
+                f"unmechanic() anything it contradicts. This is free. Re-deriving a "
+                f"theory of this game for the {len(env.death_log) // 3}th time is not.\n"
             )
         elif died:
             consolidate = (
