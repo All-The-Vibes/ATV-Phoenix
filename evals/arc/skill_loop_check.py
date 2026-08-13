@@ -404,12 +404,55 @@ def check_concurrent_results_survive() -> tuple[bool, str]:
     return True, f"results survive a concurrent write ({got.wins}W/{got.losses}L)"
 
 
+def check_credit_spans_the_level_not_the_turn() -> tuple[bool, str]:
+    """A skill used while solving a level must be credited when that level falls.
+
+    The first version booked a win only when the skill's name appeared in the code of
+    the very turn that cleared. Measured on r10, that credited nothing: ft09 went 6/6
+    and tu93 reached 5/9, both re-used skills they had written, and NO level-clearing
+    turn happened to call one -- so every transferable skill stayed at 0W/0L and
+    transfer, which is gated on `wins > 0`, could never unlock.
+
+    That is the wrong unit. A perception skill earns its keep by being called on the
+    turn that UNDERSTANDS the board; the clear often lands a turn or two later. Credit
+    therefore has to span the level, not the turn: every skill called since the last
+    level boundary is credited when the level falls.
+
+    Pinned by requiring `play` to keep a per-level record of which skills were called,
+    reset at the level boundary, rather than reading only the current turn's code.
+    """
+    import evals.arc.codeact_agent as mod
+
+    src = inspect.getsource(mod.play)
+    if "skills_used_this_level" not in src:
+        return False, (
+            "credit is still scoped to a single turn's code. Measured on r10: two games "
+            "improved while re-using their own skills and not one win was booked, "
+            "because the clearing turn did not happen to name the skill."
+        )
+    tree = ast.parse(inspect.getsource(mod))
+    play = next((n for n in ast.walk(tree)
+                 if isinstance(n, ast.FunctionDef) and n.name == "play"), None)
+    cleared = False
+    for node in ast.walk(play):
+        if isinstance(node, ast.Assign):
+            for tgt in node.targets:
+                if isinstance(tgt, ast.Name) and tgt.id == "skills_used_this_level":
+                    if isinstance(node.value, (ast.Set, ast.Call, ast.Dict)):
+                        cleared = True
+    if not cleared:
+        return False, "skills_used_this_level is never reset; credit would leak across levels"
+    return True, "skills called anywhere on a level are credited when that level falls"
+
+
 CHECKS = [
     ("the playing agent is wired to the library", check_agent_calls_the_library),
     ("learn() is documented where tools are declared",
      check_learn_is_documented_in_the_api_block),
     ("the harness asks after a level clear",
      check_the_harness_asks_after_a_level_clear),
+    ("credit spans the level, not the turn",
+     check_credit_spans_the_level_not_the_turn),
     ("a won skill transfers to a new game", check_a_winning_skill_transfers),
     ("only GENERAL skills cross games", check_only_general_skills_transfer),
     ("an installed skill is callable", check_install_makes_it_callable),

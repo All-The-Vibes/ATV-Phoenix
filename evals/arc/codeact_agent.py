@@ -2122,6 +2122,10 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
     # runs, so the ask has to be driven by the last turn's outcome -- which is also when
     # the code that cleared it is still the most recent thing in the trajectory.
     gained_last_turn = 0
+    # Which learned skills have been called on the CURRENT level. Credit is scoped to the
+    # level because a perception skill is called on the turn that reads the board and the
+    # clear lands later; see the booking block below for what turn-scoped credit measured.
+    skills_used_this_level: set[str] = set()
     # Overwritten by whichever exit actually fires; this is the one that means the loop
     # ran to the end of its turns with the game still winnable.
     stopped = "max_turns"
@@ -2657,6 +2661,11 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
         stale = 0 if (gained > 0 or learned > 0) else stale + 1
         # Carried to the NEXT turn's prompt, where the ask to save the working code lands.
         gained_last_turn = gained
+        if gained > 0:
+            # A new level is a new attempt. Skills that helped clear the last one have
+            # already been credited above; carrying them forward would credit them again
+            # for work they took no part in.
+            skills_used_this_level = set()
 
         # BOOK THE RESULT AUTOMATICALLY. Gap 10's lesson is that a primitive the agent
         # must remember to call is a primitive that is never called, and `accept()` is
@@ -2664,19 +2673,27 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
         # harness scores the skills itself from what actually happened, rather than
         # asking the agent to be diligent about its own bookkeeping.
         #
-        # The signal is deliberately coarse: a skill CALLED on a turn that cleared a
-        # level is credited, and one called on a turn that died is charged. That is
-        # noisy per turn and correct in aggregate, which is all `available()` needs --
-        # it gates transfer on `wins > 0` and retires at four results below a third.
-        # A precise attribution would need per-call instrumentation the REPL cannot
-        # give without changing what the agent's code means.
-        if installed_skills or library.skills:
-            called = [n for n in library.skills if n in (code or "")]
-            if called and gained > 0:
-                for n in called:
+        # CREDIT IS SCOPED TO THE LEVEL, NOT THE TURN, and r10 is why. The first version
+        # asked whether the CLEARING turn's code named a skill. Measured: ft09 went 6/6
+        # and tu93 reached 5/9, both re-using skills they had written, and not one
+        # level-clearing turn happened to call one -- so every transferable skill stayed
+        # at 0W/0L and transfer, gated on `wins > 0`, could never unlock at all.
+        #
+        # That was the wrong unit. A perception skill earns its keep on the turn that
+        # UNDERSTANDS the board; the clear lands a turn or two later. So every skill
+        # called since the last level boundary is credited when the level falls, and
+        # charged when a death ends the attempt. Still coarse, and honest about being
+        # coarse: `available()` only needs `wins > 0` to unlock transfer and four
+        # results to retire a bad skill.
+        for name in library.skills:
+            if name in (code or ""):
+                skills_used_this_level.add(name)
+        if skills_used_this_level:
+            if gained > 0:
+                for n in skills_used_this_level:
                     library.record(n, won=True)
-            elif called and env.deaths_this_turn:
-                for n in called:
+            elif env.deaths_this_turn:
+                for n in skills_used_this_level:
                     library.record(n, won=False)
 
         # A zero-action turn gathers no evidence, so the next turn meets the same wall.
