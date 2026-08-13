@@ -31,6 +31,7 @@ from __future__ import annotations
 import ast
 import inspect
 import json
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -240,8 +241,65 @@ def check_only_general_skills_transfer() -> tuple[bool, str]:
     return True, "only general skills cross games; solvers stay on the game they solve"
 
 
+def check_learn_is_documented_in_the_api_block() -> tuple[bool, str]:
+    """`learn()` must be in the SYSTEM API block, with real weight.
+
+    This check exists because the wiring landed and the agent still never called it:
+    zero `learn(` calls across 51 turns on cd82, vc33 and tu93. The primitive was in
+    the namespace and mentioned in the per-turn message, and absent from the SYSTEM
+    API block where the agent learns which tools are real.
+
+    That is Gap 18 exactly -- `note()` got one line next to `mechanic()`'s twenty-four
+    and twelve runs called `note()` zero times -- and Gap 10's rule, that an
+    undocumented or mis-described primitive is simply never used. `accept()` is the
+    standing proof: present in the REPL, absent from every trace ever recorded.
+
+    So the requirement is mechanical rather than aesthetic: `learn(` appears in the
+    SYSTEM prompt's API block, and its entry is not a throwaway line next to the
+    primitive it competes with for attention.
+    """
+    import evals.arc.codeact_agent as mod
+
+    system = getattr(mod, "SYSTEM", "")
+    if "learn(" not in system:
+        return False, (
+            "learn( is absent from the SYSTEM prompt. Measured consequence: zero calls "
+            "in 51 turns across three games. An undocumented primitive is never used."
+        )
+
+    def _entry(name: str) -> int:
+        i = system.find(f"{name}(")
+        if i < 0:
+            return 0
+        rest = system[i:]
+        # The API block is one indented entry per primitive; the next entry starts at
+        # a line whose first non-space run is `word(`. Measure to there.
+        lines = rest.splitlines()
+        out = [lines[0]]
+        for line in lines[1:]:
+            stripped = line.strip()
+            if stripped and re.match(r"^[a-z_]+\(", stripped) and "->" in line:
+                break
+            out.append(line)
+        return len("\n".join(out))
+
+    learn_len = _entry("learn")
+    mech_len = _entry("mechanic")
+    if learn_len < 200:
+        return False, (
+            f"learn()'s API entry is {learn_len} chars against mechanic()'s {mech_len}. "
+            f"Gap 18 measured what a starved entry produces: the primitive is not used."
+        )
+    return True, (
+        f"learn() is documented in the API block ({learn_len} chars, "
+        f"mechanic() {mech_len})"
+    )
+
+
 CHECKS = [
     ("the playing agent is wired to the library", check_agent_calls_the_library),
+    ("learn() is documented where tools are declared",
+     check_learn_is_documented_in_the_api_block),
     ("a won skill transfers to a new game", check_a_winning_skill_transfers),
     ("only GENERAL skills cross games", check_only_general_skills_transfer),
     ("an installed skill is callable", check_install_makes_it_callable),

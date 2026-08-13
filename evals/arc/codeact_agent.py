@@ -242,6 +242,26 @@ API available to your code:
     unmechanic(n, because) -> drop a supposed rule. A mechanic is the one belief no level
                            change ever clears out from under you, so after a death or a
                            long stall these are the FIRST things to doubt.
+    learn(name, source, description, tags=[]) -> SAVE WORKING CODE so the next level and
+                           the next GAME can call it. mechanic() records a SENTENCE about
+                           the game; learn() records the FUNCTION that acts on it, and a
+                           function is the only thing that can be re-run without being
+                           re-derived. Costs no actions. The source must define a function
+                           called `name`; it is compiled before it is stored, so a syntax
+                           error costs you the write and never the turn.
+                           SAVE THE REUSABLE PART, NOT THE ANSWER. A skill tagged
+                           general/primitive/perception is offered on OTHER games once it
+                           has won; anything named solve_* is treated as this game's answer
+                           and stays here. That split is not bureaucracy, it is measured:
+                           the library currently holds seven skills, six of them per-game
+                           solvers, and it has therefore transferred NOTHING across the
+                           corpus. `solve_sb26()` cannot help you here. A function that
+                           reads this board into pieces, finds which action moves what, or
+                           locates the exit CAN, because those are facts about this
+                           benchmark rather than about one board.
+                           Write one the moment a piece of your code works twice. The
+                           corpus is 25 games and every rule you do not save is a rule the
+                           next game pays actions to discover again.
     sense(claim, ok)    -> record one trial of a belief. FREE.
     accept(claim)       -> {'ok': bool, 'reason': str}: is that belief actually proven?
     propose(rule)       -> test a rule against EVERY level you have already cleared. FREE.
