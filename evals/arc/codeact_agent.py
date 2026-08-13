@@ -2781,6 +2781,14 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
                     "total_actions": env.spent,
                     "code": code,
                     "output": last_output[-1500:],
+                    # WHAT THE HARNESS TOLD THE AGENT THIS TURN. `output` is the code's
+                    # stdout; the guidance goes into the PROMPT, which the trace never
+                    # stored -- so after r11 there was no way to confirm from disk that
+                    # the failure-synthesis ask had fired at all. Every claim about
+                    # whether an intervention reached the agent was unfalsifiable, which
+                    # is the same defect as a gate that certifies nothing. Cheap to fix
+                    # and it makes the next A/B answerable from the artifacts.
+                    "consolidate": consolidate,
                     "notes": env.notes[-8:],
                     "mechanics": list(env.mechanics_learned),
                     # WHETHER THIS GAME DRAWS A MOVE BAR, as measured rather than as
