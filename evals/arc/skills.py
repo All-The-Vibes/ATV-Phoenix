@@ -43,6 +43,23 @@ class Skill:
         """Failed enough times, with enough evidence, to stop being offered."""
         return self.wins + self.losses >= 4 and self.score < 0.34
 
+    # Tags that mark a skill as a fact about the BENCHMARK rather than about one board.
+    GENERAL_TAGS = frozenset({"general", "primitive", "transferable", "perception"})
+
+    @property
+    def transferable(self) -> bool:
+        """May this skill be offered on a game it was not learned on?
+
+        Two gates, because a solver that wins is still a solver. `solve_*` is the naming
+        convention the agent already uses for "this finishes THIS game", so a skill has
+        to both claim generality and not be named as one game's answer. Deliberately
+        conservative: a wrongly-excluded skill costs a re-derivation, while a wrongly-
+        included one spends actions on a board it cannot read -- and RHAE squares those.
+        """
+        if self.name.startswith("solve_"):
+            return False
+        return bool(set(self.tags) & self.GENERAL_TAGS)
+
 
 class SkillLibrary:
     def __init__(self, path: Path = LIBRARY):
@@ -90,13 +107,28 @@ class SkillLibrary:
         self.save()
 
     def available(self, game: str, tags: list[str] | None = None) -> list[Skill]:
-        """Skills worth offering: this game's first, then anything transferable.
+        """Skills worth offering: this game's first, then anything TRANSFERABLE.
 
         Cross-game transfer is the point. "Read the board into connected components" and
         "find the drag mapping" are facts about this benchmark, not about one environment,
         and a library that only ever offers same-game skills compounds nothing across the
-        corpus. A skill earns transfer by having won somewhere; one that has never won is
-        only offered on the game it came from.
+        corpus.
+
+        Transfer needs TWO things, and the second was missing long enough to be dangerous.
+        A skill must have won somewhere -- evidence it is correct -- AND be marked general,
+        which is evidence it is about the benchmark rather than about one board. Winning
+        on game A says a skill is right; it never says it is portable.
+
+        The live library is why this is not theoretical. `sp80_generic` won on sp80, is
+        tagged "deadly", and its body is
+        `for i in range(5000): press(random.choice([1,2,2,3,4,6]))`. Under a wins-only
+        rule that was offered on bp35, where it is not a lesson but a random-input loop
+        that spends the action budget RHAE squares against you and walks into every hazard
+        on the board. `solve_vc33_level` pressed action 6 against boards it never saw.
+
+        A skill is general if it says so (`general`/`primitive`/`transferable` in tags) and
+        is not named as a solver for one game. `solve_*` is the naming convention the agent
+        already uses for "this finishes THIS game", so it is honoured rather than fought.
         """
         wanted = set(tags or [])
         out = []
@@ -105,7 +137,10 @@ class SkillLibrary:
                 continue
             if skill.game == game:
                 out.append(skill)
-            elif skill.wins > 0 and (not wanted or wanted & set(skill.tags)):
+                continue
+            if skill.wins <= 0 or not skill.transferable:
+                continue
+            if not wanted or wanted & set(skill.tags):
                 out.append(skill)
         return sorted(out, key=lambda s: (s.game != game, -s.score, -s.wins))
 

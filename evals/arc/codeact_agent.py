@@ -1975,6 +1975,19 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
     # on sb26 a 141-action probe drops a perfect level-1 solve from 3.19% to 0.06%.
     mechanics = SkillLibrary().mechanics_for(game)
 
+    # THE SKILL LIBRARY, ACTUALLY CONNECTED. `skills.py` has implemented install /
+    # describe / record / available since #177, and `codeact_agent` called exactly one
+    # of them -- `mechanics_for`, a text blob scoped to this game. So no learned skill
+    # ever reached the REPL, none was ever offered in the prompt, and no result was ever
+    # booked. `skills.json` was the receipt: four of seven skills at 0W/0L, not because
+    # they lost but because nothing counts. And `available()` only transfers a skill once
+    # `wins > 0`, so with wins pinned at zero cross-game transfer could not fire even in
+    # principle. The loop was open at both ends.
+    #
+    # This is the RSI claim the corpus mission rests on: learn on one game, generalise,
+    # carry it to the next. It cannot compound while the library is write-only.
+    library = SkillLibrary()
+
     # Phoenix, inside the loop rather than scoring from outside. The agent calls sense()
     # and accept() on its own beliefs while it plays, so a theory it has never tried to
     # break is reported back to it as unproven instead of being quietly trusted.
@@ -2035,6 +2048,39 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
         "refuted": refuted,
         "ACTIONS": list(env.actions),
     }
+
+    # WRITING A SKILL IS THE LEARNING HALF OF THE LOOP. `mechanic()` records a sentence;
+    # this records CODE, which is the thing that can be re-run on the next level and the
+    # next game. The name is deliberate: `learn` is what the prompt calls it, because
+    # Gap 10 measured that a primitive whose description does not match its purpose is
+    # simply never used.
+    #
+    # It refuses a skill that does not compile, so a syntax error costs the write rather
+    # than the turn, and it refuses one that names a coordinate, for the same reason
+    # Gap 18 exists -- a lookup table is not a rule and does not transfer.
+    def learn(name, source, description, tags=None):
+        source = str(source)
+        try:
+            compile(source, f"<skill {name}>", "exec")
+        except SyntaxError as exc:
+            return {"ok": False, "why": f"skill does not compile: {exc}"}
+        if f"def {name}" not in source:
+            return {"ok": False, "why": f"source must define a function called {name}"}
+        library.add(name, game, source, str(description)[:300], tags)
+        try:
+            exec(source, ns)  # noqa: S102 - the agent's own code, same as a turn cell
+        except Exception as exc:
+            library.record(name, won=False)
+            return {"ok": False, "why": f"skill saved but failed to install: {exc}"}
+        return {"ok": True, "installed": name, "library": len(library.skills)}
+
+    ns["learn"] = learn
+
+    # Everything the library already knows, callable from turn 1. A skill that won on
+    # another game is offered here too -- that is the generalisation step, and it is
+    # gated on a recorded win rather than on optimism.
+    installed_skills = library.install(ns, game)
+    skills_text = library.describe(game)
 
     tokens = 0
     stale = 0
@@ -2264,6 +2310,20 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
         # first turn -- and therefore the whole run -- path dependent.
         board_text = describe_board(env.grid())
         learned = f"{mechanics}\n\n" if mechanics else ""
+        # Offered every turn, not just the first. A skill the agent is told about once
+        # on turn 1 and never again is a skill it has forgotten by turn 40 -- the same
+        # amnesia the trajectory history exists to fix.
+        skills_block = (
+            f"SKILLS you can call right now (learned code, costs no actions to read):\n"
+            f"{skills_text}\n"
+            f"learn(name, source, description, tags=[]) saves a NEW one. Save the "
+            f"REUSABLE part, not the whole solution: a function that reads this board "
+            f"into pieces transfers to the next game, `solve_{game}()` does not.\n\n"
+        ) if skills_text and skills_text != "(no skills learned yet)" else (
+            f"SKILLS: none learned yet. learn(name, source, description, tags=[]) saves "
+            f"a function so the next level and the next GAME can call it. Save the "
+            f"reusable part -- a board reader transfers, a coordinate table does not.\n\n"
+        )
 
         content = [
             {
@@ -2281,6 +2341,7 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
                     f"Colours on screen: {palette_legend(env.frame().frame)}\n"
                     f"{consolidate}\n"
                     f"{learned}"
+                    f"{skills_block}"
                     f"{board_text}\n\n"
                     f"{phoenix.summary()}\n\n"
                     f"{rules.summary()}\n\n"
@@ -2539,6 +2600,27 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
         gained = env.best - before_levels
         learned = len(env.mechanics_learned) - before_mechanics
         stale = 0 if (gained > 0 or learned > 0) else stale + 1
+
+        # BOOK THE RESULT AUTOMATICALLY. Gap 10's lesson is that a primitive the agent
+        # must remember to call is a primitive that is never called, and `accept()` is
+        # the standing proof -- present in the REPL, absent from every trace. So the
+        # harness scores the skills itself from what actually happened, rather than
+        # asking the agent to be diligent about its own bookkeeping.
+        #
+        # The signal is deliberately coarse: a skill CALLED on a turn that cleared a
+        # level is credited, and one called on a turn that died is charged. That is
+        # noisy per turn and correct in aggregate, which is all `available()` needs --
+        # it gates transfer on `wins > 0` and retires at four results below a third.
+        # A precise attribution would need per-call instrumentation the REPL cannot
+        # give without changing what the agent's code means.
+        if installed_skills or library.skills:
+            called = [n for n in library.skills if n in (code or "")]
+            if called and gained > 0:
+                for n in called:
+                    library.record(n, won=True)
+            elif called and env.deaths_this_turn:
+                for n in called:
+                    library.record(n, won=False)
 
         # A zero-action turn gathers no evidence, so the next turn meets the same wall.
         # Measured on sb26: seven straight turns printing "verification mismatch; no
