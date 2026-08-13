@@ -296,10 +296,55 @@ def check_learn_is_documented_in_the_api_block() -> tuple[bool, str]:
     )
 
 
+def check_the_harness_asks_after_a_level_clear() -> tuple[bool, str]:
+    """Documenting `learn()` was necessary and measurably not sufficient.
+
+    With a full API entry in place, r9's cd82/vc33/ft09 read it, cleared levels --
+    ft09 reached 4/6 -- and called `learn()` ZERO times across 48 turns. Documentation
+    fixed the "does not exist" failure and left a second one untouched.
+
+    The cause is structural, not stylistic: RHAE scores THIS game, and a skill saved
+    now pays off on the NEXT one. An agent optimising its own run is behaving correctly
+    when it declines. So the harness has to ASK, at the moment the cost is lowest and
+    the evidence strongest -- the turn a level actually fell. That is the same mechanism
+    the death and stall messages already use, pointed at the positive signal.
+
+    Pinned mechanically: some branch in `play` keyed on a level having just been gained
+    must mention `learn(`.
+    """
+    import evals.arc.codeact_agent as mod
+
+    tree = ast.parse(inspect.getsource(mod))
+    play = next((n for n in ast.walk(tree)
+                 if isinstance(n, ast.FunctionDef) and n.name == "play"), None)
+    if play is None:
+        return False, "play() is gone; this check is aimed at the wrong function"
+
+    for node in ast.walk(play):
+        if not isinstance(node, ast.If):
+            continue
+        names = {n.id for n in ast.walk(node.test) if isinstance(n, ast.Name)}
+        if not (names & {"gained_last_turn", "gained"}):
+            continue
+        text = " ".join(
+            n.value for n in ast.walk(node)
+            if isinstance(n, ast.Constant) and isinstance(n.value, str)
+        )
+        if "learn(" in text:
+            return True, "the harness asks for a skill on the turn after a level falls"
+    return False, (
+        "nothing asks the agent to save its working code after a level clear. Measured: "
+        "with learn() fully documented, 48 turns and multiple cleared levels produced "
+        "zero calls, because saving a skill pays off on the NEXT game, not this one."
+    )
+
+
 CHECKS = [
     ("the playing agent is wired to the library", check_agent_calls_the_library),
     ("learn() is documented where tools are declared",
      check_learn_is_documented_in_the_api_block),
+    ("the harness asks after a level clear",
+     check_the_harness_asks_after_a_level_clear),
     ("a won skill transfers to a new game", check_a_winning_skill_transfers),
     ("only GENERAL skills cross games", check_only_general_skills_transfer),
     ("an installed skill is callable", check_install_makes_it_callable),

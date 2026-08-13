@@ -2118,6 +2118,10 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
     best_seen = 0
     stuck_since = 0
     turn = -1
+    # Did the PREVIOUS turn clear a level? The prompt is assembled before this turn's code
+    # runs, so the ask has to be driven by the last turn's outcome -- which is also when
+    # the code that cleared it is still the most recent thing in the trajectory.
+    gained_last_turn = 0
     # Overwritten by whichever exit actually fires; this is the one that means the loop
     # ran to the end of its turns with the game still winnable.
     stopped = "max_turns"
@@ -2253,7 +2257,38 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
         # its budget without one. Corpus-wide, 62% of every action ever spent came after
         # the run's last level clear. The guidance was gated on the agent having already
         # done the thing the guidance exists to ask for.
-        if died:
+        # THE MOMENT WORKING CODE EXISTS IS THE MOMENT TO SAVE IT, and nothing was asking.
+        # Documenting `learn()` in the API block was necessary and not sufficient: across
+        # r9's cd82, vc33 and ft09 the agent read a full entry for it, cleared levels --
+        # ft09 reached 4/6 -- and called it ZERO times in 48 turns. That is the same shape
+        # as `accept()`, which is documented, in the namespace, and absent from every trace
+        # ever recorded.
+        #
+        # The reason is structural rather than stylistic: RHAE scores THIS game, and a
+        # skill written now pays off on the NEXT one. A myopic agent is behaving correctly
+        # when it declines. So the harness asks at the one moment the cost is lowest and
+        # the evidence is strongest -- the turn a level actually fell, when the code that
+        # cleared it is still on screen. This is exactly how the death and stall messages
+        # already work, applied to the positive signal instead of the negative ones.
+        #
+        # Deliberately NOT gated on the library being non-empty, for the reason recorded
+        # above: gating guidance on the agent having already done the thing the guidance
+        # exists to ask for is what made the earlier messages useless.
+        if gained_last_turn:
+            consolidate = (
+                f"\nYOU JUST CLEARED A LEVEL. The code that did it is above, it is proven, "
+                f"and right now it is worth more than the level.\n"
+                f"SAVE THE REUSABLE PART with learn(name, source, description, "
+                f"tags=['general']). Not the whole solve -- the piece that would still be "
+                f"true on a DIFFERENT board: how you read this board into objects, how you "
+                f"found which action moves what, how you located the target. That function "
+                f"is offered to every other game in the corpus once it has won, and there "
+                f"are 25 of them.\n"
+                f"It costs no actions. Measured: the library holds only per-game solvers "
+                f"today and has therefore transferred NOTHING between games -- every game "
+                f"has paid full price to rediscover what the last one already knew.\n"
+            )
+        elif died:
             consolidate = (
                 f"\nYOU DIED {died}x SINCE YOUR LAST TURN, and a death costs a whole bar.\n"
                 + ("Something you currently believe predicted that would work. Before you "
@@ -2620,6 +2655,8 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
         gained = env.best - before_levels
         learned = len(env.mechanics_learned) - before_mechanics
         stale = 0 if (gained > 0 or learned > 0) else stale + 1
+        # Carried to the NEXT turn's prompt, where the ask to save the working code lands.
+        gained_last_turn = gained
 
         # BOOK THE RESULT AUTOMATICALLY. Gap 10's lesson is that a primitive the agent
         # must remember to call is a primitive that is never called, and `accept()` is
