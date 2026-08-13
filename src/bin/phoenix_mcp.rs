@@ -512,6 +512,42 @@ fn run_cli(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
             //   * install integrity: `doctor [--fix] [--home <dir>]` checks the INSTALLED agent +
             //     skills + MCP registration against what THIS build ships, and `--fix` re-syncs them.
             let rest = &args[2..];
+            // Per-folder MCP-approval facet: `doctor --permissions [--fix] [--cwd <dir>] [--home <dir>]`.
+            // Registration makes phoenix AVAILABLE; approval is what lets a non-interactive host
+            // DISPATCH phoenix_sense. This facet checks (and with --fix, grants) that approval for a
+            // working folder — the cure for the silent "could not request permission" stall.
+            if rest.iter().any(|a| a == "--permissions") {
+                let home = phoenix::doctor::resolve_home(
+                    rest.iter()
+                        .position(|a| a == "--home")
+                        .and_then(|i| rest.get(i + 1))
+                        .map(|a| std::path::Path::new(a.as_str())),
+                );
+                let cwd = rest
+                    .iter()
+                    .position(|a| a == "--cwd")
+                    .and_then(|i| rest.get(i + 1))
+                    .map(std::path::PathBuf::from)
+                    .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
+                if rest.iter().any(|a| a == "--fix") {
+                    let actions = phoenix::doctor::fix_permissions(&home, &cwd);
+                    if actions.is_empty() {
+                        eprintln!("[fix] nothing to approve — phoenix already approved for {}", cwd.display());
+                    } else {
+                        for a in &actions {
+                            eprintln!("[fix] {a}");
+                        }
+                    }
+                }
+                let r = phoenix::doctor::check_permissions(&home, &cwd);
+                println!("{}", serde_json::to_string(&r)?);
+                let mark = if r.ok { "OK " } else { "RED" };
+                eprintln!("  [{mark}] {}: {}", r.check, r.evidence);
+                for p in &r.problems {
+                    eprintln!("         - {p}");
+                }
+                exit(r.ok);
+            }
             let legacy_dir = rest
                 .iter()
                 .find(|a| !a.starts_with("--"))

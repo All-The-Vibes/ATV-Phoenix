@@ -323,6 +323,156 @@ pub fn check_mcp_config(home: &Path) -> CheckReport {
     }
 }
 
+// ---------------------------------------------------------------------------
+// MCP-approval layer: is the phoenix server APPROVED to run in this folder?
+// Registration (mcp-config.json) makes the server *available*; approval
+// (permissions-config.json) is what lets the host actually DISPATCH its tools. A non-interactive
+// (autopilot) host that finds phoenix registered but unapproved for the working folder denies
+// `phoenix_sense` with "could not request permission from user" — the harness can no longer sense
+// and silently stalls. This layer catches that gap per-folder and can repair it. It is deliberately
+// SEPARATE from install-integrity (which is global): approval is per working directory.
+// ---------------------------------------------------------------------------
+
+/// The MCP tools the phoenix server exposes. Approval is granted per tool, so a complete fix must
+/// approve all of them. Keep in sync with the `#[tool]` methods in `bin/phoenix_mcp.rs`.
+pub const PHOENIX_MCP_TOOLS: [&str; 5] = [
+    "phoenix_sense",
+    "phoenix_snapshot",
+    "phoenix_heal",
+    "phoenix_verify_trace",
+    "phoenix_accept",
+];
+
+/// Names of phoenix MCP tools approved for `loc` in a parsed permissions-config value.
+fn phoenix_approved_tools(cfg: &serde_json::Value, loc: &str) -> std::collections::BTreeSet<String> {
+    let mut out = std::collections::BTreeSet::new();
+    let Some(approvals) = cfg
+        .get("locations")
+        .and_then(|l| l.get(loc))
+        .and_then(|e| e.get("tool_approvals"))
+        .and_then(|a| a.as_array())
+    else {
+        return out;
+    };
+    for a in approvals {
+        let is_mcp = a.get("kind").and_then(|k| k.as_str()) == Some("mcp");
+        let is_phoenix = a.get("serverName").and_then(|s| s.as_str()) == Some("phoenix");
+        if is_mcp && is_phoenix {
+            if let Some(t) = a.get("toolName").and_then(|t| t.as_str()) {
+                out.insert(t.to_string());
+            }
+        }
+    }
+    out
+}
+
+/// Check the `phoenix` MCP server is APPROVED to run in `cwd` per `home/permissions-config.json`.
+/// RED when the config is missing/invalid, when phoenix is approved for no tool in this folder
+/// (the silent-stall case), or when some tools are still unapproved. The evidence/remediation name
+/// the CLI-mode fallback so a blocked loop can keep moving even before the approval lands.
+pub fn check_permissions(home: &Path, cwd: &Path) -> CheckReport {
+    let cfg = home.join("permissions-config.json");
+    let loc = cwd.display().to_string();
+    if !cfg.exists() {
+        return CheckReport {
+            check: "permissions".into(),
+            ok: false,
+            fixable: true,
+            evidence: format!("{} not found", cfg.display()),
+            problems: vec![format!(
+                "phoenix MCP server is not approved for {loc} (run `phoenix-mcp doctor --permissions --fix`)"
+            )],
+        };
+    }
+    let txt = std::fs::read_to_string(&cfg).unwrap_or_default();
+    let mut problems = Vec::new();
+    let mut evidence = String::new();
+    match serde_json::from_str::<serde_json::Value>(&txt) {
+        Err(e) => problems.push(format!("permissions-config.json is not valid JSON: {e}")),
+        Ok(v) => {
+            let approved = phoenix_approved_tools(&v, &loc);
+            evidence = format!(
+                "{}/{} phoenix tools approved for {loc}",
+                approved.len(),
+                PHOENIX_MCP_TOOLS.len()
+            );
+            if approved.is_empty() {
+                problems.push(format!(
+                    "phoenix MCP server is registered but NOT approved for {loc}; a non-interactive host will deny phoenix_sense. Fix with `phoenix-mcp doctor --permissions --fix`, or run CLI mode (`phoenix-mcp sense @check.json`) via the shell tool."
+                ));
+            } else {
+                let missing: Vec<&str> = PHOENIX_MCP_TOOLS
+                    .iter()
+                    .copied()
+                    .filter(|t| !approved.contains(*t))
+                    .collect();
+                if !missing.is_empty() {
+                    problems.push(format!(
+                        "phoenix tools not yet approved for {loc}: {}",
+                        missing.join(", ")
+                    ));
+                }
+            }
+        }
+    }
+    CheckReport {
+        check: "permissions".into(),
+        ok: problems.is_empty(),
+        fixable: true,
+        evidence,
+        problems,
+    }
+}
+
+/// Approve every phoenix MCP tool for `cwd` in `home/permissions-config.json`. Idempotent: returns
+/// no actions when everything is already approved. Preserves all other locations and approvals, and
+/// snapshots the prior config as `permissions-config.json.doctor-bak` before writing (heal
+/// discipline, matching `fix`).
+pub fn fix_permissions(home: &Path, cwd: &Path) -> Vec<String> {
+    let cfg_path = home.join("permissions-config.json");
+    let loc = cwd.display().to_string();
+    let mut cfg: serde_json::Value = std::fs::read_to_string(&cfg_path)
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_else(|| serde_json::json!({"locations": {}}));
+    if !cfg.get("locations").map(|l| l.is_object()).unwrap_or(false) {
+        cfg["locations"] = serde_json::json!({});
+    }
+    let already = phoenix_approved_tools(&cfg, &loc);
+    let missing: Vec<&str> = PHOENIX_MCP_TOOLS
+        .iter()
+        .copied()
+        .filter(|t| !already.contains(*t))
+        .collect();
+    if missing.is_empty() {
+        return Vec::new();
+    }
+    if cfg_path.exists() {
+        let _ = std::fs::copy(&cfg_path, home.join("permissions-config.json.doctor-bak"));
+    }
+    let locations = cfg["locations"].as_object_mut().unwrap();
+    let entry = locations
+        .entry(loc.clone())
+        .or_insert_with(|| serde_json::json!({"tool_approvals": []}));
+    if !entry.get("tool_approvals").map(|a| a.is_array()).unwrap_or(false) {
+        entry["tool_approvals"] = serde_json::json!([]);
+    }
+    let arr = entry["tool_approvals"].as_array_mut().unwrap();
+    for t in &missing {
+        arr.push(serde_json::json!({"kind": "mcp", "serverName": "phoenix", "toolName": t}));
+    }
+    let mut actions = Vec::new();
+    if let Ok(s) = serde_json::to_string_pretty(&cfg) {
+        if std::fs::write(&cfg_path, s).is_ok() {
+            actions.push(format!(
+                "approved phoenix MCP tools for {loc}: {}",
+                missing.join(", ")
+            ));
+        }
+    }
+    actions
+}
+
 /// Run the full install-integrity check against `home`.
 pub fn integrity(home: &Path) -> InstallReport {
     let checks = vec![

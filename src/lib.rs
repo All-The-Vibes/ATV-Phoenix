@@ -29,7 +29,7 @@ pub mod hybrid_dag;
 pub mod mission;
 pub mod mission_plan;
 
-pub use doctor::{doctor, DoctorReport, integrity, fix as doctor_fix, resolve_home, InstallReport};
+pub use doctor::{doctor, DoctorReport, integrity, fix as doctor_fix, resolve_home, InstallReport, check_permissions, fix_permissions};
 pub use heal::{heal, HealCtx, HealResult, Strategy};
 pub use sense::{sense, Check, CheckKind, SenseResult};
 pub use snapshot::{snapshot, SnapshotResult};
