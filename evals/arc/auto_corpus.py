@@ -82,19 +82,63 @@ def all_runs(baselines: dict) -> dict[str, list[dict]]:
     return out
 
 
+def picks_so_far() -> dict[str, int]:
+    """How often the loop has already spent a run on each game, from the ledger.
+
+    Without this the ranker is pure exploitation with no memory: two waves at lf52 and
+    g50t returned nothing, the scores were unchanged, so the ranking was identical and
+    it would have picked the same three games forever.
+    """
+    counts: dict[str, int] = {}
+    if not LEDGER.exists():
+        return counts
+    for line in LEDGER.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if row.get("event") != "wave":
+            continue
+        for game in row.get("games") or []:
+            counts[game] = counts.get(game, 0) + 1
+    return counts
+
+
 def rank(baselines: dict) -> list[tuple[float, str, dict]]:
     """Games ordered by expected gain from one more run."""
     runs = all_runs(baselines)
+    attempts = picks_so_far()
     n_games = len(baselines) or 1
     share = 1.0 / n_games            # what one perfect game is worth to the corpus
     ranked = []
     for game, rs in runs.items():
         scores = sorted(r["_score"] for r in rs)
         best = scores[-1]
-        headroom = max(0.0, share - best / n_games * n_games * share / max(share, 1e-9))
-        # Headroom in corpus points: a perfect game contributes `share`; this one
-        # currently contributes best*share, so the room left is (1-best)*share.
-        headroom = max(0.0, (1.0 - best) * share)
+        levels = max(r["levels_completed"] for r in rs)
+
+        # HEADROOM IS BOUNDED BY LEVELS CLEARED, NOT BY 100%. The first version used
+        # (1 - best) * share, which assumes any game could reach a perfect score. It
+        # cannot: RHAE caps a level at 1.15 and weights it by index, so a game with
+        # `levels` of `total` cleared can never exceed sum(1..levels)/sum(1..total)
+        # * 1.15 however fast it plays.
+        #
+        # That error was not academic. lf52 at 1 of 10 levels has a ceiling of 2.09%
+        # and was ALREADY scoring 2.09%; g50t at 1 of 7 has a ceiling of 4.11% and was
+        # scoring 4.11%. Both had exactly zero efficiency headroom, and the ranker sent
+        # six runs at them across two waves for no possible gain. One of those runs
+        # cleared lf52's level 1 in 8 actions against a human's 32 -- four times faster
+        # -- and scored the same 2.09%, because the level was already at the cap.
+        #
+        # So the room a run can actually win is the distance to the ceiling AT THE
+        # LEVELS ALREADY CLEARED, plus what the next level would add if it falls.
+        n_levels = len(baselines[game])
+        weight_sum = sum(range(1, n_levels + 1)) or 1
+        ceiling_now = sum(range(1, levels + 1)) / weight_sum * 1.15
+        efficiency_room = max(0.0, ceiling_now - best)
+        next_level_room = ((levels + 1) / weight_sum * 1.15) if levels < n_levels else 0.0
+        headroom = (efficiency_room + next_level_room) * share
 
         # Spread of this game's OWN level-1 discovery cost, as the variance proxy.
         firsts = [r.get("level_actions", [None])[0] for r in rs
@@ -109,11 +153,20 @@ def rank(baselines: dict) -> list[tuple[float, str, dict]]:
         room = 1.0 - min(1.0, best)                            # near the cap -> ~0
         p = max(0.02, width * room)
 
-        ev = headroom * p
+        # A game picked repeatedly that never pays is evidence the model is wrong about
+        # it, and the model has no way to learn that from the scores alone -- two waves
+        # at lf52 and g50t returned nothing and the ranking was identical afterwards,
+        # so it would have picked them forever. Decaying by attempts is the cheapest
+        # honest correction: keep exploiting a wide game, but let an unproductive one
+        # fall behind an untried one rather than blocking it out permanently.
+        ev = headroom * p / (1.0 + 0.5 * attempts.get(game, 0))
         ranked.append((ev, game, {
             "best": round(best, 4), "runs": len(rs),
             "spread": round(spread, 1), "p": round(p, 3),
             "headroom_pp": round(headroom * 100, 3),
+            "levels": levels, "of": n_levels,
+            "eff_room": round(efficiency_room, 4),
+            "tried": attempts.get(game, 0),
         }))
     ranked.sort(reverse=True)
     return ranked

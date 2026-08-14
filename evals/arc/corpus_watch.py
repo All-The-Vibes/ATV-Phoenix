@@ -64,9 +64,15 @@ def main() -> int:
     start = next((r for r in data if r.get("event") == "start"), None)
 
     running = live()
-    latest = waves[-1] if waves else None
-    corpus = latest["corpus_after"] if latest else (start or {}).get("corpus", 0.0)
-    levels = latest["levels_after"] if latest else (start or {}).get("levels", 0)
+
+    # LIVE, not last-recorded. The ledger only gets a row when a wave FINISHES, so
+    # mid-wave gains are invisible to it -- and that is not hypothetical: this tool
+    # reported "0 waves produced a gain, corpus 24.93%" while an in-flight wave had
+    # already taken r11l from 9.80% to 51.19% and the corpus to 26.59%. A monitor that
+    # under-reports progress is as misleading as one that over-reports it.
+    from evals.arc.auto_corpus import corpus_now  # noqa: PLC0415 - avoids a cycle
+    from evals.arc.rhae import load_baselines     # noqa: PLC0415
+    corpus, levels = corpus_now(load_baselines())
     started = (start or {}).get("corpus", corpus)
 
     payload = {
