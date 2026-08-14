@@ -2157,6 +2157,9 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
     # outcome, so a skill takes one result from it -- see the booking block for what
     # charging every death instead did to the library.
     scored_this_level: set[str] = set()
+    # Has the run been told it is in the bad tail? Latched, because a warning repeated
+    # every turn is a warning that stops being read.
+    tail_warned = False
     # Overwritten by whichever exit actually fires; this is the one that means the loop
     # ran to the end of its turns with the game still winnable.
     stopped = "max_turns"
@@ -2334,6 +2337,47 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
                          f"game down harder than any remaining level can lift it. If "
                          f"you clear this game and get another attempt, that is the "
                          f"one to fix.\n")
+
+        # THE RUN THAT IS ALREADY LOST, TOLD SO WHILE IT CAN STILL CHANGE. Measured
+        # across 150 traces on disk, using "still on level 0 after K times the human's
+        # level-1 budget" as the discriminator:
+        #   K=1  118 tripped,  76 ended slow   64% precision
+        #   K=2   90 tripped,  74 ended slow   82%
+        #   K=3   69 tripped,  69 ended slow  100%, and ZERO runs that finished at or
+        #                                     under the human baseline ever tripped it
+        # An agent three times over budget with nothing cleared has never once
+        # recovered. That is the variance tail this corpus is losing to -- the same
+        # agent clears cd82 level 1 in 16 actions and in 328 -- and sampling more runs
+        # converts the spread into score without doing anything about the tail itself.
+        #
+        # It does NOT reset or abort. A reset buys back the BOARD and never the BUDGET:
+        # the actions are spent, RHAE has already charged them, and restarting would
+        # spend them again on the same approach. The evidence says the APPROACH is
+        # wrong, not that the board was unlucky, so the agent is told exactly that and
+        # left to decide. Stated as a record rather than as a law, because 69 of 69 is
+        # what the traces show and not a guarantee about this run.
+        if not tail_warned and env.best == 0 and not env.level_actions:
+            par_lv1 = baselines.get(1)
+            if par_lv1 and env.spent >= 3 * par_lv1:
+                tail_warned = True
+                consolidate += (
+                    f"\nSTOP. You have spent {env.spent} actions without clearing "
+                    f"level 1, and a human clears it in {par_lv1}. That is "
+                    f"{env.spent / par_lv1:.1f}x.\n"
+                    f"This is not a slow start, it is a diagnosis. Across 150 recorded "
+                    f"runs of this harness, every run that passed 3x the human budget "
+                    f"with nothing cleared went on to finish in the slow tail -- 69 of "
+                    f"69 -- and no run that finished at or under the human baseline "
+                    f"ever reached this point. That is a record, not a law, but nothing "
+                    f"in the record recovered from here by continuing.\n"
+                    f"What separates the fast runs is not speed, it is that they were "
+                    f"working on the right thing by now. So do not try harder at the "
+                    f"current plan: name the belief it rests on, check whether anything "
+                    f"you have actually OBSERVED supports it, and retract(n) it if not. "
+                    f"Re-read the board with board() and objects() -- both free -- and "
+                    f"be willing to conclude that what you think this game is, it is "
+                    f"not.\n"
+                )
 
         # NOT GATED ON HAVING NOTES, WHICH IS THE WHOLE POINT. Both of these used to read
         # `and env.level_notes`, so an agent with an empty notebook was told nothing --
