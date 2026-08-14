@@ -2144,6 +2144,10 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
     # level because a perception skill is called on the turn that reads the board and the
     # clear lands later; see the booking block below for what turn-scoped credit measured.
     skills_used_this_level: set[str] = set()
+    # Which of those have already taken a result for this level. A level ends in one
+    # outcome, so a skill takes one result from it -- see the booking block for what
+    # charging every death instead did to the library.
+    scored_this_level: set[str] = set()
     # Overwritten by whichever exit actually fires; this is the one that means the loop
     # ran to the end of its turns with the game still winnable.
     stopped = "max_turns"
@@ -2733,6 +2737,7 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
             # already been credited above; carrying them forward would credit them again
             # for work they took no part in.
             skills_used_this_level = set()
+            scored_this_level = set()
 
         # BOOK THE RESULT AUTOMATICALLY. Gap 10's lesson is that a primitive the agent
         # must remember to call is a primitive that is never called, and `accept()` is
@@ -2755,13 +2760,29 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
         for name in library.skills:
             if name in (code or ""):
                 skills_used_this_level.add(name)
-        if skills_used_this_level:
-            if gained > 0:
-                for n in skills_used_this_level:
-                    library.record(n, won=True)
-            elif env.deaths_this_turn:
-                for n in skills_used_this_level:
-                    library.record(n, won=False)
+        # ONE RESULT PER LEVEL PER SKILL. Level-scoped credit fixed the wins that were
+        # never booked and introduced the mirror defect: a level can be CLEARED once and
+        # DIED on twenty-three times, so losses outran wins by roughly an order of
+        # magnitude on exactly the games that are hard. Measured on the live library
+        # after r11 -- 6 wins against 33 losses, `small_object_locator` 0W/23L on bp35,
+        # `read_rolling_token` 0W/7L on sc25, both already retired by the four-results-
+        # below-a-third rule, and both PERCEPTION skills. Reading the board is not what
+        # killed the agent twenty-three times.
+        #
+        # The damage compounds: no transferable skill anywhere held a single win, and
+        # transfer is gated on `wins > 0`, so the scoring asymmetry by itself kept the
+        # library from ever crossing a game boundary. The library was destroying its
+        # best material from the hardest games and calling it evidence.
+        unscored = skills_used_this_level - scored_this_level
+        # One outcome, one record path, one place the exclusion is maintained. Written
+        # as a single branch rather than two symmetrical ones because a duplicated mark
+        # is a mark that can be half-removed: a mutation that dropped it from only the
+        # loss path left the whole thing looking correct while losses over-booked again.
+        outcome = True if gained > 0 else (False if env.deaths_this_turn else None)
+        if outcome is not None and unscored:
+            for n in unscored:
+                library.record(n, won=outcome)
+            scored_this_level |= unscored
 
         # A zero-action turn gathers no evidence, so the next turn meets the same wall.
         # Measured on sb26: seven straight turns printing "verification mismatch; no

@@ -88,22 +88,42 @@ def check_agent_calls_the_library() -> tuple[bool, str]:
             learn_nodes = set(ast.walk(node))
             break
 
-    outcome_booking = False
-    for node in ast.walk(play):
-        if not isinstance(node, ast.If):
-            continue
+    def _reads_outcome(node) -> bool:
         names = {n.id for n in ast.walk(node) if isinstance(n, ast.Name)}
         attrs = {n.attr for n in ast.walk(node) if isinstance(n, ast.Attribute)}
-        reads_outcome = "gained" in names or "deaths_this_turn" in attrs
-        if not reads_outcome:
+        return "gained" in names or "deaths_this_turn" in attrs
+
+    # Any local whose VALUE is derived from the turn outcome. Booking may be driven
+    # either by an `if` on those names or by a variable computed from them -- the
+    # property is that the result comes from what happened, not from agent diligence,
+    # and pinning one syntax would fail an equivalent rewrite of the same behaviour.
+    outcome_vars = set()
+    for node in ast.walk(play):
+        if isinstance(node, ast.Assign) and _reads_outcome(node.value):
+            for tgt in node.targets:
+                if isinstance(tgt, ast.Name):
+                    outcome_vars.add(tgt.id)
+
+    outcome_booking = False
+    for node in ast.walk(play):
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "record" and node not in learn_nodes):
             continue
-        for inner in ast.walk(node):
-            if (isinstance(inner, ast.Call) and isinstance(inner.func, ast.Attribute)
-                    and inner.func.attr == "record" and inner not in learn_nodes):
+        for kw in node.keywords:
+            if kw.arg == "won" and isinstance(kw.value, ast.Name) \
+                    and kw.value.id in outcome_vars:
                 outcome_booking = True
+    if not outcome_booking:
+        for node in ast.walk(play):
+            if not isinstance(node, ast.If) or not _reads_outcome(node.test):
+                continue
+            for inner in ast.walk(node):
+                if (isinstance(inner, ast.Call) and isinstance(inner.func, ast.Attribute)
+                        and inner.func.attr == "record" and inner not in learn_nodes):
+                    outcome_booking = True
+                    break
+            if outcome_booking:
                 break
-        if outcome_booking:
-            break
 
     if not outcome_booking:
         return False, (
@@ -445,6 +465,67 @@ def check_credit_spans_the_level_not_the_turn() -> tuple[bool, str]:
     return True, "skills called anywhere on a level are credited when that level falls"
 
 
+def check_credit_is_symmetric_per_level() -> tuple[bool, str]:
+    """A level can be cleared once but died on twenty-three times.
+
+    Level-scoped credit fixed the wins that were never booked and created the mirror
+    defect. A clear fires at most ONCE per level, while a death fires on every attempt,
+    so losses accumulate roughly an order of magnitude faster than wins on exactly the
+    games that are hard. Measured on the live library after r11: 6 wins against 33
+    losses, `small_object_locator` at 0W/23L on bp35 and `read_rolling_token` at 0W/7L
+    on sc25 -- and `Skill.retired` fires at four results below a third, so both are
+    already retired.
+
+    Both are PERCEPTION skills. Reading the board is not what killed the agent
+    twenty-three times, and the library has now thrown away its best material from the
+    two hardest games. Worse, no transferable skill anywhere holds a single win, and
+    transfer is gated on `wins > 0` -- so the scoring asymmetry alone keeps the library
+    from ever compounding.
+
+    The fix is one result per level per skill: a skill gets at most one win or one loss
+    for the level it was used on, whichever the level ended in.
+    """
+    import evals.arc.codeact_agent as mod
+
+    src = inspect.getsource(mod.play)
+    if "scored_this_level" not in src:
+        return False, (
+            "a skill can be charged once per DEATH but credited only once per LEVEL. "
+            "Measured after r11: 6 wins against 33 losses, two perception skills "
+            "retired at 0W/23L and 0W/7L, and not one transferable skill holding a win "
+            "-- so transfer, gated on wins > 0, can never unlock."
+        )
+
+    # Checked as the actual set difference, not as the name appearing: a mutation that
+    # dropped `- scored_this_level` from the booking left an earlier version of this
+    # check green, because the variable is still declared and still reset elsewhere.
+    tree = ast.parse(src)
+    subtracts = False
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.BinOp) and isinstance(node.op, ast.Sub)
+                and isinstance(node.right, ast.Name)
+                and node.right.id == "scored_this_level"):
+            subtracts = True
+            break
+    if not subtracts:
+        return False, (
+            "the booking does not exclude skills already scored on this level, so a "
+            "skill is charged again on every death. That is the asymmetry that produced "
+            "6 wins against 33 losses and retired two perception primitives."
+        )
+
+    # And the exclusion must be maintained -- a difference that is never added back to
+    # would exclude nothing on the second death.
+    marks = False
+    for node in ast.walk(tree):
+        if isinstance(node, ast.AugAssign) and isinstance(node.target, ast.Name):
+            if node.target.id == "scored_this_level":
+                marks = True
+    if not marks:
+        return False, "scored_this_level is never added to, so the exclusion is empty"
+    return True, "a skill takes at most one result per level, so credit is symmetric"
+
+
 CHECKS = [
     ("the playing agent is wired to the library", check_agent_calls_the_library),
     ("learn() is documented where tools are declared",
@@ -453,6 +534,7 @@ CHECKS = [
      check_the_harness_asks_after_a_level_clear),
     ("credit spans the level, not the turn",
      check_credit_spans_the_level_not_the_turn),
+    ("credit is symmetric per level", check_credit_is_symmetric_per_level),
     ("a won skill transfers to a new game", check_a_winning_skill_transfers),
     ("only GENERAL skills cross games", check_only_general_skills_transfer),
     ("an installed skill is callable", check_install_makes_it_callable),
