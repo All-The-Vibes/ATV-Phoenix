@@ -32,6 +32,16 @@ class Skill:
     wins: int = 0
     losses: int = 0
     tags: list[str] = field(default_factory=list)
+    # WHEN this fires, not just what it does. A description says what a function is; a
+    # condition says what situation calls for it, and on a game the skill was not
+    # written for those are different questions. Agent Workflow Memory
+    # (arXiv:2409.07429) measured +51.1% relative on WebArena from making the condition
+    # explicit, with the cross-domain margin GROWING as the train-test gap widens --
+    # which is exactly the shape of offering an ft09 primitive to bp35.
+    #
+    # Defaulted to empty so the eighteen skills already on disk keep loading. An older
+    # skill is simply one whose condition was never recorded, not a broken row.
+    when_to_invoke: str = ""
 
     @property
     def score(self) -> float:
@@ -144,10 +154,11 @@ class SkillLibrary:
         )
         tmp.replace(self.path)
 
-    def add(self, name, game, source, description, tags=None) -> Skill:
+    def add(self, name, game, source, description, tags=None,
+            when_to_invoke="") -> Skill:
         skill = Skill(
             name=name, game=game, source=source, description=description,
-            tags=list(tags or []),
+            tags=list(tags or []), when_to_invoke=str(when_to_invoke or "")[:200],
         )
         self.skills[name] = skill
         self.save()
@@ -223,6 +234,11 @@ class SkillLibrary:
                 f"  {skill.name}() - {skill.description} "
                 f"[{origin}, {skill.wins}W/{skill.losses}L]"
             )
+            # The condition goes on its own line and is indented under the name, so a
+            # skill from another game reads as "use it WHEN x" rather than as a
+            # description the model has to translate out of the other game's vocabulary.
+            if skill.when_to_invoke:
+                lines.append(f"      USE WHEN: {skill.when_to_invoke}")
         return "\n".join(lines)
 
     # ── learned mechanics ────────────────────────────────────────────────────────────

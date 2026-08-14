@@ -526,6 +526,78 @@ def check_credit_is_symmetric_per_level() -> tuple[bool, str]:
     return True, "a skill takes at most one result per level, so credit is symmetric"
 
 
+def check_skills_carry_an_invocation_condition() -> tuple[bool, str]:
+    """A skill the model must GUESS when to use is a skill it will not use.
+
+    Skills now cross games -- r12 offered two ft09 primitives to bp35 -- and crossing
+    is only half of transfer. On its home game the agent wrote the skill and knows what
+    it is for. On a game it has never seen, the library hands it a name, a description
+    and nothing about WHEN the thing applies, so the model has to infer applicability
+    from a sentence written in another game's vocabulary.
+
+    Agent Workflow Memory (arXiv:2409.07429) makes that condition explicit and measured
+    the difference: +51.1% relative success on WebArena and +8.9-14.0 absolute points
+    cross-domain, with the margin GROWING as the train-test gap widens -- which is
+    exactly the ft09-to-bp35 case. A workflow there is a goal plus a routine plus the
+    context it applies in, not a routine with a label.
+
+    So `when_to_invoke` becomes part of a skill and part of what the agent is shown:
+    the model reasons "I need to do Y, this fires on Y" instead of "here is a function,
+    perhaps it is relevant".
+    """
+    from evals.arc.skills import Skill
+
+    if not hasattr(Skill("n", "g", "s", "d"), "when_to_invoke"):
+        return False, (
+            "a skill carries no invocation condition. Offered on a game it was not "
+            "written for, the model must guess from a description phrased in another "
+            "game's terms -- AWM (arXiv:2409.07429) measured +51.1% relative on "
+            "WebArena from making that condition explicit."
+        )
+
+    import evals.arc.codeact_agent as mod
+
+    play_src = inspect.getsource(mod.play)
+    if "when_to_invoke" not in play_src:
+        return False, (
+            "the agent cannot record an invocation condition: learn() does not accept "
+            "when_to_invoke, so every skill it writes is unlabelled about when it fires."
+        )
+
+    # Checked as the argument actually reaching the library, not as the parameter name
+    # appearing: a mutation that dropped it from the `add` call left an earlier version
+    # of this check green, because `def learn(..., when_to_invoke="")` still mentions it.
+    # A parameter accepted and discarded is worse than one never offered -- the agent
+    # writes the condition, is told the write succeeded, and the condition is dropped.
+    threaded = False
+    for node in ast.walk(ast.parse(play_src)):
+        if not (isinstance(node, ast.FunctionDef) and node.name == "learn"):
+            continue
+        for call in ast.walk(node):
+            if (isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute)
+                    and call.func.attr == "add"):
+                if any(kw.arg == "when_to_invoke" for kw in call.keywords):
+                    threaded = True
+    if not threaded:
+        return False, (
+            "learn() accepts when_to_invoke and never passes it to the library, so the "
+            "condition the agent writes is silently discarded."
+        )
+
+    lib = _fresh()
+    lib.add("read_components", "vc33", "def read_components():\n    return []\n",
+            "Split a board into connected components.", tags=["general"],
+            when_to_invoke="when you need object geometry from an unfamiliar board")
+    lib.record("read_components", won=True)
+    offered = lib.describe("bp35")
+    if "when you need object geometry" not in offered:
+        return False, (
+            "the invocation condition is stored but never shown. A condition the model "
+            "cannot read is the same as no condition at all."
+        )
+    return True, "skills carry an invocation condition and it is shown when offered"
+
+
 CHECKS = [
     ("the playing agent is wired to the library", check_agent_calls_the_library),
     ("learn() is documented where tools are declared",
@@ -535,6 +607,8 @@ CHECKS = [
     ("credit spans the level, not the turn",
      check_credit_spans_the_level_not_the_turn),
     ("credit is symmetric per level", check_credit_is_symmetric_per_level),
+    ("skills carry an invocation condition",
+     check_skills_carry_an_invocation_condition),
     ("a won skill transfers to a new game", check_a_winning_skill_transfers),
     ("only GENERAL skills cross games", check_only_general_skills_transfer),
     ("an installed skill is callable", check_install_makes_it_callable),

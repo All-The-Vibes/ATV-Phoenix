@@ -242,23 +242,31 @@ API available to your code:
     unmechanic(n, because) -> drop a supposed rule. A mechanic is the one belief no level
                            change ever clears out from under you, so after a death or a
                            long stall these are the FIRST things to doubt.
-    learn(name, source, description, tags=[]) -> SAVE WORKING CODE so the next level and
-                           the next GAME can call it. mechanic() records a SENTENCE about
-                           the game; learn() records the FUNCTION that acts on it, and a
-                           function is the only thing that can be re-run without being
-                           re-derived. Costs no actions. The source must define a function
-                           called `name`; it is compiled before it is stored, so a syntax
-                           error costs you the write and never the turn.
+    learn(name, source, description, tags=[], when_to_invoke="") -> SAVE WORKING CODE so
+                           the next level and the next GAME can call it. mechanic()
+                           records a SENTENCE about the game; learn() records the
+                           FUNCTION that acts on it, and a function is the only thing
+                           that can be re-run without being re-derived. Costs no actions.
+                           The source must define a function called `name`; it is
+                           compiled before it is stored, so a syntax error costs you the
+                           write and never the turn.
+                           WHEN_TO_INVOKE IS THE HALF THAT MAKES IT TRANSFER. A
+                           description says what the function IS; the condition says what
+                           SITUATION calls for it, and on a game you have never seen
+                           those are different questions -- you will be shown skills
+                           written in another game's vocabulary and have to decide if
+                           they apply. Write it as the trigger: "when you need object
+                           geometry from an unfamiliar board", "when a repeated shape
+                           might be a control rather than scenery". Measured elsewhere:
+                           making this condition explicit is worth more the FURTHER the
+                           new task is from the one the skill was learned on.
                            SAVE THE REUSABLE PART, NOT THE ANSWER. A skill tagged
                            general/primitive/perception is offered on OTHER games once it
-                           has won; anything named solve_* is treated as this game's answer
-                           and stays here. That split is not bureaucracy, it is measured:
-                           the library currently holds seven skills, six of them per-game
-                           solvers, and it has therefore transferred NOTHING across the
-                           corpus. `solve_sb26()` cannot help you here. A function that
-                           reads this board into pieces, finds which action moves what, or
-                           locates the exit CAN, because those are facts about this
-                           benchmark rather than about one board.
+                           has won; anything named solve_* is treated as this game's
+                           answer and stays here. `solve_sb26()` cannot help you here. A
+                           function that reads this board into pieces, finds which action
+                           moves what, or locates the exit CAN, because those are facts
+                           about this benchmark rather than about one board.
                            Write one the moment a piece of your code works twice. The
                            corpus is 25 games and every rule you do not save is a rule the
                            next game pays actions to discover again.
@@ -2096,7 +2104,7 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
     # It refuses a skill that does not compile, so a syntax error costs the write rather
     # than the turn, and it refuses one that names a coordinate, for the same reason
     # Gap 18 exists -- a lookup table is not a rule and does not transfer.
-    def learn(name, source, description, tags=None):
+    def learn(name, source, description, tags=None, when_to_invoke=""):
         source = str(source)
         try:
             compile(source, f"<skill {name}>", "exec")
@@ -2104,7 +2112,8 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
             return {"ok": False, "why": f"skill does not compile: {exc}"}
         if f"def {name}" not in source:
             return {"ok": False, "why": f"source must define a function called {name}"}
-        library.add(name, game, source, str(description)[:300], tags)
+        library.add(name, game, source, str(description)[:300], tags,
+                    when_to_invoke=when_to_invoke)
         try:
             exec(source, ns)  # noqa: S102 - the agent's own code, same as a turn cell
         except Exception as exc:
