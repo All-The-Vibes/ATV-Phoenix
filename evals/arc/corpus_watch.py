@@ -14,10 +14,46 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+
+
+def _tz():
+    """The machine's real local zone.
+
+    `.astimezone()` alone is wrong here. TZ=America/Chicago is set in the environment
+    and Windows Python does not understand IANA names -- it falls back to UTC without
+    raising, so the dashboard printed 00:52 beside an 18:52 wall clock while
+    PowerShell, which ignores TZ and reads the Windows setting, showed the truth. Six
+    hours of apparent time travel in a monitor is enough to make real progress look
+    fabricated, which is exactly what it did.
+    """
+    name = os.environ.get("TZ")
+    if name:
+        try:
+            from zoneinfo import ZoneInfo  # noqa: PLC0415
+            return ZoneInfo(name)
+        except Exception:
+            return None
+    return None
+
+
+def _local(ts: str) -> str:
+    try:
+        dt = datetime.fromisoformat(ts)
+    except (ValueError, TypeError):
+        return (ts or "")[11:19]
+    zone = _tz()
+    return (dt.astimezone(zone) if zone else dt.astimezone()).strftime("%H:%M:%S")
+
+
+def _now_local() -> str:
+    zone = _tz()
+    now = datetime.now(timezone.utc)
+    return (now.astimezone(zone) if zone else now.astimezone()).strftime("%H:%M:%S")
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
@@ -90,15 +126,21 @@ def main() -> int:
 
     print(f"corpus            : {corpus:.2%}   ({levels} levels)")
     print(f"gap to Prime Agent: {payload['gap_to_prime_pp']:.2f}pp")
-    print(f"waves run         : {len(waves)}  "
-          f"({payload['waves_that_paid']} produced a gain)")
+    print(f"waves recorded    : {len(waves)}  "
+          f"({payload['waves_that_paid']} produced a gain)   "
+          f"[all loops; the running loop numbers its own separately]")
     print(f"since loop start  : {payload['gained_pp_since_start']:+.3f}pp")
-    print(f"running now       : {', '.join(running) if running else 'nothing'}")
+    print(f"in flight NOW     : {', '.join(running) if running else 'nothing'}"
+          f"   (as of {_now_local()} local)")
 
     if waves:
-        print("\nlast waves:")
+        print("\nlast waves (local time):")
         for w in waves[-8:]:
-            when = w.get("at", "")[11:19]
+            # Stored UTC, printed local. The stored value stays UTC because a ledger
+            # read on another machine should not shift; the DISPLAY is local because a
+            # wave stamped 21:19 next to a 17:10 wall clock reads as fabricated data.
+            raw = w.get("at", "")
+            when = _local(raw)
             games = ",".join(w.get("games", []))
             print(f"  {when}  {w.get('tag','?'):8} {games:22} "
                   f"{w.get('corpus_before',0):.2%} -> {w.get('corpus_after',0):.2%}  "
