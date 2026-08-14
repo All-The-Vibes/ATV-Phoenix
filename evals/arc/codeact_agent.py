@@ -2870,7 +2870,14 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
                     # whether an intervention reached the agent was unfalsifiable, which
                     # is the same defect as a gate that certifies nothing. Cheap to fix
                     # and it makes the next A/B answerable from the artifacts.
+                    #
+                    # `pace` is recorded for the same reason and was missed the first
+                    # time: it is a SECOND prompt variable, so recording only
+                    # `consolidate` left the level-economics message -- which lives in
+                    # pace -- just as unverifiable as the synthesis ask had been. The
+                    # lesson did not generalise on its own, one variable over.
                     "consolidate": consolidate,
+                    "pace": pace,
                     "notes": env.notes[-8:],
                     "mechanics": list(env.mechanics_learned),
                     # WHETHER THIS GAME DRAWS A MOVE BAR, as measured rather than as
