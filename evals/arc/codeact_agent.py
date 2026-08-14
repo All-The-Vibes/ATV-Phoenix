@@ -2283,6 +2283,58 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
                      f"{since} since the last one. Treat that as your budget and bank "
                      f"progress before you reach it.\n")
 
+        # WHICH LEVEL IS WORTH FIGHTING FOR. RHAE weights a level by its INDEX --
+        # `weighted += index * score` over a weight sum of 1+2+...+N -- so on an
+        # eight-level game level 8 carries 8/36 of the score and level 1 carries 1/36.
+        # Reward caps at 1.15 and the penalty is unbounded toward zero, so the game
+        # score is decided by how the LATE levels went, and one bad late level costs
+        # more than several good early ones can repay.
+        #
+        # Measured across nine revisits this session, that is precisely what separated
+        # the runs that improved from the runs that did not. Per-level ratio of human
+        # actions to agent actions, in level order:
+        #   lp85 WIN   [3.4, 1.9, 1.24, 0.22, 3.42, 0.13, 1.73, 2.04]
+        #   tr87 WIN   [1.38, 1.76, 1.33, 1.61, 0.2, 0.84]
+        #   cd82 LOSS  [1.08, 0.5, 0.47, 0.09, 0.23, 0.11]
+        #   dc22 LOSS  [0.55, 0.83, 0.19]
+        # The losses are not slower everywhere. cd82 cleared level 1 faster than the
+        # human and then spent roughly ten times the human budget on levels 4, 5 and 6,
+        # the three heaviest, which is essentially its entire 12.69%.
+        #
+        # The harness knew all of this and said none of it. It reported pace on the
+        # current level as though every level were worth the same.
+        total_levels = len(baselines) or env.frame().win_levels or 1
+        weight_sum = sum(range(1, total_levels + 1)) or 1
+        level_weight = (env.best + 1) / weight_sum
+        pace += (f"WHAT THIS LEVEL IS WORTH: level {env.best + 1} of {total_levels} "
+                 f"carries {level_weight:.0%} of this game's score, because a level's "
+                 f"weight is its number. The last level is worth "
+                 f"{total_levels / weight_sum:.0%} and the first is worth "
+                 f"{1 / weight_sum:.0%}. Reward is capped at 115% and the penalty is "
+                 f"not capped at all, so a late level done badly costs more than "
+                 f"several early ones done well can repay.\n")
+
+        # AND WHICH ONE IS ALREADY COSTING YOU. The cheapest improvement available on a
+        # re-run is almost always the level that went worst, never the one that went
+        # best -- hunting efficiency on a level already at the 1.15 cap earns nothing.
+        # Gated on having cleared something, because with no cleared level there is no
+        # worst level and nothing honest to say.
+        if env.level_actions:
+            scored = []
+            for i, spent_lv in enumerate(env.level_actions):
+                par_lv = baselines.get(i + 1)
+                if par_lv:
+                    scored.append((min(1.15, (par_lv / max(1, spent_lv)) ** 2),
+                                   i + 1, spent_lv, par_lv))
+            if scored:
+                worst = min(scored)
+                pace += (f"YOUR WORST LEVEL SO FAR is level {worst[1]}: you spent "
+                         f"{worst[2]} actions against a human's {worst[3]}, scoring "
+                         f"{worst[0]:.0%} of it. That single level is dragging this "
+                         f"game down harder than any remaining level can lift it. If "
+                         f"you clear this game and get another attempt, that is the "
+                         f"one to fix.\n")
+
         # NOT GATED ON HAVING NOTES, WHICH IS THE WHOLE POINT. Both of these used to read
         # `and env.level_notes`, so an agent with an empty notebook was told nothing --
         # and an empty notebook is not a sign of an agent that needs no help, it is the
