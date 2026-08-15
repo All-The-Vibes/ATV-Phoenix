@@ -212,6 +212,22 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **`phoenix-proof` names a stale acceptance contract instead of failing late as vacuous.**
+  `.phoenix-ralph/done-check.json` is repointed by each pull request at the check it turns
+  red → green, but nothing noticed when a pull request inherited the previous one's contract.
+  PR #186 shipped `evals/arc/skills.py` while the contract still named
+  `tests/test_phoenix_memory.py`, a test PR #195 had already turned green on main and #186 never
+  touched, so `Require base acceptance RED` sensed GREEN on base and exited 1 calling the proof
+  vacuous — correct, but only after a full `cargo build --release`, and the message blamed the
+  proof rather than the contract nobody repointed. A new `Require a fresh acceptance contract`
+  step runs after `Set up Python` and before `Install Rust`: it reads the `tests/*.py` paths out
+  of the head's contract and fails with that path list when the pull request changes none of
+  them. A contract naming no `tests/*.py` path is left to the base RED gate as before, and the
+  step is scoped to `pull_request` so `workflow_dispatch` runs, which synthesise their own check,
+  are unaffected. `tests/test_cloud_proof_workflow.py` pins the guard, its position ahead of the
+  Rust build, and that removing it, marking it `continue-on-error`, unscoping it from
+  `pull_request`, or hollowing out its script makes the same validator fail.
+
 - **The Tier 3 gate evidence in `tests/test_eval_gate_discloses_ceiling.py` can no longer disappear
   quietly.** `test_exit_codes_are_unchanged_by_the_disclosure` is this repository's only observation of
   `scripts/eval-gate.ps1` rejecting a deliberately regressed arm (exit 1) and accepting an unchanged one

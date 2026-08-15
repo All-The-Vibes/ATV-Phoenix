@@ -1,1 +1,1 @@
-{"kind":"command_exit","target":["python","-m","pytest","tests/test_arc_skills_memory.py","-q"],"expect":0,"cwd":"."}
+{"kind":"command_exit","target":["python","-m","pytest","tests/test_cloud_proof_workflow.py","-q"],"expect":0,"cwd":"."}
