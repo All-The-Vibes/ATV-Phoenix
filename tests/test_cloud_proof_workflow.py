@@ -458,3 +458,79 @@ def test_validator_rejects_a_guard_that_is_not_scoped_to_pull_requests():
     guard["if"] = "${{ steps.acceptance_contract.outputs.declared != 'true' }}"
     with pytest.raises(AssertionError):
         validate_fails_closed(workflow)
+
+
+# --- a stale acceptance contract must fail before the toolchain build ----------------
+#
+# PR #186 inherited `.phoenix-ralph/done-check.json` from PR #195: the contract still named
+# tests/test_phoenix_memory.py, a test #195 had already turned green on main and #186 never
+# touched. "Require base acceptance RED" therefore sensed GREEN on base and exited 1 calling
+# the proof vacuous — correct, but only after a full cargo build, and the message blamed the
+# proof instead of the contract that was never repointed.
+
+FRESH_CONTRACT_STEP = "Require a fresh acceptance contract"
+
+
+def validate_contract_freshness(workflow):
+    step = step_by_name(workflow, FRESH_CONTRACT_STEP)
+    assert "continue-on-error" not in step, f"{FRESH_CONTRACT_STEP} continue-on-error"
+    condition = str(step.get("if") or "")
+    assert "pull_request" in condition, (
+        f"{FRESH_CONTRACT_STEP} is not scoped to pull_request, so workflow_dispatch "
+        "runs (which synthesise their own check) would fail too"
+    )
+    assert "declared == 'true'" in condition, f"{FRESH_CONTRACT_STEP} contract guard"
+    run = str(step.get("run") or "")
+    assert ".phoenix-ralph/done-check.json" in run, f"{FRESH_CONTRACT_STEP} contract path"
+    assert "git merge-base" in run, f"{FRESH_CONTRACT_STEP} base sha"
+    assert "git diff --name-only" in run, f"{FRESH_CONTRACT_STEP} changed acceptance tests"
+    assert "exit 1" in run, f"{FRESH_CONTRACT_STEP} fails on a stale contract"
+
+
+def test_proof_workflow_rejects_a_stale_acceptance_contract():
+    validate_contract_freshness(load_workflow(PROOF_WORKFLOW_PATH))
+
+
+def test_contract_freshness_guard_runs_before_the_toolchain_setup():
+    """A stale contract should stop the run before it pays for a Rust build."""
+    steps = load_workflow(PROOF_WORKFLOW_PATH)["jobs"]["phoenix-proof"]["steps"]
+    names = [step.get("name") for step in steps]
+    assert names.index(FRESH_CONTRACT_STEP) < names.index("Install Rust")
+    assert names.index(FRESH_CONTRACT_STEP) > names.index("Set up Python")
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_fragment"),
+    [
+        (
+            lambda workflow: workflow["jobs"]["phoenix-proof"]["steps"].remove(
+                step_by_name(workflow, FRESH_CONTRACT_STEP)
+            ),
+            f"missing or duplicated step: {FRESH_CONTRACT_STEP}",
+        ),
+        (
+            lambda workflow: step_by_name(workflow, FRESH_CONTRACT_STEP).update(
+                {"continue-on-error": True}
+            ),
+            "continue-on-error",
+        ),
+        (
+            lambda workflow: step_by_name(workflow, FRESH_CONTRACT_STEP).update(
+                {"if": "${{ steps.acceptance_contract.outputs.declared == 'true' }}"}
+            ),
+            "not scoped to pull_request",
+        ),
+        (
+            lambda workflow: step_by_name(workflow, FRESH_CONTRACT_STEP).update(
+                {"run": 'echo "contract looks fine to me"\n'}
+            ),
+            "contract path",
+        ),
+    ],
+)
+def test_validator_rejects_a_weakened_freshness_guard(mutation, expected_fragment):
+    workflow = deepcopy(load_workflow(PROOF_WORKFLOW_PATH))
+    mutation(workflow)
+    with pytest.raises(AssertionError) as error:
+        validate_contract_freshness(workflow)
+    assert expected_fragment in str(error.value)
