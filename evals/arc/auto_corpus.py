@@ -106,10 +106,54 @@ def picks_so_far() -> dict[str, int]:
     return counts
 
 
+def barren_streaks() -> dict[str, int]:
+    """Consecutive most-recent drafts of each game that did not raise its best.
+
+    The attempts decay in rank() treats a game's productive early draws and its barren
+    recent ones identically, so a game that banked its score long ago keeps ranking on
+    headroom it can no longer deliver: ls20 drafted nine times for +1.184% total, still
+    top-of-board after five straight drafts that moved nothing while untried headroom
+    sat unpicked. The honest signal is on disk already. Each wave records the game's
+    best-at-draft in `why`, and that best is max-of-runs, so it only ever rises. The
+    number of trailing drafts where it did NOT rise is exactly the count of drafts since
+    the game last paid. The first draft after a gain is free -- one plateau draft is how
+    you discover the plateau -- so the penalty is that count minus one.
+    """
+    history: dict[str, list[float]] = {}
+    if not LEDGER.exists():
+        return {}
+    for line in LEDGER.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if row.get("event") != "wave":
+            continue
+        for game, detail in (row.get("why") or {}).items():
+            if isinstance(detail, dict) and isinstance(detail.get("best"), (int, float)):
+                history.setdefault(game, []).append(float(detail["best"]))
+    out: dict[str, int] = {}
+    for game, seq in history.items():
+        if not seq:
+            continue
+        peak = max(seq)
+        trailing = 0
+        for value in reversed(seq):
+            if value >= peak - 1e-9:
+                trailing += 1
+            else:
+                break
+        out[game] = max(0, trailing - 1)
+    return out
+
+
 def rank(baselines: dict) -> list[tuple[float, str, dict]]:
     """Games ordered by expected gain from one more run."""
     runs = all_runs(baselines)
     attempts = picks_so_far()
+    barren = barren_streaks()
     n_games = len(baselines) or 1
     share = 1.0 / n_games            # what one perfect game is worth to the corpus
     ranked = []
@@ -156,6 +200,14 @@ def rank(baselines: dict) -> list[tuple[float, str, dict]]:
         efficiency_room = max(0.0, ceiling_now - best)
         next_level_room = (((proven_levels + 1) / weight_sum * 1.15)
                            if proven_levels < n_levels else 0.0)
+
+        # A game drafted repeatedly with no new level is telling you the next level
+        # does not fall easily, and next_level_room is the whole reason a capped game
+        # keeps ranking. Decaying it by the barren streak collapses a mined-out game
+        # toward its real (often zero) efficiency headroom, so ls20 at nine flat drafts
+        # stops out-ranking an untried game, while a game that just cleared a level
+        # carries no penalty and keeps its full next-level value.
+        next_level_room /= (1.0 + barren.get(game, 0))
         headroom = (efficiency_room + next_level_room) * share
 
         # Spread of this game's OWN level-1 discovery cost, as the variance proxy.
@@ -185,6 +237,7 @@ def rank(baselines: dict) -> list[tuple[float, str, dict]]:
             "levels": levels, "of": n_levels,
             "eff_room": round(efficiency_room, 4),
             "tried": attempts.get(game, 0),
+            "barren": barren.get(game, 0),
         }))
     ranked.sort(reverse=True)
     return ranked
