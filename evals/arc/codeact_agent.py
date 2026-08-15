@@ -1771,8 +1771,10 @@ def make_client():
         )
         return OpenAI(api_key=key, base_url=base) if base else OpenAI(api_key=key)
 
-    from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+    from azure.identity import get_bearer_token_provider
     from openai import AzureOpenAI
+
+    from evals.arc import aad
 
     # A TOKEN HANDED IN BEATS TWELVE PROCESSES FETCHING THEIR OWN. DefaultAzureCredential
     # shells out to the Azure CLI, and the CLI is a single-process tool: twelve agents
@@ -1806,9 +1808,7 @@ def make_client():
                     return str(payload["token"])
             except (json.JSONDecodeError, OSError, KeyError, ValueError):
                 pass
-            return get_bearer_token_provider(
-                DefaultAzureCredential(), "https://cognitiveservices.azure.com/.default"
-            )()
+            return get_bearer_token_provider(aad.credential(), aad.SCOPE)()
 
         return AzureOpenAI(
             azure_endpoint=ENDPOINT,
@@ -1816,9 +1816,7 @@ def make_client():
             api_version="2024-12-01-preview",
         )
 
-    token = get_bearer_token_provider(
-        DefaultAzureCredential(), "https://cognitiveservices.azure.com/.default"
-    )
+    token = get_bearer_token_provider(aad.credential(), aad.SCOPE)
     return AzureOpenAI(
         azure_endpoint=ENDPOINT,
         azure_ad_token_provider=token,

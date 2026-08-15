@@ -31,6 +31,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 RESULTS = ROOT / "eval" / "arc-results"
+# Run as a script, sys.path[0] is this directory rather than the repo root, so
+# `evals.arc` is not importable without this.
+sys.path.insert(0, str(ROOT))
 
 _CIM = (
     "Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" "
@@ -114,11 +117,9 @@ def main() -> int:
         except (json.JSONDecodeError, OSError, ValueError):
             pass  # unreadable is the same as absent: refetch
         try:
-            from azure.identity import DefaultAzureCredential
+            from evals.arc import aad
 
-            tok = DefaultAzureCredential().get_token(
-                "https://cognitiveservices.azure.com/.default"
-            )
+            tok = aad.credential().get_token(aad.SCOPE)
             tmp = token_path.with_suffix(".tmp")
             tmp.write_text(
                 json.dumps({"token": tok.token, "expires_on": tok.expires_on}),
