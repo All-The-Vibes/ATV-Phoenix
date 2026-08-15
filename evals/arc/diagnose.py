@@ -173,20 +173,23 @@ def main() -> int:
                 f = findings["STALL"]
                 f["count"] += 1
                 f["games"][game] += 1
-                # Those actions bought nothing and RHAE squares them, so the cost is
-                # the gap between what these levels scored and what they could have.
-                # `level_actions` lives on the SCORECARD, not in the trace -- reading
-                # it from the trace row silently produced a cost of zero on every
-                # finding, which is how a diagnosis reports a real problem as free.
-                hb_used = baselines[game][:cleared]
-                run_for_game = best.get(game) or {}
-                la_now = (run_for_game.get("level_actions") or [])[:cleared]
-                if hb_used and la_now and len(la_now) == len(hb_used):
-                    ws = sum(range(1, len(baselines[game]) + 1)) or 1
-                    got = sum((i + 1) * min(1.15, (hb_used[i] / max(1, la_now[i])) ** 2)
-                              for i in range(len(la_now))) / ws
-                    ideal = sum((i + 1) * 1.15 for i in range(len(la_now))) / ws
-                    f["cost_pp"] += max(0.0, ideal - got) * share * 100 * 0.1
+                # STALL COSTS NO SCORE, AND THE FIRST VERSION OF THIS CLAIMED IT DID.
+                # RHAE charges actions to the level they completed; a level never
+                # cleared is never scored, so actions spent after the last clear are
+                # charged to nothing. Proven directly against the scorer: cd82-ev3
+                # cleared 2 levels in [10, 8] and then ground 892 further actions, and
+                # score_game returns 0.1500 either way -- identical to stopping at the
+                # clear.
+                #
+                # The cost is real but it is TIME, not points: those 892 actions are
+                # roughly an hour of wall clock and millions of tokens, and an hour
+                # spent grinding is an hour not spent on another sampled run. So it is
+                # reported in the currency it actually costs, and ranked below anything
+                # that costs score. My first version invented a points formula for it
+                # and put it top of the board at 1.25pp, which would have aimed the
+                # next fix at a problem that cannot move the number.
+                f["cost_pp"] = 0.0
+                f["wasted_actions"] = f.get("wasted_actions", 0) + after
                 f["detail"].append(f"{stem}: {after}/{total} actions "
                                    f"({after / total:.0%}) spent after the last clear")
 
@@ -204,6 +207,7 @@ def main() -> int:
     ranked = sorted(findings.items(), key=lambda kv: -kv[1]["cost_pp"])
     if args.json:
         print(json.dumps({k: {"count": v["count"], "cost_pp": round(v["cost_pp"], 2),
+                              "wasted_actions": v.get("wasted_actions", 0),
                               "games": dict(v["games"])} for k, v in ranked}, indent=2))
         return 0
 
@@ -212,8 +216,16 @@ def main() -> int:
           " + every scorecard)\n")
     for name, f in ranked:
         top = sorted(f["games"].items(), key=lambda kv: -kv[1])[:6]
-        print(f"{name:8} {f['count']:>4} occurrence(s)   "
-              f"~{f['cost_pp']:.2f}pp of corpus at stake")
+        if f["cost_pp"] > 0:
+            cost = f"~{f['cost_pp']:.2f}pp of corpus at stake"
+        elif f.get("wasted_actions"):
+            # Named as time rather than points, because that is what it costs. An
+            # hour grinding is an hour not spent on another sampled run.
+            cost = (f"COSTS NO SCORE -- {f['wasted_actions']:,} actions of wall clock "
+                    f"and tokens")
+        else:
+            cost = "no measured cost"
+        print(f"{name:8} {f['count']:>4} occurrence(s)   {cost}")
         print(f"         worst: {', '.join(f'{g}({n})' for g, n in top)}")
         for line in f["detail"][:3]:
             print(f"           {line}")
