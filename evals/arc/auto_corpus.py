@@ -56,6 +56,38 @@ LEDGER = RESULTS / "auto-corpus-ledger.jsonl"
 STATE = RESULTS / "auto-corpus-state.json"
 
 
+def resume_wave(ledger: Path = LEDGER) -> int:
+    """The highest wave number already on disk, so a restart does not overwrite it.
+
+    The loop used to seed `wave = 0` on every start while faithfully writing STATE at
+    the end of every wave -- state with no reader, the same defect that produced five
+    other bugs this session. The cost was not theoretical: the ledger records 4 restarts
+    and tags ev1 through ev6 each used twice, on 2026-08-14 and again on 2026-08-15.
+    Every artifact the first run wrote under those tags was overwritten by the second.
+
+    The trace loss is recoverable evidence. The SCORE loss is not: `standings.py` takes
+    the best run per game across scorecards, so a strong result replaced by a weak one
+    under the same filename lowers the corpus permanently, with nothing on disk to show
+    a better run ever existed.
+
+    Reads the LEDGER rather than STATE because the ledger is append-only. STATE is
+    rewritten in place every wave, so a crash mid-write can leave it truncated -- and a
+    resume that silently returns 0 on a parse error is the original bug wearing a hat.
+    Malformed lines are skipped, not fatal.
+    """
+    if not ledger.exists():
+        return 0                     # genuinely fresh workspace: the only safe reset
+    best = 0
+    for line in ledger.read_text(encoding="utf-8", errors="replace").splitlines():
+        try:
+            row = json.loads(line)
+        except Exception:
+            continue                 # a torn final line must not reset the counter
+        if row.get("event") == "wave" and isinstance(row.get("wave"), int):
+            best = max(best, row["wave"])
+    return best
+
+
 def all_runs(baselines: dict) -> dict[str, list[dict]]:
     """Every scorable run on disk, grouped by game."""
     out: dict[str, list[dict]] = {}
@@ -282,7 +314,10 @@ def main() -> int:
     args = ap.parse_args()
 
     baselines = load_baselines()
-    wave = 0
+    wave = resume_wave()
+    if wave:
+        print(f"resuming after wave {wave}; next tag is {args.tag_prefix}{wave + 1}",
+              flush=True)
     start_corpus, start_levels = corpus_now(baselines)
     print(f"start: corpus {start_corpus:.2%}, {start_levels} levels", flush=True)
     record({"event": "start", "at": datetime.now(timezone.utc).isoformat(),
