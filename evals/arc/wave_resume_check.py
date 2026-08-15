@@ -65,7 +65,7 @@ def check_it_actually_resumes() -> tuple[bool, str]:
             json.dumps({"event": "wave", "wave": w, "tag": f"ev{w}"}) + "\n"
             for w in range(1, 20)
         ), encoding="utf-8")
-        got = m.resume_wave(led)
+        got = m.resume_wave(led, results=Path(d))
     if got != 19:
         return False, f"ledger ends at wave 19 but resume_wave returned {got}"
     return True, "a ledger ending at wave 19 resumes at 19, so the next tag is ev20"
@@ -82,7 +82,7 @@ def check_corrupt_state_does_not_reset() -> tuple[bool, str]:
             json.dumps({"event": "wave", "wave": 7, "tag": "ev7"}) + "\n"
             + '{"event": "wave", "wave": 8, "tag": "ev8"' + "\n",   # truncated line
             encoding="utf-8")
-        got = m.resume_wave(led)
+        got = m.resume_wave(led, results=Path(d))
     if got < 7:
         return False, (
             f"a truncated final line dropped the counter to {got}; the next wave would "
@@ -97,7 +97,7 @@ def check_missing_ledger_is_not_a_reset() -> tuple[bool, str]:
     if not hasattr(m, "resume_wave"):
         return False, "no resume_wave() to exercise"
     with tempfile.TemporaryDirectory() as d:
-        got = m.resume_wave(Path(d) / "nope.jsonl")
+        got = m.resume_wave(Path(d) / "nope.jsonl", results=Path(d))
     if got != 0:
         return False, f"a genuinely empty workspace should start at 0, got {got}"
     return True, "an absent ledger starts at 0, which is the only safe reset"
@@ -130,11 +130,45 @@ def check_main_uses_it() -> tuple[bool, str]:
     )
 
 
+def check_a_dead_wave_is_not_reused() -> tuple[bool, str]:
+    """A wave that STARTED and died leaves artifacts the ledger never records.
+
+    The ledger only gets a row when a wave finishes. The original loop began wave 20 at
+    13:21, ran ka59 for 53 turns, and died when its shell exited -- writing
+    trace-ka59-ev20.jsonl and two scorecards, and recording nothing. Resuming from the
+    ledger alone therefore picked ev20 again and appended a second run into the same
+    trace, which is what made level_monotonic_check and reset_check read [1,2,3,1,2,3]
+    and report a game reset that never happened.
+
+    So the resume point is the highest wave with EVIDENCE on disk, not the highest wave
+    with a ledger row.
+    """
+    m = _mod()
+    if not hasattr(m, "resume_wave"):
+        return False, "no resume_wave() to exercise"
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        led = d / "ledger.jsonl"
+        led.write_text(json.dumps({"event": "wave", "wave": 19, "tag": "ev19"}) + "\n",
+                       encoding="utf-8")
+        # wave 20 started and died: artifacts, no ledger row
+        (d / "trace-ka59-ev20.jsonl").write_text("{}\n", encoding="utf-8")
+        (d / "g50t-ev20.json").write_text("{}", encoding="utf-8")
+        got = m.resume_wave(led, results=d)
+    if got < 20:
+        return False, (
+            f"resumed at {got} while ev20 artifacts are already on disk; the next wave "
+            f"would append into trace-ka59-ev20.jsonl and corrupt it"
+        )
+    return True, "a started-but-unrecorded wave is stepped over, not reused"
+
+
 CHECKS = [
     ("the counter can be recovered from disk", check_counter_is_seeded_from_disk),
     ("a ledger at wave 19 resumes at 19", check_it_actually_resumes),
     ("a corrupt trailing line does not reset", check_corrupt_state_does_not_reset),
     ("an absent ledger starts at 0", check_missing_ledger_is_not_a_reset),
+    ("a dead wave's tag is not reused", check_a_dead_wave_is_not_reused),
     ("main() actually calls it", check_main_uses_it),
 ]
 

@@ -22,14 +22,14 @@ def rc() -> int:
 MUTATIONS = {
     "the original bug: main() seeds wave = 0 again":
         lambda s: s.replace("    wave = resume_wave()", "    wave = 0", 1),
-    "resume_wave exists but always reports a fresh workspace":
-        lambda s: s.replace(
-            '    if not ledger.exists():\n        return 0',
-            '    if True:\n        return 0', 1),
+    "the ledger is ignored entirely":
+        lambda s: s.replace("    if ledger.exists():", "    if False:", 1),
+    "on-disk artifacts from a dead wave are ignored":
+        lambda s: s.replace("    if root.exists():", "    if False:", 1),
     "a torn final line resets the counter instead of being skipped":
         lambda s: s.replace(
-            "        except Exception:\n            continue",
-            "        except Exception:\n            return 0", 1),
+            "                continue             # a torn final line must not reset the counter",
+            "                return 0", 1),
     "the resume is computed and then thrown away":
         lambda s: s.replace("    wave = resume_wave()",
                             "    wave = resume_wave() and 0", 1),

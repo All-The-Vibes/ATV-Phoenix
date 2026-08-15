@@ -40,6 +40,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 import subprocess
 import sys
 import time
@@ -56,8 +57,8 @@ LEDGER = RESULTS / "auto-corpus-ledger.jsonl"
 STATE = RESULTS / "auto-corpus-state.json"
 
 
-def resume_wave(ledger: Path = LEDGER) -> int:
-    """The highest wave number already on disk, so a restart does not overwrite it.
+def resume_wave(ledger: Path = LEDGER, results: Path | None = None) -> int:
+    """The highest wave already ATTEMPTED, so a restart never reuses a live tag.
 
     The loop used to seed `wave = 0` on every start while faithfully writing STATE at
     the end of every wave -- state with no reader, the same defect that produced five
@@ -70,21 +71,38 @@ def resume_wave(ledger: Path = LEDGER) -> int:
     under the same filename lowers the corpus permanently, with nothing on disk to show
     a better run ever existed.
 
-    Reads the LEDGER rather than STATE because the ledger is append-only. STATE is
-    rewritten in place every wave, so a crash mid-write can leave it truncated -- and a
-    resume that silently returns 0 on a parse error is the original bug wearing a hat.
-    Malformed lines are skipped, not fatal.
+    Reading the ledger alone is not enough, and the first version of this function was
+    caught by exactly that. The ledger only gets a row when a wave FINISHES. The
+    original loop started wave 20 at 13:21, ran ka59 for 53 turns, and died with its
+    shell -- leaving trace-ka59-ev20.jsonl and two scorecards, and recording nothing.
+    Resuming from the ledger picked ev20 again and appended a second run into that same
+    trace. That concatenation is what made level_monotonic_check and reset_check report
+    level counters of [1, 2, 3, 1, 2, 3] and conclude the GAME was resetting, which sent
+    me hunting a phantom for twenty minutes. A corrupted measurement is more expensive
+    than a missing one.
+
+    So take the max of what finished and what merely started. Ledger rows are read
+    rather than STATE because the ledger is append-only; STATE is rewritten in place
+    every wave, so a crash mid-write can truncate it, and a resume that returns 0 on a
+    parse error is the original bug wearing a hat. Malformed lines are skipped.
     """
-    if not ledger.exists():
-        return 0                     # genuinely fresh workspace: the only safe reset
     best = 0
-    for line in ledger.read_text(encoding="utf-8", errors="replace").splitlines():
-        try:
-            row = json.loads(line)
-        except Exception:
-            continue                 # a torn final line must not reset the counter
-        if row.get("event") == "wave" and isinstance(row.get("wave"), int):
-            best = max(best, row["wave"])
+    if ledger.exists():
+        for line in ledger.read_text(encoding="utf-8", errors="replace").splitlines():
+            try:
+                row = json.loads(line)
+            except Exception:
+                continue             # a torn final line must not reset the counter
+            if row.get("event") == "wave" and isinstance(row.get("wave"), int):
+                best = max(best, row["wave"])
+
+    # Any tag with artifacts on disk was attempted, recorded or not.
+    root = RESULTS if results is None else results
+    if root.exists():
+        for path in root.iterdir():
+            m = re.search(r"ev(\d+)\.(?:json|jsonl|txt)$", path.name)
+            if m:
+                best = max(best, int(m.group(1)))
     return best
 
 
