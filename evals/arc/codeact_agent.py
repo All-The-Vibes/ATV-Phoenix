@@ -36,6 +36,7 @@ import argparse
 import ast
 import contextlib
 import ctypes
+import hashlib
 import io
 import json
 import os
@@ -2144,6 +2145,16 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
     deaths_seen = 0
     best_seen = 0
     stuck_since = 0
+    # WHAT EACH TURN PRODUCED, so the harness can see the agent running the same
+    # experiment twice. `_inert` already watches the BOARD and reports when it stops
+    # changing; it is blind to the failure that actually costs the corpus, where the
+    # board changes every turn and the RESULT is identical. Measured across the 25 most
+    # recent runs: 12 repeat more than a third of their turns, sp80-ev16 produced one
+    # identical output 46 times in 120 turns, and ls20-ev14 spent 111 turns on level 1
+    # with ZERO deaths -- holding a correct world model and writing BFS -- replaying one
+    # trace twelve times. None of them was ever told, because each turn arrives with only
+    # the LAST turn's output in front of it. Maps signature -> turns that produced it.
+    seen_outputs: dict[str, list[int]] = {}
     turn = -1
     # Did the PREVIOUS turn clear a level? The prompt is assembled before this turn's code
     # runs, so the ask has to be driven by the last turn's outcome -- which is also when
@@ -2262,6 +2273,33 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
         stalled = turn - stuck_since
 
         consolidate = ""
+
+        # YOU HAVE RUN THIS EXPERIMENT BEFORE. The threshold is 8, chosen by sweeping it
+        # against both populations on disk rather than by taste. At 3 the warning fires
+        # on 92% of stuck runs but also on 39% of runs that cleared their whole game --
+        # a message that interrupts two of every five good runs is one the agent learns
+        # to skim, and this harness has already paid for that lesson twice. At 8 it fires
+        # on 64% of stuck runs and 4% of deep winners, the widest separation in the
+        # sweep, and still arrives at a median turn 48 of 120, leaving 72 turns of
+        # runway. Eight identical outputs is indefensible; three is arguably diligence.
+        #
+        # Names the earlier turns, because an accusation the agent cannot check is one it
+        # can dismiss. Says nothing about WHAT to try instead: the harness does not know,
+        # and inventing a suggestion is how the previous generation of these messages
+        # earned their reputation.
+        if turn > 0 and seen_outputs:
+            hot, when = max(seen_outputs.items(), key=lambda kv: len(kv[1]))
+            repeats = len(when)
+            if repeats >= 8:
+                where = ", ".join(str(t) for t in when[-4:])
+                consolidate += (
+                    f"YOU HAVE ALREADY PRODUCED THIS RESULT {repeats} TIMES on this "
+                    f"level, most recently on turns {where}. The board may be changing "
+                    f"and your code may be running clean -- the OUTPUT is identical, so "
+                    f"the information is not. Those turns bought nothing. Do not run "
+                    f"that check again: state the belief it was testing, say what "
+                    f"observation would refute it, and go get THAT observation instead.\n"
+                )
 
         # What this level is WORTH, in the currency the benchmark actually pays in. The
         # agent cannot aim at an efficiency target it is never shown, and it was previously
@@ -2857,6 +2895,20 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
             last_output += f"\n\n>>> {cleared}"
         if err:
             last_output += f"\nERROR:\n{err}"
+
+        # FINGERPRINT WHAT THIS TURN PRODUCED. Numbers are stripped before hashing, so
+        # two turns that print the same thing about different coordinates stay distinct
+        # while two turns whose only difference is a step counter collapse together --
+        # the latter is the shape the repetition actually takes. Only the LEVEL's own
+        # turns are compared: after a level boundary every earlier result describes a
+        # board that no longer exists, and carrying them over would accuse the agent of
+        # repeating work it has not done.
+        signature = hashlib.sha1(
+            re.sub(r"\d+", "#", (out or "")).strip().encode("utf-8", "replace")
+        ).hexdigest()
+        if env.level_just_changed:
+            seen_outputs.clear()
+        seen_outputs.setdefault(signature, []).append(turn + 1)
 
         if env.level_just_changed:
             # Re-characterise mechanically instead of merely warning. The previous version
