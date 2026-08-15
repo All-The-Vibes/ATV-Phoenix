@@ -9,6 +9,15 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **ARC skills are a typed view over the gated memory store (#186).** `evals/arc/skills.py` no
+  longer keeps a private JSON aggregate. `SkillLibrary` admits every skill through
+  `phoenix_learn.memory.Memory` and `phoenix_learn.accept.verify_gate`, so a skill is offered only
+  after failure-first evidence (a red trial before a green one); a skill asserted with no such
+  evidence is held pending and never returned by `available()`. Transferable skills persist to the
+  `arc:corpus` scope and cross games; game-specific skills stay scoped to `arc:game:<id>`. Legacy
+  `skills.json` rows still load, and only gate-passing rows are offered. Gated failure-first by
+  `tests/test_arc_skills_memory.py` (3 cases).
+
 - **`phoenix-mcp doctor --permissions [--fix] [--cwd <dir>]` — the MCP-approval facet.** Registration
   (`mcp-config.json`) makes the phoenix server *available*; *approval* (`~/.copilot/permissions-config.json`)
   is what lets a host actually **dispatch** its tools. A non-interactive (autopilot) host that finds phoenix
