@@ -31,6 +31,7 @@ Run: python -m evals.arc.level_monotonic_check
 
 from __future__ import annotations
 
+import ast
 import json
 import re
 import sys
@@ -57,11 +58,30 @@ def _ok(msg: str) -> str:
 
 
 def _step_source() -> str:
+    """The whole of `Env._step`, which is the function this invariant lives in.
+
+    This used to be a fixed byte window around the `self.best = max(...)` line:
+    400 characters back and 3200 forward. That is not a boundary, it is a guess,
+    and it expired the first time the function grew. Adding a three-line comment
+    above the anchor pushed `before_best = self.best` twenty-one characters out of
+    range, and the check then reported "before_best is never captured" about a line
+    that was plainly still there and still correct.
+
+    A check that fails for a reason unrelated to the property it guards is worse
+    than no check: it costs a diagnosis and it trains you to disbelieve it. The
+    window is now the function itself, so the extraction cannot drift out of step
+    with the code it reads.
+    """
     src = AGENT.read_text(encoding="utf-8")
-    i = src.find("self.best = max(self.best, self._frame.levels_completed)")
-    if i < 0:
+    try:
+        tree = ast.parse(src)
+    except SyntaxError:
         return ""
-    return src[i - 400 : i + 3200]
+    lines = src.splitlines(keepends=True)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == "_step":
+            return "".join(lines[node.lineno - 1 : node.end_lineno])
+    return ""
 
 
 def check_gate_is_the_high_water_mark() -> tuple[bool, list[str]]:

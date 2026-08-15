@@ -35,11 +35,13 @@ from __future__ import annotations
 import argparse
 import ast
 import contextlib
+import ctypes
 import io
 import json
 import os
 import re
 import sys
+import threading
 import time
 import traceback
 from pathlib import Path
@@ -240,6 +242,34 @@ API available to your code:
     unmechanic(n, because) -> drop a supposed rule. A mechanic is the one belief no level
                            change ever clears out from under you, so after a death or a
                            long stall these are the FIRST things to doubt.
+    learn(name, source, description, tags=[], when_to_invoke="") -> SAVE WORKING CODE so
+                           the next level and the next GAME can call it. mechanic()
+                           records a SENTENCE about the game; learn() records the
+                           FUNCTION that acts on it, and a function is the only thing
+                           that can be re-run without being re-derived. Costs no actions.
+                           The source must define a function called `name`; it is
+                           compiled before it is stored, so a syntax error costs you the
+                           write and never the turn.
+                           WHEN_TO_INVOKE IS THE HALF THAT MAKES IT TRANSFER. A
+                           description says what the function IS; the condition says what
+                           SITUATION calls for it, and on a game you have never seen
+                           those are different questions -- you will be shown skills
+                           written in another game's vocabulary and have to decide if
+                           they apply. Write it as the trigger: "when you need object
+                           geometry from an unfamiliar board", "when a repeated shape
+                           might be a control rather than scenery". Measured elsewhere:
+                           making this condition explicit is worth more the FURTHER the
+                           new task is from the one the skill was learned on.
+                           SAVE THE REUSABLE PART, NOT THE ANSWER. A skill tagged
+                           general/primitive/perception is offered on OTHER games once it
+                           has won; anything named solve_* is treated as this game's
+                           answer and stays here. `solve_sb26()` cannot help you here. A
+                           function that reads this board into pieces, finds which action
+                           moves what, or locates the exit CAN, because those are facts
+                           about this benchmark rather than about one board.
+                           Write one the moment a piece of your code works twice. The
+                           corpus is 25 games and every rule you do not save is a rule the
+                           next game pays actions to discover again.
     sense(claim, ok)    -> record one trial of a belief. FREE.
     accept(claim)       -> {'ok': bool, 'reason': str}: is that belief actually proven?
     propose(rule)       -> test a rule against EVERY level you have already cleared. FREE.
@@ -447,8 +477,175 @@ class Died(RuntimeError):
     """
 
 
+def _death_forensics(prev_grid, term_grid, recent_actions) -> str:
+    """What the world did in the instant the agent died.
+
+    A death used to report a COUNT and a LIFE LENGTH. Neither says what killed you,
+    and on `bp35-r3` that cost twenty-five deaths for three learned mechanics, all
+    three of them movement primitives: the agent knew how to move and never learned
+    what to avoid. It cannot be blamed for that. Nothing it could call would say.
+
+    The evidence exists for exactly one statement. `_step` holds the outgoing frame
+    while it computes `changed` and overwrites it on the next line, and the death
+    handler then hands the terminal frame to `reset()`. So the two boards either
+    side of the killing action are both in memory, and the difference between them
+    IS the cause, expressed in the only vocabulary the game has: cells and colours.
+
+    Deliberately game-agnostic. It does not know what a player is, or a hazard, or a
+    road -- inventing those per game is how `parse` came to describe one game and
+    answer for twenty-four. It reports what moved, from which colour to which, and
+    where. On a crossing game that reads as "9 replaced 4 at x=5,y=2", which is the
+    hazard naming itself.
+
+    Never raises. A forensic sentence must not end a two-hour run, so every failure
+    path returns a string -- an empty one if there is genuinely nothing to say.
+    """
+    try:
+        import numpy as _np
+
+        def _flat(g):
+            if g is None:
+                return None
+            try:
+                arr = _np.array(g)
+            except Exception:
+                return None  # ragged: modern numpy refuses outright
+            if arr.dtype == object:
+                return None  # ragged: older numpy builds an object array instead
+            if not _np.issubdtype(arr.dtype, _np.number):
+                return None  # a string, or anything else that is not a board
+            if arr.ndim == 3:
+                arr = arr[0]
+            if arr.ndim != 2:
+                return None
+            return arr.astype(_np.int16)
+
+        acts = [a for a in (recent_actions or []) if isinstance(a, int)]
+        head = []
+        if acts:
+            head.append(f"  the action that killed you : {acts[-1]}")
+            if len(acts) > 1:
+                run_up = ", ".join(str(a) for a in acts[-9:-1])
+                head.append(f"  the actions before it      : {run_up}")
+        else:
+            head.append("  the action that killed you : not recorded")
+
+        a, b = _flat(prev_grid), _flat(term_grid)
+        if a is None or b is None or a.shape != b.shape:
+            body = ["  the board                  : could not be compared, so the cause "
+                    "is not recorded here"]
+        else:
+            ys, xs = _np.where(a != b)
+            n = int(len(xs))
+            if n == 0:
+                body = ["  the board                  : NO CELLS CHANGED on the action "
+                        "that killed you, so whatever ended the life is not drawn on the "
+                        "board. A budget running out looks exactly like this."]
+            else:
+                pairs = {}
+                for y, x in zip(ys.tolist(), xs.tolist()):
+                    pairs[(int(a[y][x]), int(b[y][x]))] = \
+                        pairs.get((int(a[y][x]), int(b[y][x])), 0) + 1
+                top = sorted(pairs.items(), key=lambda kv: -kv[1])[:6]
+                shown = ", ".join(f"{f}->{t} x{c}" for (f, t), c in top)
+                body = [
+                    f"  cells that changed         : {n}",
+                    f"  colour changes             : {shown}",
+                    f"  where                      : x {int(xs.min())}..{int(xs.max())}, "
+                    f"y {int(ys.min())}..{int(ys.max())}",
+                ]
+                # The single most likely cause: a colour that ARRIVED on top of another.
+                arrivals = [((f, t), c) for (f, t), c in pairs.items() if f != 0 and t != 0]
+                if arrivals:
+                    (f, t), c = max(arrivals, key=lambda kv: kv[1])
+                    body.append(
+                        f"  colour {t} landed on colour {f} in {c} cell(s) -- if one of "
+                        f"those is you, {t} is what to avoid")
+
+        return ("\nWHAT CHANGED IN THE INSTANT YOU DIED (the terminal board, read before "
+                "it was rebuilt):\n" + "\n".join(head + body) +
+                "\nThis is the only record of the board that killed you. The next board "
+                "is pristine, so a rule you do not write down now is gone.\n")
+    except Exception:
+        # A crash HERE would end a two-hour run over a sentence.
+        return ""
+
+
+class CodeTimeout(RuntimeError):
+    """Raised when a turn's code block outruns its wall-clock budget.
+
+    `exec` on model-written code had no time limit, and the failure that exposed it was
+    not an infinite loop -- it was an honest search. On ka59 level 2 the model wrote a
+    breadth-first search over the JOINT positions of four pieces on a 64x63 board, with
+    no depth bound, no node cap and no time check. That frontier is around (64*63)**4
+    states. The process ran 6.8 hours, burned 17,767 seconds of CPU and reached
+    **42.5 GB of resident memory** before it was killed by hand.
+
+    Two costs, and the second is the dangerous one. The game held a queue slot the whole
+    time so the wave could not drain. And a 42 GB process on a box running eleven other
+    agents is one OOM away from taking all of them with it -- a single bad cell becomes a
+    corpus-wide outage.
+
+    A wall-clock cap turns both into a normal, teachable turn: the agent is told its
+    search was too big and gets to bound it, which is a thing models do well once asked.
+    """
+
+
 #: Ledger methods -- pure memory, no board access, safe to replay after an abort.
 LEDGER_METHODS = frozenset({"mechanic", "unmechanic", "note", "retract"})
+
+
+def _exec_bounded(code: str, ns: dict, seconds: float) -> None:
+    """`exec(code, ns)` with a wall-clock cap. See `CodeTimeout` for what this cost us.
+
+    The code runs in a daemon thread and its exception, whatever it is, is re-raised here
+    so every existing handler -- LevelCleared, Died, StallDetected -- keeps working
+    unchanged. `sys.stdout` is process-wide, so a `redirect_stdout` installed by the
+    caller still captures the thread's prints.
+
+    On timeout the worker is asked to stop via `PyThreadState_SetAsyncExc`, which raises
+    between bytecodes. That reliably interrupts the pure-Python loops this exists for and
+    cannot interrupt a blocking C call; the thread is a daemon so a stuck one can never
+    hold the process open. The turn ends either way, which is the point -- the alternative
+    was a game that never ends at all.
+    """
+    box: dict[str, BaseException | None] = {"exc": None}
+
+    def run() -> None:
+        try:
+            exec(code, ns)  # noqa: S102 - executing model code is the design
+        except BaseException as exc:  # noqa: BLE001 - re-raised in the caller
+            box["exc"] = exc
+
+    worker = threading.Thread(target=run, daemon=True, name="codeact-cell")
+    worker.start()
+    worker.join(seconds)
+
+    if worker.is_alive():
+        tid = worker.ident
+        if tid is not None:
+            ctypes.pythonapi.PyThreadState_SetAsyncExc(
+                ctypes.c_ulong(tid), ctypes.py_object(CodeTimeout)
+            )
+        # A grace period so the async exception can land and unwind before the turn is
+        # summarised. Not waited on indefinitely: a thread stuck inside a C call would
+        # never come back and the run has to continue regardless.
+        worker.join(5.0)
+        raise CodeTimeout(
+            f"your code was still running after {seconds:.0f}s and was stopped. "
+            "Anything it had already done to the game still counts, and any mechanic() "
+            "or note() it reached was kept.\n\n"
+            "This is almost always an unbounded search. A breadth-first search over the "
+            "JOINT positions of several pieces is astronomically large -- four pieces on "
+            "this board is about (64*63)**4 states -- so it never finishes and spends the "
+            "turn. Bound it: cap the nodes you will expand, cap the depth, or solve one "
+            "piece at a time and keep the others fixed. A search that answers in seconds "
+            "and might be wrong beats one that never answers."
+        )
+
+    if box["exc"] is not None:
+        raise box["exc"]
+
 
 #: Coordinates written into a permanent rule. `x=25`, `(31,16)`, `row 44`, `col 7`.
 #: Deliberately not matched: a bare number, which is usually a step size ("moves you
@@ -568,12 +765,28 @@ class Env:
         # How many actions each life has lasted, and where the current one began.
         self.lives: list[int] = []
         self._life_mark = 0
+        # EVERY death, not just how many. `deaths` is an integer and an integer cannot be
+        # read for a pattern, which is why a death has only ever been able to teach "that
+        # was wrong". Twenty deaths read TOGETHER say what the game is: dying at 12, then
+        # 41, then 64 actions is a budget; dying wherever colour 9 arrives is a hazard.
+        # Neither is visible one death at a time. See the synthesis ask in `play`.
+        self.death_log: list[dict] = []
+        # The board as it stood before the CURRENT one, and the actions that got here.
+        # Held so a death can be explained: `_step` replaces `self._frame` on the line
+        # after it compares them, so without this the last-alive board is unreachable
+        # by the time the death handler runs. See `_death_forensics`.
+        self._prev_frame = None
+        self._recent_actions: list[int] = []
         # Claims this board has DISPROVED. Kept apart from live notes so a dead theory
         # reads as dead rather than as one more thing that might be true.
         self.retracted: list[str] = []
         self._alive = True
         self._turn_action_cap = turn_action_cap
         self._turn_spent = 0
+        # How many turns this level has resisted. Drives the per-turn cap: a level that
+        # is not falling gets a narrower budget, so the next move has to be a better
+        # idea rather than more attempts.
+        self._turns_on_level = 0
         self.inert_limit = inert_limit
         self.death_limit = death_limit
         self.level_actions: list[int] = []
@@ -617,7 +830,12 @@ class Env:
 
     def begin_turn(self) -> None:
         self._turn_spent = 0
-        self.deaths_this_turn = 0        # alive() answers "did the last action kill me", not "have I ever died". It was
+        self.deaths_this_turn = 0
+        # How long this level has resisted, which sets the per-turn action cap. Counted
+        # here rather than in the turn loop so the Env owns its own budget: a limit whose
+        # counter lives somewhere else is a limit that drifts from what it is limiting.
+        self._turns_on_level += 1
+        # alive() answers "did the last action kill me", not "have I ever died". It was
         # a latch: set False on death and cleared only by an explicit reset(), even
         # though the death handler below already resets the frame and the game is
         # immediately playable again. The prompt teaches `if not alive(): break`, so
@@ -645,10 +863,14 @@ class Env:
         }
 
     def _step(self, action_value, data=None):
-        if self._turn_spent >= self._turn_action_cap:
+        if self._turn_spent >= self._live_turn_cap():
             raise TurnBudgetExhausted(
-                f"this turn already spent {self._turn_spent} actions. You are in a loop "
-                f"with no exit. Check levels() and alive() inside your loops and break."
+                f"this turn already spent {self._turn_spent} actions, and this level has "
+                f"resisted {self._turns_on_level} turns, so the per-turn budget is "
+                f"{self._live_turn_cap()}. That is deliberate: more attempts is the one "
+                f"response this board has already refused. Read it again with board() and "
+                f"objects(), decide which belief that reading contradicts, and spend the "
+                f"next actions on a different IDEA. Looking costs nothing."
             )
         try:
             nxt = (
@@ -666,8 +888,17 @@ class Env:
         self.spent += 1
         self._turn_spent += 1
         changed = frame_key(nxt) != frame_key(self._frame)
+        # The last board the agent was alive on, kept before the line below
+        # overwrites it. It is the other half of the only comparison that can say
+        # what killed you -- see `_death_forensics`.
+        self._prev_frame = self._frame
         self._frame = nxt
         self.best = max(self.best, self._frame.levels_completed)
+        # Recorded after the transition above: this is the action that produced the
+        # frame now in hand, and on a death it is the action that ended the life.
+        self._recent_actions.append(action_value)
+        if len(self._recent_actions) > 24:
+            del self._recent_actions[:-24]
 
         # The SDK's levels_completed is NOT monotone. On some games it falls back and
         # climbs again inside a single level, so "greater than last frame" fires on a
@@ -685,6 +916,10 @@ class Env:
             self._level_mark = self.spent
             self.level_just_changed = True
             self._inert = 0
+            # A new board earns a full budget again. The narrow cap is a response to THIS
+            # level refusing, and carrying it into a level that has refused nothing would
+            # punish the agent for the previous board's difficulty.
+            self._turns_on_level = 0
             self.level_notes = []
             # Disproofs are scoped to the board that produced them, exactly like the
             # beliefs they killed. A theory refuted on level 1 may well be true on
@@ -774,6 +1009,28 @@ class Env:
                     # frames.budget has never been exercised against.
                     had_bar = False
                 lifespan = self.lives[-1]
+                # READ THE BOARD THAT KILLED YOU, now, while it still exists. The
+                # reset below rebuilds it and the evidence is gone for good. This is
+                # the same reasoning that already reads the bar here, applied to the
+                # question the bar cannot answer: not "how long did I have" but
+                # "what ended it".
+                forensics = _death_forensics(
+                    self._prev_frame.frame if self._prev_frame is not None else None,
+                    self._frame.frame,
+                    self._recent_actions,
+                )
+                # The same read, kept as DATA rather than only as a sentence. The prose
+                # goes to the agent now; this row is what the synthesis reads later, when
+                # there are enough of them to show a pattern.
+                self.death_log.append({
+                    "n": self.deaths,
+                    "level": self.best + 1,
+                    "life_actions": lifespan,
+                    "total_at_death": self.spent,
+                    "last_action": (self._recent_actions or [None])[-1],
+                    "run_up": list(self._recent_actions[-6:]),
+                    "forensics": forensics.strip(),
+                })
                 self._frame = self._env.reset()
                 self._bar_colour = None
                 self._bar_row = None
@@ -782,6 +1039,10 @@ class Env:
                 # budget -- a confident reading of exactly the wrong half.
                 self._bar_seen = None
                 self._inert = 0
+                # A new life starts on a new board. Carrying the dead life's frame or
+                # its action run-up into the next death would explain the wrong death.
+                self._prev_frame = None
+                self._recent_actions = []
                 # The board has just been rebuilt underneath whatever code is running.
                 # Letting the loop continue is the same silent corruption `LevelCleared`
                 # exists to prevent: every remaining hypothesis in the batch would be
@@ -811,6 +1072,7 @@ class Env:
                        "nothing will. The only budget estimate you have is the length "
                        "of the lives you have already lost, which is reported to you "
                        "each turn. Bank progress before you reach it.\n")
+                    + forensics
                     + ("THE REST OF THAT TURN'S CODE NEVER RAN. This raise happened at "
                        "the action that killed you, so every line after it was "
                        "discarded -- including any note() or mechanic() you had written "
@@ -871,8 +1133,40 @@ class Env:
         Measured: a run stuck on one level tested eight assignments across twelve turns
         and ended with 250 of 8000 actions unspent, because the prompt showed only the run
         budget and the agent sized each turn to a single attempt.
+
+        THE CAP TIGHTENS WHILE A LEVEL REFUSES TO FALL, because a wide budget is only
+        wide enough to brute-force with. At 120 a turn can test six or seven whole
+        candidate solutions, and an agent that CAN search will search: measured on sb26,
+        one model reached turn 11 holding a TRIED set of thirteen permutations and
+        queued six more in a single turn, on a board with 7! = 5,040 of them. The model
+        that cleared that same level did it in 26 actions by reasoning about the clue
+        order instead.
+
+        The number is not a guess. Runs that clear 6-8 levels spend 7-10 actions per
+        turn; runs stuck below 5 spend 3-7 paid calls per turn but keep paying them for
+        ninety turns. 120 was twelve times what a winning turn has ever needed, so it
+        constrained nobody and licensed the one behaviour RHAE punishes quadratically.
+
+        So the budget is generous while progress is happening and narrow once it stops.
+        That is the opposite of what a searcher wants and exactly what a reasoner needs:
+        when the board keeps refusing you, the next thing to change is the IDEA, and
+        ideas are free -- board(), objects() and propose() cost no actions at all.
         """
-        return max(0, self._turn_action_cap - self._turn_spent)
+        return max(0, self._live_turn_cap() - self._turn_spent)
+
+    def _live_turn_cap(self) -> int:
+        """The per-turn action cap, tightened by how long this level has resisted.
+
+        Kept as a method rather than folded into `turn_budget` so `_step` and the
+        prompt read the same number from one place; two callers computing a budget
+        separately is how a limit becomes advisory.
+        """
+        stalled = self._turns_on_level
+        if stalled >= 12:
+            return min(self._turn_action_cap, 12)
+        if stalled >= 6:
+            return min(self._turn_action_cap, 25)
+        return self._turn_action_cap
 
     def look(self):
         return self._observe()
@@ -1479,6 +1773,48 @@ def make_client():
     from azure.identity import DefaultAzureCredential, get_bearer_token_provider
     from openai import AzureOpenAI
 
+    # A TOKEN HANDED IN BEATS TWELVE PROCESSES FETCHING THEIR OWN. DefaultAzureCredential
+    # shells out to the Azure CLI, and the CLI is a single-process tool: twelve agents
+    # starting together produced ten runs stuck at turn 1 on ClientAuthenticationError,
+    # each burning the retry ladder against contention rather than against a busy model.
+    # Classifying that as congestion (Gap 17) stopped it ending runs, but a run that
+    # retries forever at turn 1 is still a run that never plays.
+    #
+    # BUT IT MUST BE A PROVIDER, NOT A STRING. `azure_ad_token=<str>` is fixed for the life
+    # of the client, so when it expires the run cannot recover: wave r2 lost twelve agents
+    # mid-flight, every one looping AuthenticationError against a credential that would
+    # never be valid again. `get_token` hands back the CLI's CACHED token too, so the
+    # remaining life is unknown and can be minutes -- r2 died sixteen minutes in. The
+    # launcher now writes a token FILE and refreshes it; this reads that file per request,
+    # so one process fetches (no herd) and every agent still follows the refresh.
+    token_file = os.environ.get("ARC_AAD_TOKEN_FILE", "").strip()
+    if token_file:
+        path = Path(token_file)
+
+        def handed_token() -> str:
+            """Current bearer token from the launcher's file.
+
+            Called by the SDK on every request, so a refresh written by the launcher is
+            picked up without restarting the run. Falls back to this process's own
+            credential when the file is missing or stale -- that is the herd again, but a
+            herd beats a dead run, and it only happens if the launcher stopped refreshing.
+            """
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+                if payload.get("expires_on", 0) - time.time() > 60:
+                    return str(payload["token"])
+            except (json.JSONDecodeError, OSError, KeyError, ValueError):
+                pass
+            return get_bearer_token_provider(
+                DefaultAzureCredential(), "https://cognitiveservices.azure.com/.default"
+            )()
+
+        return AzureOpenAI(
+            azure_endpoint=ENDPOINT,
+            azure_ad_token_provider=handed_token,
+            api_version="2024-12-01-preview",
+        )
+
     token = get_bearer_token_provider(
         DefaultAzureCredential(), "https://cognitiveservices.azure.com/.default"
     )
@@ -1626,7 +1962,7 @@ def _parsed(grid):
 
 def play(arc, game, client, deployment, max_turns, patience, action_cap,
          trace_path: str = "", seed: int = 0, start_level: int = 1,
-         out_path: str = "") -> dict:
+         out_path: str = "", exec_timeout: float = 300.0) -> dict:
     raw = arc.make(game, include_frame_data=True)
     frame = raw.reset()
 
@@ -1684,6 +2020,19 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
     # every input that alters the game, so re-measuring facts we already hold is pure loss:
     # on sb26 a 141-action probe drops a perfect level-1 solve from 3.19% to 0.06%.
     mechanics = SkillLibrary().mechanics_for(game)
+
+    # THE SKILL LIBRARY, ACTUALLY CONNECTED. `skills.py` has implemented install /
+    # describe / record / available since #177, and `codeact_agent` called exactly one
+    # of them -- `mechanics_for`, a text blob scoped to this game. So no learned skill
+    # ever reached the REPL, none was ever offered in the prompt, and no result was ever
+    # booked. `skills.json` was the receipt: four of seven skills at 0W/0L, not because
+    # they lost but because nothing counts. And `available()` only transfers a skill once
+    # `wins > 0`, so with wins pinned at zero cross-game transfer could not fire even in
+    # principle. The loop was open at both ends.
+    #
+    # This is the RSI claim the corpus mission rests on: learn on one game, generalise,
+    # carry it to the next. It cannot compound while the library is write-only.
+    library = SkillLibrary()
 
     # Phoenix, inside the loop rather than scoring from outside. The agent calls sense()
     # and accept() on its own beliefs while it plays, so a theory it has never tried to
@@ -1746,6 +2095,40 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
         "ACTIONS": list(env.actions),
     }
 
+    # WRITING A SKILL IS THE LEARNING HALF OF THE LOOP. `mechanic()` records a sentence;
+    # this records CODE, which is the thing that can be re-run on the next level and the
+    # next game. The name is deliberate: `learn` is what the prompt calls it, because
+    # Gap 10 measured that a primitive whose description does not match its purpose is
+    # simply never used.
+    #
+    # It refuses a skill that does not compile, so a syntax error costs the write rather
+    # than the turn, and it refuses one that names a coordinate, for the same reason
+    # Gap 18 exists -- a lookup table is not a rule and does not transfer.
+    def learn(name, source, description, tags=None, when_to_invoke=""):
+        source = str(source)
+        try:
+            compile(source, f"<skill {name}>", "exec")
+        except SyntaxError as exc:
+            return {"ok": False, "why": f"skill does not compile: {exc}"}
+        if f"def {name}" not in source:
+            return {"ok": False, "why": f"source must define a function called {name}"}
+        library.add(name, game, source, str(description)[:300], tags,
+                    when_to_invoke=when_to_invoke)
+        try:
+            exec(source, ns)  # noqa: S102 - the agent's own code, same as a turn cell
+        except Exception as exc:
+            library.record(name, won=False)
+            return {"ok": False, "why": f"skill saved but failed to install: {exc}"}
+        return {"ok": True, "installed": name, "library": len(library.skills)}
+
+    ns["learn"] = learn
+
+    # Everything the library already knows, callable from turn 1. A skill that won on
+    # another game is offered here too -- that is the generalisation step, and it is
+    # gated on a recorded win rather than on optimism.
+    installed_skills = library.install(ns, game)
+    skills_text = library.describe(game)
+
     tokens = 0
     stale = 0
     model_failures = 0
@@ -1762,6 +2145,28 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
     best_seen = 0
     stuck_since = 0
     turn = -1
+    # Did the PREVIOUS turn clear a level? The prompt is assembled before this turn's code
+    # runs, so the ask has to be driven by the last turn's outcome -- which is also when
+    # the code that cleared it is still the most recent thing in the trajectory.
+    gained_last_turn = 0
+    # Which learned skills have been called on the CURRENT level. Credit is scoped to the
+    # level because a perception skill is called on the turn that reads the board and the
+    # clear lands later; see the booking block below for what turn-scoped credit measured.
+    skills_used_this_level: set[str] = set()
+    # Which of those have already taken a result for this level. A level ends in one
+    # outcome, so a skill takes one result from it -- see the booking block for what
+    # charging every death instead did to the library.
+    scored_this_level: set[str] = set()
+    # Has the run been told it is in the bad tail? Latched, because a warning repeated
+    # every turn is a warning that stops being read.
+    tail_warned = False
+    # Turn of the last periodic belief review. Prime Agent's Continual Harness
+    # auto-refines every 25 assistant turns (settings.turnInterval, confirmed in their
+    # agent-session.ts) and reads the trajectory plus its own state to decide what to
+    # edit. This harness has every CRUD primitive and no moment that asks the agent to
+    # use them on itself -- everything fires on an EVENT. Measured across the last 15
+    # runs: 75 such moments passed unused.
+    refine_at = 0
     # Overwritten by whichever exit actually fires; this is the one that means the loop
     # ran to the end of its turns with the game still winnable.
     stopped = "max_turns"
@@ -1771,6 +2176,9 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
         env.level_just_changed = False
         before_levels = env.best
         before_spent = env.spent
+        # Patience counts turns since PROGRESS, and a new rule of the game is progress.
+        # See the reset below for why level gain alone was the wrong measure.
+        before_mechanics = len(env.mechanics_learned)
 
         def current_notes() -> str:
             """Everything learned on THIS level, plus a tail of what came before.
@@ -1885,6 +2293,141 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
                      f"{since} since the last one. Treat that as your budget and bank "
                      f"progress before you reach it.\n")
 
+        # WHICH LEVEL IS WORTH FIGHTING FOR. RHAE weights a level by its INDEX --
+        # `weighted += index * score` over a weight sum of 1+2+...+N -- so on an
+        # eight-level game level 8 carries 8/36 of the score and level 1 carries 1/36.
+        # Reward caps at 1.15 and the penalty is unbounded toward zero, so the game
+        # score is decided by how the LATE levels went, and one bad late level costs
+        # more than several good early ones can repay.
+        #
+        # Measured across nine revisits this session, that is precisely what separated
+        # the runs that improved from the runs that did not. Per-level ratio of human
+        # actions to agent actions, in level order:
+        #   lp85 WIN   [3.4, 1.9, 1.24, 0.22, 3.42, 0.13, 1.73, 2.04]
+        #   tr87 WIN   [1.38, 1.76, 1.33, 1.61, 0.2, 0.84]
+        #   cd82 LOSS  [1.08, 0.5, 0.47, 0.09, 0.23, 0.11]
+        #   dc22 LOSS  [0.55, 0.83, 0.19]
+        # The losses are not slower everywhere. cd82 cleared level 1 faster than the
+        # human and then spent roughly ten times the human budget on levels 4, 5 and 6,
+        # the three heaviest, which is essentially its entire 12.69%.
+        #
+        # The harness knew all of this and said none of it. It reported pace on the
+        # current level as though every level were worth the same.
+        total_levels = len(baselines) or env.frame().win_levels or 1
+        weight_sum = sum(range(1, total_levels + 1)) or 1
+        level_weight = (env.best + 1) / weight_sum
+        pace += (f"WHAT THIS LEVEL IS WORTH: level {env.best + 1} of {total_levels} "
+                 f"carries {level_weight:.0%} of this game's score, because a level's "
+                 f"weight is its number. The last level is worth "
+                 f"{total_levels / weight_sum:.0%} and the first is worth "
+                 f"{1 / weight_sum:.0%}. Reward is capped at 115% and the penalty is "
+                 f"not capped at all, so a late level done badly costs more than "
+                 f"several early ones done well can repay.\n")
+
+        # AND WHICH ONE IS ALREADY COSTING YOU. The cheapest improvement available on a
+        # re-run is almost always the level that went worst, never the one that went
+        # best -- hunting efficiency on a level already at the 1.15 cap earns nothing.
+        # Gated on having cleared something, because with no cleared level there is no
+        # worst level and nothing honest to say.
+        if env.level_actions:
+            scored = []
+            for i, spent_lv in enumerate(env.level_actions):
+                par_lv = baselines.get(i + 1)
+                if par_lv:
+                    scored.append((min(1.15, (par_lv / max(1, spent_lv)) ** 2),
+                                   i + 1, spent_lv, par_lv))
+            if scored:
+                worst = min(scored)
+                pace += (f"YOUR WORST LEVEL SO FAR is level {worst[1]}: you spent "
+                         f"{worst[2]} actions against a human's {worst[3]}, scoring "
+                         f"{worst[0]:.0%} of it. That single level is dragging this "
+                         f"game down harder than any remaining level can lift it. If "
+                         f"you clear this game and get another attempt, that is the "
+                         f"one to fix.\n")
+
+        # IS WHAT YOU BELIEVE STILL TRUE? Every other message here fires on an EVENT --
+        # a death, a stall, a level clear -- and beliefs in this harness are additive
+        # within a level: the agent writes notes as it learns and only removes one when
+        # something contradicts it hard enough to notice. A theory that was true on
+        # turn 10 and quietly stopped being true by turn 60 is still steering at turn
+        # 120, because nothing ever asks.
+        #
+        # Prime Agent auto-refines every 25 assistant turns. Their refiner reads the
+        # last 80k characters of trajectory plus the full harness state and emits CRUD
+        # edits over prompt notes, memories, skills and sub-agents. We have the same
+        # primitives -- note, mechanic, retract, unmechanic, learn -- and never call a
+        # review. Measured on the last 15 runs: 75 review points passed unused.
+        #
+        # Same interval, and it does NOT fire before turn 25: a review on turn 5
+        # reviews nothing and teaches the agent to skip the message before it ever
+        # carries information. That is how the stall warning came to be ignored for 150
+        # consecutive turns on cd82-ev3.
+        if turn + 1 >= 25 and (turn + 1) % 25 == 0 and (turn + 1) != refine_at:
+            refine_at = turn + 1
+            held = env.mechanics_learned or []
+            notes_now = env.level_notes or []
+            consolidate += (
+                f"\nSTEP BACK. You are {turn + 1} turns in with {env.spent} actions "
+                f"spent and {env.best} level(s) cleared. Before the next action, review "
+                f"what you believe rather than adding to it.\n"
+                f"RULES YOU ARE HOLDING ({len(held)}):\n"
+                + ("".join(f"  {i + 1}. {m[:150]}\n" for i, m in enumerate(held))
+                   or "  (none -- and if this game has taught you nothing in "
+                      f"{turn + 1} turns, that is the finding)\n")
+                + f"NOTES ON THIS BOARD ({len(notes_now)}):\n"
+                + ("".join(f"  {i + 1}. {str(n)[:110]}\n"
+                           for i, n in enumerate(notes_now[-6:]))
+                   or "  (none)\n")
+                + "Take each one and ask whether you have OBSERVED it since you wrote "
+                  "it, or merely not contradicted it. Anything in the second category "
+                  "is a guess you are steering by. unmechanic(n, because=...) a rule "
+                  "that no longer holds and retract(n, because=...) a note that does "
+                  "not; both are free, and a wrong belief costs actions every turn you "
+                  "keep it. If a rule has survived real tests, leave it and say so in "
+                  "one line rather than re-deriving it.\n"
+            )
+
+        # THE RUN THAT IS ALREADY LOST, TOLD SO WHILE IT CAN STILL CHANGE. Measured
+        # across 150 traces on disk, using "still on level 0 after K times the human's
+        # level-1 budget" as the discriminator:
+        #   K=1  118 tripped,  76 ended slow   64% precision
+        #   K=2   90 tripped,  74 ended slow   82%
+        #   K=3   69 tripped,  69 ended slow  100%, and ZERO runs that finished at or
+        #                                     under the human baseline ever tripped it
+        # An agent three times over budget with nothing cleared has never once
+        # recovered. That is the variance tail this corpus is losing to -- the same
+        # agent clears cd82 level 1 in 16 actions and in 328 -- and sampling more runs
+        # converts the spread into score without doing anything about the tail itself.
+        #
+        # It does NOT reset or abort. A reset buys back the BOARD and never the BUDGET:
+        # the actions are spent, RHAE has already charged them, and restarting would
+        # spend them again on the same approach. The evidence says the APPROACH is
+        # wrong, not that the board was unlucky, so the agent is told exactly that and
+        # left to decide. Stated as a record rather than as a law, because 69 of 69 is
+        # what the traces show and not a guarantee about this run.
+        if not tail_warned and env.best == 0 and not env.level_actions:
+            par_lv1 = baselines.get(1)
+            if par_lv1 and env.spent >= 3 * par_lv1:
+                tail_warned = True
+                consolidate += (
+                    f"\nSTOP. You have spent {env.spent} actions without clearing "
+                    f"level 1, and a human clears it in {par_lv1}. That is "
+                    f"{env.spent / par_lv1:.1f}x.\n"
+                    f"This is not a slow start, it is a diagnosis. Across 150 recorded "
+                    f"runs of this harness, every run that passed 3x the human budget "
+                    f"with nothing cleared went on to finish in the slow tail -- 69 of "
+                    f"69 -- and no run that finished at or under the human baseline "
+                    f"ever reached this point. That is a record, not a law, but nothing "
+                    f"in the record recovered from here by continuing.\n"
+                    f"What separates the fast runs is not speed, it is that they were "
+                    f"working on the right thing by now. So do not try harder at the "
+                    f"current plan: name the belief it rests on, check whether anything "
+                    f"you have actually OBSERVED supports it, and retract(n) it if not. "
+                    f"Re-read the board with board() and objects() -- both free -- and "
+                    f"be willing to conclude that what you think this game is, it is "
+                    f"not.\n"
+                )
+
         # NOT GATED ON HAVING NOTES, WHICH IS THE WHOLE POINT. Both of these used to read
         # `and env.level_notes`, so an agent with an empty notebook was told nothing --
         # and an empty notebook is not a sign of an agent that needs no help, it is the
@@ -1894,8 +2437,109 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
         # its budget without one. Corpus-wide, 62% of every action ever spent came after
         # the run's last level clear. The guidance was gated on the agent having already
         # done the thing the guidance exists to ask for.
-        if died:
-            consolidate = (
+        # THE MOMENT WORKING CODE EXISTS IS THE MOMENT TO SAVE IT, and nothing was asking.
+        # Documenting `learn()` in the API block was necessary and not sufficient: across
+        # r9's cd82, vc33 and ft09 the agent read a full entry for it, cleared levels --
+        # ft09 reached 4/6 -- and called it ZERO times in 48 turns. That is the same shape
+        # as `accept()`, which is documented, in the namespace, and absent from every trace
+        # ever recorded.
+        #
+        # The reason is structural rather than stylistic: RHAE scores THIS game, and a
+        # skill written now pays off on the NEXT one. A myopic agent is behaving correctly
+        # when it declines. So the harness asks at the one moment the cost is lowest and
+        # the evidence is strongest -- the turn a level actually fell, when the code that
+        # cleared it is still on screen. This is exactly how the death and stall messages
+        # already work, applied to the positive signal instead of the negative ones.
+        #
+        # Deliberately NOT gated on the library being non-empty, for the reason recorded
+        # above: gating guidance on the agent having already done the thing the guidance
+        # exists to ask for is what made the earlier messages useless.
+        # ONE OF THESE FIRES, AND NONE OF THEM MAY ERASE THE OTHERS. These branches used
+        # plain assignment, which silently destroyed anything written earlier in the
+        # turn. Measured on dc22-ev6: the periodic belief review was built at turns 25,
+        # 50 and 75 and never reached the agent once, because the stall branch below
+        # reassigned `consolidate` every one of those turns. Ninety-three turns, three
+        # reviews owed, zero delivered -- and specifically on a STALLED run, which is
+        # exactly the run that needed to re-examine what it believed.
+        #
+        # The event branches remain mutually exclusive with each other (if/elif); they
+        # simply append to whatever the interval-driven messages already put there.
+        if gained_last_turn:
+            consolidate += (
+                f"\nYOU JUST CLEARED A LEVEL — AND THAT IS THE MOMENT YOU ARE MOST "
+                f"LIKELY TO BE WRONG. ARC Prize's own forensics name this failure "
+                f"\"Solved The Level, Didn't Learn The Game\": on ka59, Opus cleared "
+                f"level 1 in 37 actions holding a WRONG theory of what a click does, "
+                f"because a misread primitive happened to fit a forgiving level, and "
+                f"the run never recovered when level 2 demanded the real mechanic. "
+                f"Measured on this corpus: of 66 level transitions, 16 (24%) go from a "
+                f"level cleared at the cap straight into one scoring under 30%.\n"
+                f"So before you spend an action on this board, take the rules you are "
+                f"carrying and ask of each one: did I SEE this cause that outcome, or "
+                f"did the level simply not punish me for believing it? A rule that has "
+                f"only ever been un-contradicted is a guess. unmechanic(n, "
+                f"because=...) it now rather than steering by it for the next hundred "
+                f"actions — that is free, and the next level is worth more than the one "
+                f"you just cleared.\n"
+                f"THEN SAVE THE REUSABLE PART with learn(name, source, description, "
+                f"tags=['general'], when_to_invoke='...'). Not the whole solve — the "
+                f"piece that would still be true on a DIFFERENT board: how you read "
+                f"this board into objects, how you found which action moves what, how "
+                f"you located the target. That function is offered to every other game "
+                f"in the corpus once it has won, and there are 25 of them.\n"
+                f"It costs no actions.\n"
+            )
+        # THE FAILURES, READ TOGETHER. Everything above reacts to ONE event: this death,
+        # this stall, this level. That is Reflexion's shape, and ExpeL (AAAI 2024 Oral,
+        # arXiv:2308.10144) measured it as the weaker half -- per-episode reflection plus
+        # a second step that batches many trajectories into one rule-extraction call beat
+        # reflection alone, 0.80 against 0.71 on ALFWorld. We had the first step only.
+        #
+        # It matters here more than it did there. ARC Prize's own analysis names the
+        # dominant failure on this benchmark "True Local Effect, False World Model": the
+        # model sees a real local effect and cannot anchor it in a global rule. bp35 is
+        # our instance and the only game still at zero levels -- three waves produced
+        # three DIFFERENT theories of the same game, each coherent, each built from one
+        # run's worth of evidence, none of them the game.
+        #
+        # A single death says "that was wrong". Twenty deaths, side by side, say what the
+        # game IS -- and the harness had never once shown them side by side.
+        #
+        # Every third death rather than every death: firing each time is per-death
+        # reflection again, and firing once is a single shot at the hardest question in
+        # the run. Three is the smallest number from which a pattern can honestly be
+        # claimed, and it re-asks as the evidence grows.
+        if len(env.death_log) >= 3 and len(env.death_log) % 3 == 0 and not gained_last_turn:
+            rows = []
+            for d in env.death_log[-9:]:
+                bare = " | ".join(
+                    line.strip() for line in (d["forensics"] or "").splitlines()
+                    if ":" in line and "WHAT CHANGED" not in line
+                )
+                rows.append(
+                    f"  death {d['n']} on level {d['level']}: lasted "
+                    f"{d['life_actions']} actions, killed by action {d['last_action']}, "
+                    f"run-up {d['run_up']}\n      {bare[:240]}"
+                )
+            record = "\n".join(rows)
+            consolidate += (
+                f"\nSTOP AND READ YOUR {len(env.death_log)} DEATHS TOGETHER. You have "
+                f"been told about each one as it happened, and one death can only ever "
+                f"tell you that something was wrong. All of them at once tell you what "
+                f"this GAME is.\n{record}\n"
+                f"ANSWER ONE QUESTION before you spend another action: what single rule, "
+                f"had you known it from the start, would have prevented ALL of these -- "
+                f"not the last one. Look for what does NOT vary. If the lives lasted "
+                f"similar numbers of actions, that is a budget and not a hazard. If the "
+                f"same colour arrived on you each time, that is the hazard and its name "
+                f"is in the rows above. If the same action ended most of them, that "
+                f"action is not safe where you are using it.\n"
+                f"Then write that one rule with mechanic(text) BEFORE you act, and "
+                f"unmechanic() anything it contradicts. This is free. Re-deriving a "
+                f"theory of this game for the {len(env.death_log) // 3}th time is not.\n"
+            )
+        elif died:
+            consolidate += (
                 f"\nYOU DIED {died}x SINCE YOUR LAST TURN, and a death costs a whole bar.\n"
                 + ("Something you currently believe predicted that would work. Before you "
                    "spend another action, find the note that is wrong and retract(n, "
@@ -1930,7 +2574,7 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
             # reading the board, listing objects and re-reading the goal cost nothing at
             # all. So the stall points at the free tools and at retraction, and explicitly
             # warns against buying information with actions.
-            consolidate = (
+            consolidate += (
                 f"\nYOU HAVE SPENT {stalled} TURNS ON THIS LEVEL WITHOUT CLEARING IT.\n"
                 + ("That is evidence about your BELIEFS, not your effort: one of the notes "
                    "above is wrong, and while you keep it you are searching a space that does "
@@ -1971,6 +2615,20 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
         # first turn -- and therefore the whole run -- path dependent.
         board_text = describe_board(env.grid())
         learned = f"{mechanics}\n\n" if mechanics else ""
+        # Offered every turn, not just the first. A skill the agent is told about once
+        # on turn 1 and never again is a skill it has forgotten by turn 40 -- the same
+        # amnesia the trajectory history exists to fix.
+        skills_block = (
+            f"SKILLS you can call right now (learned code, costs no actions to read):\n"
+            f"{skills_text}\n"
+            f"learn(name, source, description, tags=[]) saves a NEW one. Save the "
+            f"REUSABLE part, not the whole solution: a function that reads this board "
+            f"into pieces transfers to the next game, `solve_{game}()` does not.\n\n"
+        ) if skills_text and skills_text != "(no skills learned yet)" else (
+            f"SKILLS: none learned yet. learn(name, source, description, tags=[]) saves "
+            f"a function so the next level and the next GAME can call it. Save the "
+            f"reusable part -- a board reader transfers, a coordinate table does not.\n\n"
+        )
 
         content = [
             {
@@ -1982,11 +2640,13 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
                     f"Levels: {env.best} of {env.frame().win_levels}\n"
                     f"{pace}"
                     f"Actions used: {env.spent} (soft budget {action_cap}); "
-                    f"this turn you may spend {env.turn_budget()} more\n"
+                    f"this turn you may spend {env.turn_budget()} more"
+                    f"{'  (NARROWED: this level has resisted ' + str(env._turns_on_level) + ' turns, so more attempts is not the move -- change the IDEA. Reading the board is free.)' if env.turn_budget() < env._turn_action_cap else ''}\n"
                     f"Deaths so far: {env.deaths}\n"
                     f"Colours on screen: {palette_legend(env.frame().frame)}\n"
                     f"{consolidate}\n"
                     f"{learned}"
+                    f"{skills_block}"
                     f"{board_text}\n\n"
                     f"{phoenix.summary()}\n\n"
                     f"{rules.summary()}\n\n"
@@ -2129,7 +2789,7 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
         env._ledger_lines = set()
         try:
             with contextlib.redirect_stdout(buffer):
-                exec(code, ns)  # noqa: S102 - executing model code is the design
+                _exec_bounded(code, ns, exec_timeout)
             err = ""
         except LevelCleared as exc:
             # Plain feedback, not a traceback: the model needs to read this as a fact
@@ -2150,6 +2810,13 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
             env.click_log = []
             env.forget_level_board()
             rules.clear_refuted()
+        except CodeTimeout as exc:
+            # Not a crash and not a game event: the cell was too expensive. Reported as
+            # feedback so the agent bounds its next search, and the ledger writes it did
+            # reach are salvaged exactly as on the death path.
+            err = ""
+            cleared = str(exc)
+            _salvage_ledger(code, ns, env)
         except StallDetected as exc:
             err = ""
             cleared = str(exc)
@@ -2218,8 +2885,79 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
                 }
             )
 
+        # PATIENCE MEASURES PROGRESS, AND A LEVEL IS NOT THE ONLY KIND. This reset used to
+        # fire only on `gained > 0`, which made patience mean "turns without COMPLETING a
+        # level" -- so any game whose level 1 takes longer than the budget dies no matter
+        # how well it is doing. Measured on wave r2 at --patience 25: five of seventeen
+        # games were cut, four at zero levels while holding correct control models. sk48
+        # died at turn 26 of an 80 turn budget, with zero deaths, holding a complete
+        # strategy: "align the crane centre with a target, extend until contact, then
+        # retract to reel that target left."  That is a solved game killed mid-execution.
+        #
+        # Learning a new rule of the game therefore also counts. It is the right signal
+        # rather than simply a bigger number because it still kills the failure patience
+        # exists for: the cd82 grind of 66 consecutive turns and ~700 actions learned
+        # nothing new, so it would still be cut here, while a slow learner survives.
+        # `mechanic()` rejects duplicates, so a claim cannot be re-registered to buy turns,
+        # and `unmechanic` shrinking the list can never satisfy `> 0`. A determined agent
+        # could still write a slightly different string every turn; `max_turns` remains the
+        # hard ceiling for exactly that reason.
         gained = env.best - before_levels
-        stale = 0 if gained > 0 else stale + 1
+        learned = len(env.mechanics_learned) - before_mechanics
+        stale = 0 if (gained > 0 or learned > 0) else stale + 1
+        # Carried to the NEXT turn's prompt, where the ask to save the working code lands.
+        gained_last_turn = gained
+        if gained > 0:
+            # A new level is a new attempt. Skills that helped clear the last one have
+            # already been credited above; carrying them forward would credit them again
+            # for work they took no part in.
+            skills_used_this_level = set()
+            scored_this_level = set()
+
+        # BOOK THE RESULT AUTOMATICALLY. Gap 10's lesson is that a primitive the agent
+        # must remember to call is a primitive that is never called, and `accept()` is
+        # the standing proof -- present in the REPL, absent from every trace. So the
+        # harness scores the skills itself from what actually happened, rather than
+        # asking the agent to be diligent about its own bookkeeping.
+        #
+        # CREDIT IS SCOPED TO THE LEVEL, NOT THE TURN, and r10 is why. The first version
+        # asked whether the CLEARING turn's code named a skill. Measured: ft09 went 6/6
+        # and tu93 reached 5/9, both re-using skills they had written, and not one
+        # level-clearing turn happened to call one -- so every transferable skill stayed
+        # at 0W/0L and transfer, gated on `wins > 0`, could never unlock at all.
+        #
+        # That was the wrong unit. A perception skill earns its keep on the turn that
+        # UNDERSTANDS the board; the clear lands a turn or two later. So every skill
+        # called since the last level boundary is credited when the level falls, and
+        # charged when a death ends the attempt. Still coarse, and honest about being
+        # coarse: `available()` only needs `wins > 0` to unlock transfer and four
+        # results to retire a bad skill.
+        for name in library.skills:
+            if name in (code or ""):
+                skills_used_this_level.add(name)
+        # ONE RESULT PER LEVEL PER SKILL. Level-scoped credit fixed the wins that were
+        # never booked and introduced the mirror defect: a level can be CLEARED once and
+        # DIED on twenty-three times, so losses outran wins by roughly an order of
+        # magnitude on exactly the games that are hard. Measured on the live library
+        # after r11 -- 6 wins against 33 losses, `small_object_locator` 0W/23L on bp35,
+        # `read_rolling_token` 0W/7L on sc25, both already retired by the four-results-
+        # below-a-third rule, and both PERCEPTION skills. Reading the board is not what
+        # killed the agent twenty-three times.
+        #
+        # The damage compounds: no transferable skill anywhere held a single win, and
+        # transfer is gated on `wins > 0`, so the scoring asymmetry by itself kept the
+        # library from ever crossing a game boundary. The library was destroying its
+        # best material from the hardest games and calling it evidence.
+        unscored = skills_used_this_level - scored_this_level
+        # One outcome, one record path, one place the exclusion is maintained. Written
+        # as a single branch rather than two symmetrical ones because a duplicated mark
+        # is a mark that can be half-removed: a mutation that dropped it from only the
+        # loss path left the whole thing looking correct while losses over-booked again.
+        outcome = True if gained > 0 else (False if env.deaths_this_turn else None)
+        if outcome is not None and unscored:
+            for n in unscored:
+                library.record(n, won=outcome)
+            scored_this_level |= unscored
 
         # A zero-action turn gathers no evidence, so the next turn meets the same wall.
         # Measured on sb26: seven straight turns printing "verification mismatch; no
@@ -2239,6 +2977,21 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
                     "total_actions": env.spent,
                     "code": code,
                     "output": last_output[-1500:],
+                    # WHAT THE HARNESS TOLD THE AGENT THIS TURN. `output` is the code's
+                    # stdout; the guidance goes into the PROMPT, which the trace never
+                    # stored -- so after r11 there was no way to confirm from disk that
+                    # the failure-synthesis ask had fired at all. Every claim about
+                    # whether an intervention reached the agent was unfalsifiable, which
+                    # is the same defect as a gate that certifies nothing. Cheap to fix
+                    # and it makes the next A/B answerable from the artifacts.
+                    #
+                    # `pace` is recorded for the same reason and was missed the first
+                    # time: it is a SECOND prompt variable, so recording only
+                    # `consolidate` left the level-economics message -- which lives in
+                    # pace -- just as unverifiable as the synthesis ask had been. The
+                    # lesson did not generalise on its own, one variable over.
+                    "consolidate": consolidate,
+                    "pace": pace,
                     "notes": env.notes[-8:],
                     "mechanics": list(env.mechanics_learned),
                     # WHETHER THIS GAME DRAWS A MOVE BAR, as measured rather than as
@@ -2357,6 +3110,9 @@ def main() -> int:
     ap.add_argument("--max-turns", type=int, default=20)
     ap.add_argument("--patience", type=int, default=8)
     ap.add_argument("--action-cap", type=int, default=6000)
+    ap.add_argument("--exec-timeout", type=float, default=300.0,
+                    help="wall-clock seconds a single code block may run before it is "
+                         "stopped and reported back to the agent (see CodeTimeout)")
     ap.add_argument("--deployment", default=DEPLOYMENT)
     ap.add_argument("--out", default="")
     ap.add_argument("--trace", default="")
@@ -2386,7 +3142,8 @@ def main() -> int:
                  # multi-game batch shares one path, and a per-turn snapshot of
                  # the game in progress would overwrite the games already
                  # finished -- trading one loss for a worse one.
-                 args.out if len(games) == 1 else "")
+                 args.out if len(games) == 1 else "",
+                 args.exec_timeout)
         )
         if args.out:
             Path(args.out).write_text(
