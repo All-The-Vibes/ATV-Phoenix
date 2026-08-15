@@ -119,11 +119,46 @@ def check_it_waits_for_a_long_enough_run() -> tuple[bool, str]:
     )
 
 
+def check_no_message_erases_another() -> tuple[bool, str]:
+    """A later branch must not silently destroy guidance an earlier one wrote.
+
+    Measured on dc22-ev6: the periodic review was BUILT at turns 25, 50 and 75 and
+    reached the agent zero times, because the stall branch further down reassigned
+    `consolidate` with a plain `=` on every one of those turns. Ninety-three turns,
+    three reviews owed, none delivered -- and specifically on a stalled run, which is
+    precisely the run that most needed to re-examine what it believed.
+
+    The check is mechanical: inside `play`, every assignment to `consolidate` after it
+    is initialised must be an augmented assignment. A plain `=` is a message that
+    silently outranks everything written before it in the same turn.
+    """
+    import evals.arc.codeact_agent as mod
+
+    tree = ast.parse(inspect.getsource(mod.play))
+    plain = 0
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            for tgt in node.targets:
+                if isinstance(tgt, ast.Name) and tgt.id == "consolidate":
+                    # The one legitimate plain assignment is the per-turn reset to "".
+                    if not (isinstance(node.value, ast.Constant)
+                            and node.value.value == ""):
+                        plain += 1
+    if plain:
+        return False, (
+            f"{plain} branch(es) assign `consolidate` with a plain `=`, so whichever "
+            f"runs last erases the rest. That silently swallowed every periodic review "
+            f"on dc22-ev6 -- built three times, delivered zero."
+        )
+    return True, "guidance accumulates; no branch erases another"
+
+
 CHECKS = [
     ("a periodic belief review exists", check_a_periodic_review_exists),
     ("it fires on an interval, not every turn", check_it_is_on_an_interval),
     ("it shows the agent what it believes", check_it_shows_the_beliefs),
     ("it waits for a long enough run", check_it_waits_for_a_long_enough_run),
+    ("no message erases another", check_no_message_erases_another),
 ]
 
 

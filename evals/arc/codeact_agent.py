@@ -2454,8 +2454,18 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
         # Deliberately NOT gated on the library being non-empty, for the reason recorded
         # above: gating guidance on the agent having already done the thing the guidance
         # exists to ask for is what made the earlier messages useless.
+        # ONE OF THESE FIRES, AND NONE OF THEM MAY ERASE THE OTHERS. These branches used
+        # plain assignment, which silently destroyed anything written earlier in the
+        # turn. Measured on dc22-ev6: the periodic belief review was built at turns 25,
+        # 50 and 75 and never reached the agent once, because the stall branch below
+        # reassigned `consolidate` every one of those turns. Ninety-three turns, three
+        # reviews owed, zero delivered -- and specifically on a STALLED run, which is
+        # exactly the run that needed to re-examine what it believed.
+        #
+        # The event branches remain mutually exclusive with each other (if/elif); they
+        # simply append to whatever the interval-driven messages already put there.
         if gained_last_turn:
-            consolidate = (
+            consolidate += (
                 f"\nYOU JUST CLEARED A LEVEL — AND THAT IS THE MOMENT YOU ARE MOST "
                 f"LIKELY TO BE WRONG. ARC Prize's own forensics name this failure "
                 f"\"Solved The Level, Didn't Learn The Game\": on ka59, Opus cleared "
@@ -2512,7 +2522,7 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
                     f"run-up {d['run_up']}\n      {bare[:240]}"
                 )
             record = "\n".join(rows)
-            consolidate = (
+            consolidate += (
                 f"\nSTOP AND READ YOUR {len(env.death_log)} DEATHS TOGETHER. You have "
                 f"been told about each one as it happened, and one death can only ever "
                 f"tell you that something was wrong. All of them at once tell you what "
@@ -2529,7 +2539,7 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
                 f"theory of this game for the {len(env.death_log) // 3}th time is not.\n"
             )
         elif died:
-            consolidate = (
+            consolidate += (
                 f"\nYOU DIED {died}x SINCE YOUR LAST TURN, and a death costs a whole bar.\n"
                 + ("Something you currently believe predicted that would work. Before you "
                    "spend another action, find the note that is wrong and retract(n, "
@@ -2564,7 +2574,7 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
             # reading the board, listing objects and re-reading the goal cost nothing at
             # all. So the stall points at the free tools and at retraction, and explicitly
             # warns against buying information with actions.
-            consolidate = (
+            consolidate += (
                 f"\nYOU HAVE SPENT {stalled} TURNS ON THIS LEVEL WITHOUT CLEARING IT.\n"
                 + ("That is evidence about your BELIEFS, not your effort: one of the notes "
                    "above is wrong, and while you keep it you are searching a space that does "
