@@ -2160,6 +2160,13 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
     # Has the run been told it is in the bad tail? Latched, because a warning repeated
     # every turn is a warning that stops being read.
     tail_warned = False
+    # Turn of the last periodic belief review. Prime Agent's Continual Harness
+    # auto-refines every 25 assistant turns (settings.turnInterval, confirmed in their
+    # agent-session.ts) and reads the trajectory plus its own state to decide what to
+    # edit. This harness has every CRUD primitive and no moment that asks the agent to
+    # use them on itself -- everything fires on an EVENT. Measured across the last 15
+    # runs: 75 such moments passed unused.
+    refine_at = 0
     # Overwritten by whichever exit actually fires; this is the one that means the loop
     # ran to the end of its turns with the game still winnable.
     stopped = "max_turns"
@@ -2338,6 +2345,48 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
                          f"you clear this game and get another attempt, that is the "
                          f"one to fix.\n")
 
+        # IS WHAT YOU BELIEVE STILL TRUE? Every other message here fires on an EVENT --
+        # a death, a stall, a level clear -- and beliefs in this harness are additive
+        # within a level: the agent writes notes as it learns and only removes one when
+        # something contradicts it hard enough to notice. A theory that was true on
+        # turn 10 and quietly stopped being true by turn 60 is still steering at turn
+        # 120, because nothing ever asks.
+        #
+        # Prime Agent auto-refines every 25 assistant turns. Their refiner reads the
+        # last 80k characters of trajectory plus the full harness state and emits CRUD
+        # edits over prompt notes, memories, skills and sub-agents. We have the same
+        # primitives -- note, mechanic, retract, unmechanic, learn -- and never call a
+        # review. Measured on the last 15 runs: 75 review points passed unused.
+        #
+        # Same interval, and it does NOT fire before turn 25: a review on turn 5
+        # reviews nothing and teaches the agent to skip the message before it ever
+        # carries information. That is how the stall warning came to be ignored for 150
+        # consecutive turns on cd82-ev3.
+        if turn + 1 >= 25 and (turn + 1) % 25 == 0 and (turn + 1) != refine_at:
+            refine_at = turn + 1
+            held = env.mechanics_learned or []
+            notes_now = env.level_notes or []
+            consolidate += (
+                f"\nSTEP BACK. You are {turn + 1} turns in with {env.spent} actions "
+                f"spent and {env.best} level(s) cleared. Before the next action, review "
+                f"what you believe rather than adding to it.\n"
+                f"RULES YOU ARE HOLDING ({len(held)}):\n"
+                + ("".join(f"  {i + 1}. {m[:150]}\n" for i, m in enumerate(held))
+                   or "  (none -- and if this game has taught you nothing in "
+                      f"{turn + 1} turns, that is the finding)\n")
+                + f"NOTES ON THIS BOARD ({len(notes_now)}):\n"
+                + ("".join(f"  {i + 1}. {str(n)[:110]}\n"
+                           for i, n in enumerate(notes_now[-6:]))
+                   or "  (none)\n")
+                + "Take each one and ask whether you have OBSERVED it since you wrote "
+                  "it, or merely not contradicted it. Anything in the second category "
+                  "is a guess you are steering by. unmechanic(n, because=...) a rule "
+                  "that no longer holds and retract(n, because=...) a note that does "
+                  "not; both are free, and a wrong belief costs actions every turn you "
+                  "keep it. If a rule has survived real tests, leave it and say so in "
+                  "one line rather than re-deriving it.\n"
+            )
+
         # THE RUN THAT IS ALREADY LOST, TOLD SO WHILE IT CAN STILL CHANGE. Measured
         # across 150 traces on disk, using "still on level 0 after K times the human's
         # level-1 budget" as the discriminator:
@@ -2407,17 +2456,28 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
         # exists to ask for is what made the earlier messages useless.
         if gained_last_turn:
             consolidate = (
-                f"\nYOU JUST CLEARED A LEVEL. The code that did it is above, it is proven, "
-                f"and right now it is worth more than the level.\n"
-                f"SAVE THE REUSABLE PART with learn(name, source, description, "
-                f"tags=['general']). Not the whole solve -- the piece that would still be "
-                f"true on a DIFFERENT board: how you read this board into objects, how you "
-                f"found which action moves what, how you located the target. That function "
-                f"is offered to every other game in the corpus once it has won, and there "
-                f"are 25 of them.\n"
-                f"It costs no actions. Measured: the library holds only per-game solvers "
-                f"today and has therefore transferred NOTHING between games -- every game "
-                f"has paid full price to rediscover what the last one already knew.\n"
+                f"\nYOU JUST CLEARED A LEVEL — AND THAT IS THE MOMENT YOU ARE MOST "
+                f"LIKELY TO BE WRONG. ARC Prize's own forensics name this failure "
+                f"\"Solved The Level, Didn't Learn The Game\": on ka59, Opus cleared "
+                f"level 1 in 37 actions holding a WRONG theory of what a click does, "
+                f"because a misread primitive happened to fit a forgiving level, and "
+                f"the run never recovered when level 2 demanded the real mechanic. "
+                f"Measured on this corpus: of 66 level transitions, 16 (24%) go from a "
+                f"level cleared at the cap straight into one scoring under 30%.\n"
+                f"So before you spend an action on this board, take the rules you are "
+                f"carrying and ask of each one: did I SEE this cause that outcome, or "
+                f"did the level simply not punish me for believing it? A rule that has "
+                f"only ever been un-contradicted is a guess. unmechanic(n, "
+                f"because=...) it now rather than steering by it for the next hundred "
+                f"actions — that is free, and the next level is worth more than the one "
+                f"you just cleared.\n"
+                f"THEN SAVE THE REUSABLE PART with learn(name, source, description, "
+                f"tags=['general'], when_to_invoke='...'). Not the whole solve — the "
+                f"piece that would still be true on a DIFFERENT board: how you read "
+                f"this board into objects, how you found which action moves what, how "
+                f"you located the target. That function is offered to every other game "
+                f"in the corpus once it has won, and there are 25 of them.\n"
+                f"It costs no actions.\n"
             )
         # THE FAILURES, READ TOGETHER. Everything above reacts to ONE event: this death,
         # this stall, this level. That is Reflexion's shape, and ExpeL (AAAI 2024 Oral,
