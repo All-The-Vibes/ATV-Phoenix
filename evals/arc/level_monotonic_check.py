@@ -47,6 +47,7 @@ CLEARED = re.compile(r"LEVEL (\d+) CLEARED in (\d+) actions")
 # Read from the harness rather than restated here, so bumping the version in one place
 # cannot leave this check silently binding the wrong generation of artifact.
 from evals.arc.codeact_agent import HARNESS_VERSION as CURRENT_HARNESS  # noqa: E402
+from evals.arc.trace_integrity import last_run_rows  # noqa: E402
 
 
 def _fail(msg: str) -> str:
@@ -242,9 +243,15 @@ def check_traces_never_reclear_a_level() -> tuple[bool, list[str]]:
 
     examined, offenders, legacy = 0, [], []
     for path in traces:
+        # A trace holding two runs is a TAG COLLISION, not a harness regression. Reading
+        # such a file end-to-end shows level announcements of [1, 2, 3, 1, 2, 3] and
+        # reports that the monotonic gate broke, which is how twenty minutes went into
+        # measuring a game reset that never happened. Judge only the most recent run.
+        lo, hi = last_run_rows(path)
         announced: list[int] = []
         try:
             with path.open(encoding="utf-8") as fh:
+                index = -1
                 for line in fh:
                     line = line.strip()
                     if not line:
@@ -255,6 +262,10 @@ def check_traces_never_reclear_a_level() -> tuple[bool, list[str]]:
                         continue
                     if not isinstance(row, dict):
                         continue
+                    if isinstance(row.get("turn"), int):
+                        index += 1
+                        if not (lo <= index < hi):
+                            continue
                     # json-encode first: the output carries raw newlines and quotes.
                     for m in CLEARED.finditer(json.dumps(row.get("output", ""))):
                         announced.append(int(m.group(1)))
@@ -275,7 +286,17 @@ def check_traces_never_reclear_a_level() -> tuple[bool, list[str]]:
                 break
 
     if not examined:
-        return True, ["skip  no trace announced a cleared level"]
+        # See the identical guard in reset_check. The last_run_rows filter was added
+        # today; if it ever discards every row, this check would go green while reading
+        # nothing. Refusing to pass without evidence is the only defence, and it was
+        # verified by blinding the filter and watching this turn red.
+        return False, [
+            _fail(
+                f"{len(traces)} trace(s) on disk but NONE announced a cleared level. "
+                "This check cannot pass without evidence -- suspect the trace-integrity "
+                "filter."
+            )
+        ]
     if offenders:
         lines = [
             _fail(

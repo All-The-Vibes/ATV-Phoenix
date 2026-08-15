@@ -1,36 +1,49 @@
 """How much does a mid-run reset actually cost, and how often does it happen?
 
-Three checks went red at once and two of them describe the same event:
+WRITTEN TO CHASE A PHANTOM, KEPT AS THE PROOF IT WAS ONE.
 
-  level_monotonic_check : level counters read [1, 2, 3, 1, 2, 3] -- a run reaches
-                          level 3 and finds itself back on level 1
-  reset_check           : "trace-cd82-ev3: level count fell 3 -> 0. A reset really
-                          does restart the game, and the prompt fix is wrong."
+Three checks went red at once and two described the same event -- level counters reading
+[1, 2, 3, 1, 2, 3], and "level count fell 3 -> 0. A reset really does restart the game,
+and the prompt fix is wrong." This tool was written to size the damage before fixing it,
+and its first answer was: 7 of 318 runs lost levels mid-run, 22 levels thrown away, 750
+turns spent re-treading ground.
 
-If that is rare, it is a curiosity. If it is common, it is the largest single leak in
-the corpus, because a run that re-clears level 1 is spending its action budget on
-levels it has already beaten -- and RHAE charges every one of those actions against the
-same capped reward.
+Every one of those numbers was wrong. The flagged traces held 240 rows against a
+120-turn cap: two runs concatenated into one file by a tag collision. The level counter
+never fell, it started over, because a second run started over. Filtered to the most
+recent run per file, the honest count is zero, and reset_check now reports 278 recorded
+runs that never lost a cleared level across every death.
 
-So count it: how many runs lose progress, how deep they were when it happened, and how
-many turns they spend afterwards re-treading ground.
-
-Free. Reads traces already on disk.
+Kept because the retraction is worth more than the tool: a corrupted measurement is more
+expensive than a missing one, since it arrives with directions attached. Run it to
+confirm the phenomenon still does not exist.
 """
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from evals.arc.trace_integrity import last_run_rows  # noqa: E402
 
 RESULTS = Path("eval/arc-results")
 
 
 def rows(path: Path):
+    """Only the most recent run in the file -- see the module docstring."""
+    lo, hi = last_run_rows(path)
+    index = -1
     for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
         try:
             r = json.loads(line)
         except Exception:
             continue
+        if isinstance(r.get("turn"), int):
+            index += 1
+            if not (lo <= index < hi):
+                continue
         if "levels" in r:
             yield r
 
