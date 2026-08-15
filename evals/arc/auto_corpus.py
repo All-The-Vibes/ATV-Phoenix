@@ -118,6 +118,23 @@ def rank(baselines: dict) -> list[tuple[float, str, dict]]:
         best = scores[-1]
         levels = max(r["levels_completed"] for r in rs)
 
+        # THE DEPTH WE HAVE ALREADY PROVEN, not the depth of the best-scoring run.
+        # These are different numbers and the difference is free score. r11l has
+        # cleared all 6 of its levels (auto3, 512 actions) and scores 51.19%, while a
+        # 5-level run scores 65.81% and is therefore the one on the board -- a slow
+        # deep clear loses to a fast shallow one under max-of-runs. Five games are in
+        # this state: g50t, ls20, r11l, sp80, tu93.
+        #
+        # That matters for ranking because a level already cleared ONCE is not a
+        # gamble. The agent has demonstrated it can reach level 6 of r11l; it simply
+        # did it slowly. Ranking by the best-scoring run's depth hides that entirely
+        # and treats r11l as a 5-level game with a speculative 6th.
+        #
+        # Measured: playing the five proven-deep clears at the cap is worth +4.40pp,
+        # r11l alone 1.97pp -- and none of it requires beating a level we have never
+        # beaten.
+        proven_levels = levels
+
         # HEADROOM IS BOUNDED BY LEVELS CLEARED, NOT BY 100%. The first version used
         # (1 - best) * share, which assumes any game could reach a perfect score. It
         # cannot: RHAE caps a level at 1.15 and weights it by index, so a game with
@@ -135,9 +152,10 @@ def rank(baselines: dict) -> list[tuple[float, str, dict]]:
         # LEVELS ALREADY CLEARED, plus what the next level would add if it falls.
         n_levels = len(baselines[game])
         weight_sum = sum(range(1, n_levels + 1)) or 1
-        ceiling_now = sum(range(1, levels + 1)) / weight_sum * 1.15
+        ceiling_now = sum(range(1, proven_levels + 1)) / weight_sum * 1.15
         efficiency_room = max(0.0, ceiling_now - best)
-        next_level_room = ((levels + 1) / weight_sum * 1.15) if levels < n_levels else 0.0
+        next_level_room = (((proven_levels + 1) / weight_sum * 1.15)
+                           if proven_levels < n_levels else 0.0)
         headroom = (efficiency_room + next_level_room) * share
 
         # Spread of this game's OWN level-1 discovery cost, as the variance proxy.
