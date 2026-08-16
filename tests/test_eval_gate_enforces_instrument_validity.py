@@ -36,27 +36,39 @@ UPDATER = REPO / "scripts" / "update-scoreboard.ps1"
 UNKNOWN = "UNKNOWN"
 MAX_AGE_DAYS = 14
 
+# Windows ships `powershell` (5.1); Linux and macOS ship `pwsh` (Core), which is what the CI
+# runners have. Probing only `powershell` made all three gate tests skip on Linux, so the suite
+# exited 0 having proven nothing — and phoenix-proof correctly rejected that base as vacuous.
+# The sibling file's docstring warns about exactly this: a probe that can silently erase the
+# observation erases the evidence with it.
+POWERSHELL_CANDIDATES = ("pwsh", "powershell")
 
-def _pwsh_available():
-    """Report whether PowerShell can be invoked, and refuse to guess.
 
-    A timeout is a loaded machine, not a missing interpreter. Skipping on one would erase the
-    only observation that this gate enforces its own charter, so it raises instead.
+def _powershell_exe():
+    """The PowerShell executable available here, or None.
+
+    A timeout is a loaded machine, not a missing interpreter, so it raises rather than being
+    read as absence.
     """
-    try:
-        subprocess.run(
-            ["powershell", "-NoProfile", "-Command", "$PSVersionTable.PSVersion"],
-            capture_output=True,
-            timeout=30,
-        )
-        return True
-    except (FileNotFoundError, NotADirectoryError, PermissionError):
-        return False
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError(
-            "the PowerShell availability probe timed out after 30s. That is a loaded or broken "
-            "environment, not a missing interpreter."
-        ) from exc
+    for exe in POWERSHELL_CANDIDATES:
+        if shutil.which(exe) is None:
+            continue
+        try:
+            subprocess.run(
+                [exe, "-NoProfile", "-Command", "$PSVersionTable.PSVersion"],
+                capture_output=True,
+                timeout=30,
+            )
+            return exe
+        except (FileNotFoundError, NotADirectoryError, PermissionError):
+            continue
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(
+                f"the {exe} availability probe timed out after 30s. That is a loaded or broken "
+                "environment, not a missing interpreter. Skipping here would erase the only "
+                "observation that this gate enforces its own charter (issue #171)."
+            ) from exc
+    return None
 
 
 def _write_results(path, resolved_fraction, tasks=9):
@@ -94,9 +106,9 @@ def _sandbox(tmp_path, baseline_date, baseline_arm_b=0.7778, measured_arm_b=0.77
     return results
 
 
-def _run_gate(tmp_path, results):
+def _run_gate(tmp_path, results, exe):
     return subprocess.run(
-        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+        [exe, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
          str(tmp_path / "scripts" / "eval-gate.ps1"),
          "-PrebuiltResults", str(results),
          "-ResultsOut", str(tmp_path / "out.jsonl")],
@@ -110,10 +122,11 @@ def _days_ago(days):
 
 def test_gate_reports_unknown_when_the_baseline_is_older_than_the_charter_allows(tmp_path):
     """A measurement past 14 days cannot discriminate, and the gate has to say so."""
-    if not _pwsh_available():
-        pytest.skip("powershell unavailable")
+    exe = _powershell_exe()
+    if exe is None:
+        pytest.skip("no PowerShell interpreter available")
     results = _sandbox(tmp_path, baseline_date=_days_ago(MAX_AGE_DAYS + 30))
-    r = _run_gate(tmp_path, results)
+    r = _run_gate(tmp_path, results, exe)
     combined = r.stdout + r.stderr
     assert UNKNOWN in combined, (
         f"a baseline {MAX_AGE_DAYS + 30} days old is UNKNOWN under MISSION.md, and the gate "
@@ -126,10 +139,11 @@ def test_unknown_does_not_block_the_change(tmp_path):
 
     Blocking on a stale baseline would stop the very pull requests that could refresh it.
     """
-    if not _pwsh_available():
-        pytest.skip("powershell unavailable")
+    exe = _powershell_exe()
+    if exe is None:
+        pytest.skip("no PowerShell interpreter available")
     results = _sandbox(tmp_path, baseline_date=_days_ago(MAX_AGE_DAYS + 30))
-    r = _run_gate(tmp_path, results)
+    r = _run_gate(tmp_path, results, exe)
     assert r.returncode == 0, (
         "UNKNOWN is a disclosure, not a rejection\n" + r.stdout + r.stderr
     )
@@ -137,10 +151,11 @@ def test_unknown_does_not_block_the_change(tmp_path):
 
 def test_gate_stays_quiet_when_the_baseline_is_fresh(tmp_path):
     """The anti-noise control. Printed unconditionally the disclosure would mean nothing."""
-    if not _pwsh_available():
-        pytest.skip("powershell unavailable")
+    exe = _powershell_exe()
+    if exe is None:
+        pytest.skip("no PowerShell interpreter available")
     results = _sandbox(tmp_path, baseline_date=_days_ago(1))
-    r = _run_gate(tmp_path, results)
+    r = _run_gate(tmp_path, results, exe)
     combined = r.stdout + r.stderr
     assert r.returncode == 0, combined
     assert UNKNOWN not in combined, (
