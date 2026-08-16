@@ -127,9 +127,47 @@ if ($rawBytes[0] -eq 0xEF) { $rawBytes = $rawBytes[3..($rawBytes.Length-1)] }
 $board = [System.Text.Encoding]::UTF8.GetString($rawBytes) | ConvertFrom-Json
 $baselineB = $board.baseline.swe_bench_lite.arm_b_phoenix_resolved
 Write-Output "[eval-gate] Baseline Arm B: $baselineB"
+
+# Gate-instrument validity (MISSION.md, issue #171). A shipping gate counts only while its
+# instrument can still discriminate: a measurement that is missing, void, older than 14 days,
+# or saturated at a perfect score is UNKNOWN. The charter has said so since 2026-08-07 and
+# nothing enforced the age half, so every merge was gated against whatever the baseline
+# happened to be, however old. A gate blind to the age of its own instrument cannot be the
+# thing that decides whether the loop is shipping blind.
+#
+# UNKNOWN discloses and does not block, deliberately. Failing here would stop the very pull
+# requests that could refresh the baseline, which is the deadlock this rule exists to avoid.
+$maxBaselineAgeDays = 14
+$baselineValid = $board.baseline.swe_bench_lite.valid
+if ($null -ne $baselineValid -and -not $baselineValid) {
+  Write-Output "[eval-gate] UNKNOWN: the baseline measurement is marked void, so Tier 3 cannot discriminate. It neither blocks nor passes silently. Tracked in issue #171."
+}
+$baselineDateRaw = $board.baseline.date
+if ($baselineDateRaw) {
+  $parsedDate = [datetime]::MinValue
+  if ([datetime]::TryParse($baselineDateRaw, [ref]$parsedDate)) {
+    $ageDays = [int]((Get-Date).Date - $parsedDate.Date).TotalDays
+    if ($ageDays -gt $maxBaselineAgeDays) {
+      Write-Output "[eval-gate] UNKNOWN: the baseline was measured $ageDays days ago ($baselineDateRaw), past the $maxBaselineAgeDays-day window in MISSION.md. Tier 3 is gating against a measurement that can no longer discriminate; this is disclosed, not blocked, because blocking would stop the changes that could refresh it. Tracked in issue #171."
+    }
+  }
+  else {
+    Write-Output "[eval-gate] UNKNOWN: the baseline date '$baselineDateRaw' could not be parsed, so its age cannot be checked. Tracked in issue #171."
+  }
+}
+else {
+  Write-Output "[eval-gate] UNKNOWN: the baseline carries no date, so its age cannot be checked. Tracked in issue #171."
+}
+
 if ($baselineB -ge 1.0) {
   Write-Output "[eval-gate] SATURATED: the baseline is $baselineB, which is the highest a resolved-rate can reach. This gate can detect a regression and cannot detect an improvement, so a tie at $baselineB is not evidence that the harness got better. Tracked in issue #142."
 }
+
+# Re-enter this same interpreter rather than the name `powershell`, which does not exist on
+# Linux or macOS (they ship `pwsh`). Hardcoding it made the gate unrunnable off Windows, which
+# stayed invisible while nothing exercised it on a Linux runner.
+$psExe = (Get-Process -Id $PID).Path
+if (-not $psExe) { $psExe = "powershell" }
 
 if ($PrebuiltResults -and (Test-Path $PrebuiltResults)) {
   Write-Output "[eval-gate] Using pre-built results (test mode)"
@@ -138,7 +176,7 @@ if ($PrebuiltResults -and (Test-Path $PrebuiltResults)) {
   $runSwe = Join-Path $repoRoot "evals\swe-bench-lite\run_swe.ps1"
   if (-not (Test-Path $runSwe)) { Write-Error "[eval-gate] ERROR: run_swe.ps1 not found"; exit 2 }
   Write-Output "[eval-gate] Running swe-bench-lite..."
-  powershell -NoProfile -ExecutionPolicy Bypass -File $runSwe -OutFile $ResultsOut 2>&1
+  & $psExe -NoProfile -ExecutionPolicy Bypass -File $runSwe -OutFile $ResultsOut 2>&1
   if (-not (Test-Path $ResultsOut)) { Write-Error "[eval-gate] ERROR: no results produced"; exit 2 }
 }
 
@@ -151,7 +189,7 @@ Write-Output "[eval-gate] Arm B score: $scoreB (baseline: $baselineB delta: $del
 
 $updater = Join-Path $PSScriptRoot "update-scoreboard.ps1"
 if (Test-Path $updater) {
-  powershell -NoProfile -ExecutionPolicy Bypass -File $updater -ResultsFile $ResultsOut -Trigger pr 2>&1 | Out-Null
+  & $psExe -NoProfile -ExecutionPolicy Bypass -File $updater -ResultsFile $ResultsOut -Trigger pr 2>&1 | Out-Null
 }
 
 if ($delta -lt 0) {
