@@ -1,9 +1,10 @@
 //! `sense` — objective failure detection. No LLM, no opinion. `ok=false` is honest, not a failure.
 
 use serde::{Deserialize, Serialize};
+use std::io::Read;
 use std::path::Path;
-use std::process::Command;
-use std::time::Instant;
+use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 
 const MAX_EVIDENCE: usize = 2048;
 
@@ -88,19 +89,52 @@ pub struct Check {
     pub timeout_secs: Option<u64>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SenseResult {
     pub ok: bool,
+    /// The check kind that produced this result (`command_exit`, `file_sha256`, ...). Not a POSIX
+    /// signal number — see `killed_by_signal` for that.
     pub signal: String,
     pub evidence: String,
+    /// True when the command was killed because it outlived `timeout_secs`.
+    ///
+    /// Reported as its own fact rather than folded into the exit code, because a result can be
+    /// several things at once: a process can time out AND exit 0 because it trapped the signal.
+    /// Collapsing them lets a caller read a cut-short run as a clean success.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub timed_out: bool,
+    /// The process exit code, when it exited normally. `None` when it was killed by a signal or by
+    /// the deadline — which is why this is an `Option` rather than the old `-1` sentinel that was
+    /// indistinguishable from a genuine exit of `-1`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i32>,
 }
 
-fn truncate(mut s: String) -> String {
-    if s.len() > MAX_EVIDENCE {
-        s.truncate(MAX_EVIDENCE);
-        s.push_str("…[truncated]");
+/// Trim `s` to fit `MAX_EVIDENCE`, keeping the **tail**.
+///
+/// Two properties this must hold, both learned the hard way:
+///
+/// 1. **Never panic.** `String::truncate` asserts its index is a UTF-8 char boundary, and subprocess
+///    output is arbitrary bytes — pytest and rich draw box characters, cargo emits arrows, test
+///    names and paths carry non-ASCII. Slicing at a fixed byte offset aborts the arbiter, and
+///    whether it does is data-dependent, so it fails intermittently and only when a check is
+///    already failing.
+/// 2. **Keep the tail.** Test runners put the failure summary, the assertion diff and the final
+///    error at the end. Keeping the head preserves collection banners and discards the diagnosis.
+fn truncate(s: String) -> String {
+    if s.len() <= MAX_EVIDENCE {
+        return s;
     }
-    s
+    const MARKER: &str = "[truncated, showing tail]\n";
+    // Walk forward to the next char boundary so the split never lands inside a character.
+    let mut start = s.len() - MAX_EVIDENCE.min(s.len());
+    while start < s.len() && !s.is_char_boundary(start) {
+        start += 1;
+    }
+    let mut out = String::with_capacity(MARKER.len() + (s.len() - start));
+    out.push_str(MARKER);
+    out.push_str(&s[start..]);
+    out
 }
 
 pub fn sha256_file(path: &Path) -> std::io::Result<String> {
@@ -191,9 +225,38 @@ pub fn canonical_digest(check: &Check) -> String {
     hex(&h.finalize())
 }
 
+/// Best-effort termination of a child **and its descendants**.
+///
+/// `Child::kill()` terminates only the direct child. A hung check is usually a runner — `pytest`,
+/// `cargo`, `npm` — whose own children hold the work, so killing just the parent trades a hung
+/// check for an orphaned process tree. There is no portable std API for this, so shell out to the
+/// platform's tree-killer and fall back to the direct kill.
+fn kill_tree(child: &mut std::process::Child) {
+    let pid = child.id();
+    if cfg!(windows) {
+        let _ = Command::new("taskkill")
+            .args(["/T", "/F", "/PID", &pid.to_string()])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    } else {
+        // Negative pid targets the process group when the child leads one; the direct kill below
+        // covers the case where it does not.
+        let _ = Command::new("kill")
+            .args(["-KILL", &format!("-{pid}")])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+    let _ = child.kill();
+    // Reap, so the kill reaches quiescence instead of merely being requested. A teardown that
+    // returns before the work stops is how orphans are made.
+    let _ = child.wait();
+}
+
 fn sense_command(check: &Check) -> SenseResult {
     if check.target.is_empty() {
-        return SenseResult { ok: false, signal: "command_exit".into(), evidence: "empty argv".into() };
+        return SenseResult { ok: false, signal: "command_exit".into(), evidence: "empty argv".into(), ..Default::default() };
     }
     let expect: i32 = check.expect.as_deref().unwrap_or("0").parse().unwrap_or(0);
     let started = Instant::now();
@@ -202,26 +265,132 @@ fn sense_command(check: &Check) -> SenseResult {
     if let Some(dir) = &check.cwd {
         cmd.current_dir(dir);
     }
-    // argv-only, no shell. (v0: timeout enforced by caller-side test harness; documented limitation.)
-    match cmd.output() {
-        Ok(out) => {
-            let code = out.status.code().unwrap_or(-1);
-            let ok = code == expect;
-            let tail = String::from_utf8_lossy(if out.stderr.is_empty() { &out.stdout } else { &out.stderr });
-            SenseResult {
-                ok,
+
+    // No deadline declared: keep the historical behaviour exactly.
+    let Some(budget) = check.timeout_secs else {
+        return match cmd.output() {
+            Ok(out) => finish_command(check, expect, started, out.status.code(), &out.stdout, &out.stderr),
+            Err(e) => SenseResult {
+                ok: false,
                 signal: "command_exit".into(),
-                evidence: truncate(format!(
-                    "argv={:?} exit={} expect={} ({}ms)\n{}",
-                    check.target, code, expect, started.elapsed().as_millis(), tail
-                )),
+                evidence: truncate(format!("spawn failed: {e}")),
+                ..Default::default()
+            },
+        };
+    };
+
+    // argv-only, no shell. Piped stdio is drained on threads so a child that fills a pipe buffer
+    // blocks on neither us nor itself while we are waiting out its deadline.
+    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+    let mut child = match cmd.spawn() {
+        Ok(c) => c,
+        Err(e) => {
+            return SenseResult {
+                ok: false,
+                signal: "command_exit".into(),
+                evidence: truncate(format!("spawn failed: {e}")),
+                ..Default::default()
             }
         }
-        Err(e) => SenseResult {
+    };
+
+    let mut out_pipe = child.stdout.take();
+    let mut err_pipe = child.stderr.take();
+    let out_reader = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        if let Some(p) = out_pipe.as_mut() {
+            let _ = p.read_to_end(&mut buf);
+        }
+        buf
+    });
+    let err_reader = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        if let Some(p) = err_pipe.as_mut() {
+            let _ = p.read_to_end(&mut buf);
+        }
+        buf
+    });
+
+    let deadline = Duration::from_secs(budget);
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break Some(status),
+            Ok(None) => {
+                if started.elapsed() >= deadline {
+                    kill_tree(&mut child);
+                    break None;
+                }
+                std::thread::sleep(Duration::from_millis(25));
+            }
+            Err(e) => {
+                kill_tree(&mut child);
+                return SenseResult {
+                    ok: false,
+                    signal: "command_exit".into(),
+                    evidence: truncate(format!("wait failed: {e}")),
+                    ..Default::default()
+                };
+            }
+        }
+    };
+
+    let stdout = out_reader.join().unwrap_or_default();
+    let stderr = err_reader.join().unwrap_or_default();
+
+    let Some(status) = status else {
+        // Timed out. A command killed at its deadline proved nothing, so it is never GREEN — and it
+        // says "timed out" in words so the trace can tell a hang apart from an ordinary failure.
+        let tail = String::from_utf8_lossy(if stderr.is_empty() { &stdout } else { &stderr });
+        return SenseResult {
             ok: false,
             signal: "command_exit".into(),
-            evidence: truncate(format!("spawn failed: {e}")),
-        },
+            evidence: truncate(format!(
+                "argv={:?} timed out after {}s (killed at {}ms) expect={}\n{}",
+                check.target,
+                budget,
+                started.elapsed().as_millis(),
+                expect,
+                tail
+            )),
+            timed_out: true,
+            exit_code: None,
+        };
+    };
+
+    finish_command(check, expect, started, status.code(), &stdout, &stderr)
+}
+
+/// Shared verdict for a command that ran to completion, with or without a declared deadline.
+fn finish_command(
+    check: &Check,
+    expect: i32,
+    started: Instant,
+    code: Option<i32>,
+    stdout: &[u8],
+    stderr: &[u8],
+) -> SenseResult {
+    // `code` is `None` when a signal killed the child (OOM killer, CI timeout, SIGKILL). The old
+    // `unwrap_or(-1)` mapped that onto a real exit code, so "killed" and "exited -1" were
+    // indistinguishable. A signalled process never exited with what we expected, so it is not ok.
+    let ok = code == Some(expect);
+    let tail = String::from_utf8_lossy(if stderr.is_empty() { stdout } else { stderr });
+    let shown = match code {
+        Some(c) => c.to_string(),
+        None => "killed by signal".to_string(),
+    };
+    SenseResult {
+        ok,
+        signal: "command_exit".into(),
+        evidence: truncate(format!(
+            "argv={:?} exit={} expect={} ({}ms)\n{}",
+            check.target,
+            shown,
+            expect,
+            started.elapsed().as_millis(),
+            tail
+        )),
+        timed_out: false,
+        exit_code: code,
     }
 }
 
@@ -234,12 +403,14 @@ fn sense_sha256(check: &Check) -> SenseResult {
                 ok: got == want,
                 signal: "file_sha256".into(),
                 evidence: format!("path={} got={} want={}", path.display(), got, want),
+                ..Default::default()
             }
         }
         Err(e) => SenseResult {
             ok: false,
             signal: "file_sha256".into(),
             evidence: format!("read {} failed: {e}", path.display()),
+            ..Default::default()
         },
     }
 }
@@ -249,15 +420,16 @@ fn sense_regex(check: &Check) -> SenseResult {
     let pat = check.expect.clone().unwrap_or_default();
     let re = match regex::Regex::new(&pat) {
         Ok(r) => r,
-        Err(e) => return SenseResult { ok: false, signal: "regex_in_file".into(), evidence: format!("bad regex: {e}") },
+        Err(e) => return SenseResult { ok: false, signal: "regex_in_file".into(), evidence: format!("bad regex: {e}"), ..Default::default() },
     };
     match std::fs::read_to_string(path) {
         Ok(contents) => SenseResult {
             ok: re.is_match(&contents),
             signal: "regex_in_file".into(),
             evidence: format!("path={} pattern={}", path.display(), pat),
+            ..Default::default()
         },
-        Err(e) => SenseResult { ok: false, signal: "regex_in_file".into(), evidence: format!("read failed: {e}") },
+        Err(e) => SenseResult { ok: false, signal: "regex_in_file".into(), evidence: format!("read failed: {e}"), ..Default::default() },
     }
 }
 
@@ -267,6 +439,7 @@ fn sense_prompt_manifest(check: &Check) -> SenseResult {
             ok: false,
             signal: "prompt_manifest".into(),
             evidence: "empty target (need baseline manifest path)".into(),
+            ..Default::default()
         };
     }
     let p = Path::new(&check.target[0]);
@@ -278,18 +451,20 @@ fn sense_prompt_manifest(check: &Check) -> SenseResult {
                 "manifest={} composite={} added={:?} removed={:?} changed={:?}",
                 p.display(), m.composite_sha256, v.added, v.removed, v.changed
             )),
+            ..Default::default()
         },
         Err(e) => SenseResult {
             ok: false,
             signal: "prompt_manifest".into(),
             evidence: truncate(format!("read manifest {} failed: {e}", p.display())),
+            ..Default::default()
         },
     }
 }
 
 fn sense_ui_behavior(check: &Check) -> SenseResult {
     if check.target.is_empty() {
-        return SenseResult { ok: false, signal: "ui_behavior".into(), evidence: "empty target (need script path)".into() };
+        return SenseResult { ok: false, signal: "ui_behavior".into(), evidence: "empty target (need script path)".into(), ..Default::default() };
     }
     let started = Instant::now();
     let mut cmd = Command::new("node");
@@ -305,10 +480,10 @@ fn sense_ui_behavior(check: &Check) -> SenseResult {
             let evidence = truncate(format!("script={} ok={} exit={} ({}ms)\n{}",
                 &check.target[0], ok, out.status.code().unwrap_or(-1),
                 started.elapsed().as_millis(), stdout.chars().take(512).collect::<String>()));
-            SenseResult { ok, signal: "ui_behavior".into(), evidence }
+            SenseResult { ok, signal: "ui_behavior".into(), evidence, ..Default::default() }
         }
         Err(e) => SenseResult { ok: false, signal: "ui_behavior".into(),
-            evidence: truncate(format!("node spawn failed: {e}")) },
+            evidence: truncate(format!("node spawn failed: {e}")), ..Default::default() },
     }
 }
 
@@ -338,5 +513,49 @@ mod target_flex {
         assert_eq!(c.target, vec!["pytest","-q"]);
         let c: Check = serde_json::from_str(r#"{"kind":"command_exit","target":"cmd /C findstr x f.txt"}"#).unwrap();
         assert_eq!(c.target, vec!["cmd","/C","findstr","x","f.txt"]);
+    }
+}
+
+#[cfg(test)]
+mod evidence_truncation {
+    use super::*;
+
+    /// `String::truncate` panics unless the index is a UTF-8 char boundary. Subprocess output is
+    /// arbitrary bytes: pytest and rich draw box characters, cargo emits arrows, test names and
+    /// paths carry non-ASCII. Whether byte MAX_EVIDENCE lands mid-character is data-dependent, so
+    /// this is an intermittent crash in the arbiter, and it fires exactly when a check is already
+    /// failing.
+    #[test]
+    fn truncate_does_not_panic_on_multibyte_boundary() {
+        // '€' is 3 bytes. MAX_EVIDENCE % 3 == 2, so byte MAX_EVIDENCE falls strictly inside a char.
+        let s = "\u{20AC}".repeat(MAX_EVIDENCE);
+        let out = truncate(s);
+        assert!(out.len() >= MAX_EVIDENCE, "expected a truncated-but-populated string");
+    }
+
+    /// Every multi-byte width must be safe, not just the one that happens to be tested.
+    #[test]
+    fn truncate_is_safe_for_every_multibyte_width() {
+        for filler in ["\u{00E9}", "\u{20AC}", "\u{1F600}", "\u{2500}"] {
+            let s = filler.repeat(MAX_EVIDENCE);
+            let out = truncate(s);
+            assert!(std::str::from_utf8(out.as_bytes()).is_ok(), "evidence must stay valid UTF-8");
+        }
+    }
+
+    /// Test runners put the useful part — the failure summary and assertion diff — at the END.
+    /// Keeping the head preserves banner noise and discards the diagnosis.
+    #[test]
+    fn truncate_keeps_the_diagnostic_tail() {
+        let mut s = "banner noise\n".repeat(400);
+        s.push_str("assert 1 == 2\nFAILED test_thing");
+        let out = truncate(s);
+        assert!(out.contains("FAILED test_thing"), "the tail explains the failure and must survive");
+    }
+
+    #[test]
+    fn truncate_leaves_short_input_untouched() {
+        let s = "short output".to_string();
+        assert_eq!(truncate(s.clone()), s);
     }
 }
