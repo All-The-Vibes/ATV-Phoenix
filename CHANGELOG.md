@@ -9,6 +9,26 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`phoenix_mission --backend mixed` — one mission, two backends (#86).** The decision layer for
+  hybrid execution already existed: `HybridMission` routes, fences, and integrates, and
+  `tests/hybrid_dag.rs` proved stale-cloud-result rejection and dependency-ordered integration in
+  process. The execution layer did not. `src/bin/phoenix_mission.rs` accepted a single `--backend`
+  for the whole mission, so no binary could run one goal locally and another in the cloud, and
+  therefore no proof could observe the hybrid path from outside the process. `--backend mixed`
+  routes per goal through a `RoutingBackend` that composes with the existing `GoalTaskBackend`
+  rather than duplicating it: the task adapter rewrites the job, then routing decides where the
+  rewritten job executes, so a routing table cannot silently change what a goal *does*, only where
+  it runs. The run ledger records the backend that actually executed, because `BackendOutcome`
+  carries its own `backend` field — that is what makes a mixed mission observable afterwards
+  instead of merely asserted. Gated failure-first by `tests/test_hybrid_mission_e2e.py` (4 cases),
+  which drives the real binary over `subprocess` and asserts only on evidence Phoenix produced (the
+  run ledger, and the chains `phoenix-mcp verify-trace` audits); its cloud leg exercises the real
+  `HttpCloudClient` over real HTTP against a local stub through the `COPILOT_API_URL` /
+  `GITHUB_API_URL` seam `from_env` already honours, so the cloud path runs without creating a live
+  Copilot job. Deliberately shaped against #139/#143: RED came from the property being false with
+  the file present, not from a missing file. Restart-mid-mission and PostHog projection are **not**
+  covered by this proof and are not claimed by it.
+
 - **ARC skills are a typed view over the gated memory store (#186).** `evals/arc/skills.py` no
   longer keeps a private JSON aggregate. `SkillLibrary` admits every skill through
   `phoenix_learn.memory.Memory` and `phoenix_learn.accept.verify_gate`, so a skill is offered only
@@ -211,6 +231,44 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - ORIGINAL_TAIL_MARKER
 
 ### Fixed
+
+### Fixed
+
+- **`Check.timeout_secs` is enforced, and evidence no longer panics the sensor (#205).** The field
+  was part of the public MCP tool schema and was read nowhere: `sense_command` called
+  `Command::output()`, which blocks until the child exits, so a check declaring a 2s bound against
+  an 8s command returned GREEN after 14,505ms. A caller who sets a bound believes the check is
+  bounded, and a check that never returns stalls an autonomous loop silently instead of going RED.
+  Enforced with real termination — spawn piped, drain stdout/stderr on threads so a full pipe
+  buffer cannot deadlock the wait, poll `try_wait` against the deadline, then kill the whole tree
+  and reap it; killing only the direct child would trade a hung check for an orphan tree. `timed_out`
+  and `exit_code` are now reported as independent facts, and `exit_code` is an `Option` because the
+  old `unwrap_or(-1)` made "killed by the OOM killer" byte-identical to "exited -1". Separately,
+  `truncate` sliced evidence at a fixed byte offset and panicked on a non-char-boundary. Gated by
+  `tests/sense_timeout.rs`.
+
+- **The acceptance contract restores every file it names, not only `tests/*.py` (#207).** #146 folds
+  the sha256 of each existing target file into the check digest, so a file a pull request *adds* is
+  absent on base, digests differently there, and `accept` finds no RED for the head digest — which
+  refuses the ordinary write-the-failing-test-first shape. #172 mitigated that by restoring the head
+  revision of the contract's acceptance tests onto the base tree, but recognised only paths matching
+  `tests/*.py`, so a contract naming a gate script, a Rust integration test, or a test outside
+  `tests/` still diverged: the same defect, just narrower. Anything path-shaped is selected now.
+  Over-selecting is safe because the checkout tolerates a path absent at head; under-selecting is
+  what breaks the proof. Bare binaries on `PATH` and flags are skipped, being nothing to restore.
+  Fixes #173.
+
+- **The eval gate enforces the instrument-validity rule the charter already stated (#208).**
+  `MISSION.md` has said since 2026-08-07 that an eval gate whose measurement is missing, marked
+  void, older than 14 days, or saturated at a perfect score is UNKNOWN. `scripts/eval-gate.ps1`
+  disclosed saturation and checked nothing about age, so every merge since 2026-07-17 was gated
+  against a baseline the charter already considered unable to discriminate, and the gate printed a
+  bare PASS. That is the same defect class as #203 and #206: a rule advertised in one place and
+  enforced nowhere. The void flag, the 14-day window, and the unparseable and absent cases are now
+  checked, the last two being UNKNOWN for the same reason rather than silently skipped. UNKNOWN
+  discloses and does not block — failing would stop the very pull requests that could refresh the
+  baseline, which is the deadlock the rule exists to avoid. Gated by
+  `tests/test_eval_gate_enforces_instrument_validity.py`.
 
 - **`phoenix-proof` names a stale acceptance contract instead of failing late as vacuous.**
   `.phoenix-ralph/done-check.json` is repointed by each pull request at the check it turns
