@@ -17,6 +17,15 @@ const GOALS: [(&str, &[&str], &str); 4] = [
     ("d", &["b", "c"], "rustc --print target-libdir"),
 ];
 
+/// Which backend each goal runs on under `--backend mixed`.
+///
+/// This is what makes a mission *hybrid* rather than merely capable of two backends: goal `b`
+/// executes in the cloud while its siblings execute locally, and `d` depends on one of each. A
+/// goal absent from this table falls back to local — stated explicitly so the fallback is a
+/// decision rather than an accident. See issue #86.
+const MIXED_ROUTES: [(&str, &str); 4] =
+    [("a", "local"), ("b", "cloud"), ("c", "local"), ("d", "local")];
+
 /// Attaches each goal its own task, looked up by job id against [`GOALS`], then forwards to `inner`.
 ///
 /// `run_mission` builds every job as `Job::new(goal_id, goal_id)`, so the incoming `job.task` is
@@ -68,6 +77,55 @@ impl ExecutionBackend for GoalTaskBackend<'_> {
     }
 }
 
+/// Routes each job to the backend declared for its goal, so one mission spans both.
+///
+/// Composes with [`GoalTaskBackend`] rather than duplicating it: the task adapter rewrites the
+/// job, then this decides where the rewritten job executes. Keeping the two separate means the
+/// routing table cannot silently change what a goal *does*, only where it runs.
+///
+/// The recorded backend name comes from whichever inner backend actually executed — [`BackendOutcome`]
+/// carries its own `backend` field — so the run ledger reports the real destination per goal, not
+/// this wrapper's name. That is what makes a mixed mission observable after the fact.
+struct RoutingBackend<'a> {
+    local: &'a (dyn ExecutionBackend + Sync),
+    cloud: &'a (dyn ExecutionBackend + Sync),
+    routes: &'a [(&'a str, &'a str)],
+}
+
+impl<'a> RoutingBackend<'a> {
+    fn new(
+        local: &'a (dyn ExecutionBackend + Sync),
+        cloud: &'a (dyn ExecutionBackend + Sync),
+        routes: &'a [(&'a str, &'a str)],
+    ) -> Self {
+        Self { local, cloud, routes }
+    }
+
+    /// The backend for `id`, defaulting to local for an unrouted goal.
+    fn backend_for(&self, id: &str) -> &'a (dyn ExecutionBackend + Sync) {
+        for &(goal, target) in self.routes {
+            if goal == id && target == "cloud" {
+                return self.cloud;
+            }
+        }
+        self.local
+    }
+}
+
+impl ExecutionBackend for RoutingBackend<'_> {
+    fn name(&self) -> &str {
+        "mixed"
+    }
+
+    fn preflight(&self, job: &Job) -> phoenix::execution_backend::PreflightOutcome {
+        self.backend_for(&job.id).preflight(job)
+    }
+
+    fn execute(&self, job: &Job) -> phoenix::execution_backend::BackendOutcome {
+        self.backend_for(&job.id).execute(job)
+    }
+}
+
 fn parse_args() -> Result<(String, PathBuf), String> {
     let mut backend = String::from("local");
     let mut workspace = std::env::current_dir().map_err(|err| format!("current dir: {err}"))?;
@@ -78,9 +136,11 @@ fn parse_args() -> Result<(String, PathBuf), String> {
             "--backend" => {
                 let value = args
                     .next()
-                    .ok_or_else(|| "--backend requires one of: local|cloud".to_string())?;
-                if value != "local" && value != "cloud" {
-                    return Err(format!("unsupported backend {value:?}; expected local|cloud"));
+                    .ok_or_else(|| "--backend requires one of: local|cloud|mixed".to_string())?;
+                if value != "local" && value != "cloud" && value != "mixed" {
+                    return Err(format!(
+                        "unsupported backend {value:?}; expected local|cloud|mixed"
+                    ));
                 }
                 backend = value;
             }
@@ -92,7 +152,8 @@ fn parse_args() -> Result<(String, PathBuf), String> {
             }
             "--help" | "-h" => {
                 return Err(
-                    "usage: phoenix_mission [--backend local|cloud] [--workspace PATH]".to_string(),
+                    "usage: phoenix_mission [--backend local|cloud|mixed] [--workspace PATH]"
+                        .to_string(),
                 );
             }
             other => return Err(format!("unknown argument {other:?}")),
@@ -159,6 +220,17 @@ fn main() -> ExitCode {
         match HttpCloudClient::from_env() {
             Ok(client) => run_with_backend(&CloudBackend::new(client), &workspace),
             Err(err) => Err(format!("cloud backend setup failed: {err}")),
+        }
+    } else if backend == "mixed" {
+        // A mixed mission still needs a working cloud client: routing a goal to a backend that
+        // cannot be constructed would report a local result under a cloud label.
+        match HttpCloudClient::from_env() {
+            Ok(client) => {
+                let cloud = CloudBackend::new(client);
+                let routed = RoutingBackend::new(&LocalBackend, &cloud, &MIXED_ROUTES);
+                run_with_backend(&routed, &workspace)
+            }
+            Err(err) => Err(format!("mixed backend setup failed: {err}")),
         }
     } else {
         run_with_backend(&LocalBackend, &workspace)
