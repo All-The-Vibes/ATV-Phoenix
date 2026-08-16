@@ -9,6 +9,47 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **ARC skills are a typed view over the gated memory store (#186).** `evals/arc/skills.py` no
+  longer keeps a private JSON aggregate. `SkillLibrary` admits every skill through
+  `phoenix_learn.memory.Memory` and `phoenix_learn.accept.verify_gate`, so a skill is offered only
+  after failure-first evidence (a red trial before a green one); a skill asserted with no such
+  evidence is held pending and never returned by `available()`. Transferable skills persist to the
+  `arc:corpus` scope and cross games; game-specific skills stay scoped to `arc:game:<id>`. Legacy
+  `skills.json` rows still load, and only gate-passing rows are offered. Gated failure-first by
+  `tests/test_arc_skills_memory.py` (3 cases).
+
+- **`phoenix-mcp doctor --permissions [--fix] [--cwd <dir>]` — the MCP-approval facet.** Registration
+  (`mcp-config.json`) makes the phoenix server *available*; *approval* (`~/.copilot/permissions-config.json`)
+  is what lets a host actually **dispatch** its tools. A non-interactive (autopilot) host that finds phoenix
+  registered-but-unapproved for the working folder denies `phoenix_sense` with *"could not request
+  permission from user"* — and the harness silently stalls with no obvious cause. `doctor --permissions`
+  detects that per-folder gap and prints exact remediation; `--fix` grants approval for all five phoenix
+  tools, idempotently, preserving every other location/approval and backing up the prior config as
+  `permissions-config.json.doctor-bak` (heal discipline). New public API `doctor::check_permissions` /
+  `doctor::fix_permissions`; gated failure-first by `tests/permissions_doctor.rs` (4 cases). README now
+  documents the denial + the CLI-mode fallback (`phoenix-mcp sense @check.json` hits the same gate ledger
+  without needing the MCP approval).
+- **The memory store crosses a process boundary.** `phoenix_learn.memory.Memory` gains
+  `save(path)` and `Memory.load(path)`. The word cross-episode in #186 needs this: an ARC
+  episode boundary is a process boundary, and a store held only in a dict forgets everything
+  at exit, so it could not be the thing `evals/arc/skills.py` becomes a view over. `load`
+  re-runs `verify_gate` over the trials it reads instead of trusting the verdict recorded
+  next to them, so a claim hand-written into the JSON with only green trials is refused and
+  its key is reported on `Memory.refused` rather than dropped in silence. That keeps the
+  property the module exists for, that `remember` has no argument which skips the gate, from
+  being walked around with a text editor. Retired facts are written too, because `evidence`
+  answers across scopes and losing them at the file boundary would cost the record that makes
+  re-earning one confirming trial. `save` builds the whole document before opening the file,
+  so a value that will not serialize raises and leaves no truncated store behind. Issue #186.
+- **Cross-episode memory that a fact has to earn.** `phoenix_learn.memory.Memory` stores a
+  claim only when the trials behind it clear `phoenix_learn.accept.verify_gate`, so asserting
+  a fact does not store it and there is no argument that skips the gate. Facts are keyed by
+  scope and `enter(scope)` retires everything earned under the previous one, which is the
+  storage half of the belief-invalidation rule in #181. The admitting trials and gate verdict
+  stay with the fact, so `evidence(key)` answers across scopes and re-earning after a scope
+  change is one confirming trial rather than a rediscovery. Domain-agnostic on purpose:
+  `evals/arc/skills.py` keys on `game` and tags and is unusable by a shell or refactoring
+  agent, which is the duplication #186 records.
 - **`accept` says the digest moved instead of blaming the author.** When `verify_gate` finds no
   RED for a check's digest and the trace does hold RED sense rows under a different digest, the
   reason now names the digest, counts those rows, and points at the file-folding rule from #158
@@ -170,6 +211,22 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - ORIGINAL_TAIL_MARKER
 
 ### Fixed
+
+- **`phoenix-proof` names a stale acceptance contract instead of failing late as vacuous.**
+  `.phoenix-ralph/done-check.json` is repointed by each pull request at the check it turns
+  red → green, but nothing noticed when a pull request inherited the previous one's contract.
+  PR #186 shipped `evals/arc/skills.py` while the contract still named
+  `tests/test_phoenix_memory.py`, a test PR #195 had already turned green on main and #186 never
+  touched, so `Require base acceptance RED` sensed GREEN on base and exited 1 calling the proof
+  vacuous — correct, but only after a full `cargo build --release`, and the message blamed the
+  proof rather than the contract nobody repointed. A new `Require a fresh acceptance contract`
+  step runs after `Set up Python` and before `Install Rust`: it reads the `tests/*.py` paths out
+  of the head's contract and fails with that path list when the pull request changes none of
+  them. A contract naming no `tests/*.py` path is left to the base RED gate as before, and the
+  step is scoped to `pull_request` so `workflow_dispatch` runs, which synthesise their own check,
+  are unaffected. `tests/test_cloud_proof_workflow.py` pins the guard, its position ahead of the
+  Rust build, and that removing it, marking it `continue-on-error`, unscoping it from
+  `pull_request`, or hollowing out its script makes the same validator fail.
 
 - **The Tier 3 gate evidence in `tests/test_eval_gate_discloses_ceiling.py` can no longer disappear
   quietly.** `test_exit_codes_are_unchanged_by_the_disclosure` is this repository's only observation of

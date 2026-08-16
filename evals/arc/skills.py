@@ -1,26 +1,16 @@
-"""A skill library the agent writes to and reads from (issue #177).
-
-Voyager's result, cited in our own Prime Agent analysis: an ever-growing library of
-executable skills produced 3.3 times more unique items and hit milestones up to 15.3
-times faster, and the skills generalized to a fresh world. Our agent had the opposite
-property. It re-derived "action 1 moves left" every single turn and never kept anything.
-
-A skill here is Python source with a name, the game it was learned on, and a record of
-how often it has worked. Skills are executed into the agent's namespace at the start of
-every turn, so a function proven on level 1 is simply callable on level 2.
-
-The honest part, and the reason this is not just a cache: a skill that stops working gets
-its failure recorded, and one that fails more than it succeeds is retired. That is the
-same measured-gain discipline `phoenix_learn.gate` applies to prompts, applied to code
-the agent wrote about itself.
-"""
+"""ARC skills as a typed view over the gated Phoenix memory store."""
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
+from typing import ClassVar
+
+from phoenix_learn.accept import Observation, verify_gate
+from phoenix_learn.memory import Fact, Memory
 
 LIBRARY = Path(__file__).resolve().parents[2] / "eval" / "arc-results" / "skills.json"
+CORPUS_SCOPE = "arc:corpus"
 
 
 @dataclass
@@ -32,16 +22,14 @@ class Skill:
     wins: int = 0
     losses: int = 0
     tags: list[str] = field(default_factory=list)
-    # WHEN this fires, not just what it does. A description says what a function is; a
-    # condition says what situation calls for it, and on a game the skill was not
-    # written for those are different questions. Agent Workflow Memory
-    # (arXiv:2409.07429) measured +51.1% relative on WebArena from making the condition
-    # explicit, with the cross-domain margin GROWING as the train-test gap widens --
-    # which is exactly the shape of offering an ft09 primitive to bp35.
-    #
-    # Defaulted to empty so the eighteen skills already on disk keep loading. An older
-    # skill is simply one whose condition was never recorded, not a broken row.
     when_to_invoke: str = ""
+    scope: str = ""
+    trials: list[bool] = field(default_factory=list)
+    verdict: dict = field(default_factory=dict)
+
+    GENERAL_TAGS: ClassVar[frozenset[str]] = frozenset(
+        {"general", "primitive", "transferable", "perception"}
+    )
 
     @property
     def score(self) -> float:
@@ -53,29 +41,95 @@ class Skill:
         """Failed enough times, with enough evidence, to stop being offered."""
         return self.wins + self.losses >= 4 and self.score < 0.34
 
-    # Tags that mark a skill as a fact about the BENCHMARK rather than about one board.
-    GENERAL_TAGS = frozenset({"general", "primitive", "transferable", "perception"})
-
     @property
     def transferable(self) -> bool:
-        """May this skill be offered on a game it was not learned on?
-
-        Two gates, because a solver that wins is still a solver. `solve_*` is the naming
-        convention the agent already uses for "this finishes THIS game", so a skill has
-        to both claim generality and not be named as one game's answer. Deliberately
-        conservative: a wrongly-excluded skill costs a re-derivation, while a wrongly-
-        included one spends actions on a board it cannot read -- and RHAE squares those.
-        """
         if self.name.startswith("solve_"):
             return False
         return bool(set(self.tags) & self.GENERAL_TAGS)
 
+    def value(self) -> dict:
+        data = asdict(self)
+        data.pop("scope", None)
+        data.pop("trials", None)
+        data.pop("verdict", None)
+        return data
+
 
 class SkillLibrary:
+    """ARC-facing API backed by ``phoenix_learn.memory.Memory`` admissions."""
+
     def __init__(self, path: Path = LIBRARY):
         self.path = path
+        self.memory = Memory(scope=CORPUS_SCOPE)
         self.skills: dict[str, Skill] = {}
+        self.pending: dict[str, Skill] = {}
+        self._observations: dict[str, list[Observation]] = {}
         self.load()
+
+    @staticmethod
+    def _scope_for(skill: Skill) -> str:
+        return CORPUS_SCOPE if skill.transferable else f"arc:game:{skill.game}"
+
+    @staticmethod
+    def _skill_from_entry(entry: dict) -> Skill:
+        allowed = {f.name for f in fields(Skill)}
+        data = {k: v for k, v in dict(entry).items() if k in allowed}
+        data.setdefault("tags", [])
+        data.setdefault("when_to_invoke", "")
+        return Skill(**data)
+
+    @staticmethod
+    def _observations_from_entry(entry: dict, skill: Skill) -> list[Observation]:
+        if "trials" in entry:
+            out = []
+            for trial in entry.get("trials") or []:
+                if isinstance(trial, dict):
+                    out.append(
+                        Observation(
+                            bool(trial.get("ok")),
+                            trial.get("seed"),
+                            trial.get("note", ""),
+                        )
+                    )
+                else:
+                    out.append(Observation(bool(trial)))
+            return out
+        return [Observation(False) for _ in range(skill.losses)] + [
+            Observation(True) for _ in range(skill.wins)
+        ]
+
+    @staticmethod
+    def _entry_from_fact(fact: Fact) -> dict | None:
+        if not isinstance(fact.value, dict):
+            return None
+        value = dict(fact.value)
+        value["scope"] = fact.scope
+        value["trials"] = [trial.ok for trial in fact.trials]
+        value["verdict"] = dict(fact.verdict)
+        return value
+
+    def _admit(self, skill: Skill, observations: list[Observation]) -> bool:
+        verdict = verify_gate(observations)
+        skill.trials = [trial.ok for trial in observations]
+        skill.verdict = dict(verdict)
+        skill.scope = self._scope_for(skill)
+        if not verdict["ok"]:
+            self.memory.facts.pop(skill.name, None)
+            self.skills.pop(skill.name, None)
+            self.pending[skill.name] = skill
+            self._observations[skill.name] = observations
+            return False
+
+        out = self.memory.remember(skill.name, skill.value(), observations, scope=skill.scope)
+        if not out["stored"]:
+            self.pending[skill.name] = skill
+            self._observations[skill.name] = observations
+            return False
+        skill.verdict = dict(out["fact"].verdict)
+        self.skills[skill.name] = skill
+        self.pending.pop(skill.name, None)
+        self._observations[skill.name] = list(out["fact"].trials)
+        return True
 
     def load(self) -> None:
         if not self.path.exists():
@@ -84,129 +138,179 @@ class SkillLibrary:
             raw = json.loads(self.path.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
             return
+
+        entries = list(raw.get("skills", []))
+        if not entries:
+            entries = [
+                entry
+                for fact in raw.get("facts", [])
+                if (entry := self._entry_from_fact(
+                    Fact(
+                        key=fact.get("key", ""),
+                        value=fact.get("value"),
+                        scope=fact.get("scope"),
+                        trials=[
+                            Observation(bool(t.get("ok")), t.get("seed"), t.get("note", ""))
+                            for t in fact.get("trials", [])
+                        ],
+                        verdict=fact.get("verdict", {}),
+                    )
+                ))
+            ]
+
+        for entry in entries:
+            try:
+                skill = self._skill_from_entry(entry)
+            except TypeError:
+                continue
+            observations = self._observations_from_entry(entry, skill)
+            self._admit(skill, observations)
+
+    def _current_disk_skills(self) -> dict[str, Skill]:
+        if not self.path.exists():
+            return {}
+        try:
+            raw = json.loads(self.path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return {}
+        out: dict[str, Skill] = {}
         for entry in raw.get("skills", []):
-            skill = Skill(**entry)
-            self.skills[skill.name] = skill
+            try:
+                skill = self._skill_from_entry(entry)
+            except TypeError:
+                continue
+            observations = self._observations_from_entry(entry, skill)
+            if verify_gate(observations)["ok"]:
+                skill.trials = [trial.ok for trial in observations]
+                skill.verdict = verify_gate(observations)
+                skill.scope = self._scope_for(skill)
+                out[skill.name] = skill
+        return out
+
+    @staticmethod
+    def _merged_observations(mine: Skill, theirs: Skill | None) -> list[Observation]:
+        if theirs is None:
+            return [Observation(bool(ok)) for ok in mine.trials]
+        wins = max(mine.wins, theirs.wins)
+        losses = max(mine.losses, theirs.losses)
+        return [Observation(False) for _ in range(losses)] + [
+            Observation(True) for _ in range(wins)
+        ]
 
     def save(self) -> None:
-        """Write the library, MERGING with whatever is on disk right now.
-
-        This used to serialise the in-memory dict straight over the file, and every
-        process loads once at startup, so the last writer won and silently discarded
-        everything learned since it started. Measured on r10 with three concurrent
-        agents: vc33 saved `read_blob_geometry` and `match_embedded_and_loose_connectors`
-        -- both verified present on disk -- and a later save from the tu93 process
-        replaced the file with its own startup view. Both skills were gone permanently.
-        No error was raised anywhere; the agent was told `{"ok": True}` and the write
-        did succeed. It was simply undone minutes later by a peer.
-
-        A skill library that loses skills under exactly the condition it is used in --
-        a parallel wave, which is how every corpus run is executed -- compounds nothing,
-        and compounding is the only reason it exists.
-
-        Merge rules, and both matter:
-          * a skill this process has never heard of is KEPT, not overwritten
-          * win/loss counts take the MAXIMUM of the two views rather than ours
-
-        Max is right because results are monotone -- a win booked is a fact about
-        something that happened, and a stale view can only ever be missing results,
-        never holding extra ones. Taking ours would roll a peer's evidence back, and
-        transfer is gated on `wins > 0`, so a rolled-back win keeps a good skill from
-        ever crossing to another game.
-        """
-        merged: dict[str, Skill] = {}
-        if self.path.exists():
-            try:
-                raw = json.loads(self.path.read_text(encoding="utf-8"))
-                for entry in raw.get("skills", []):
-                    try:
-                        skill = Skill(**entry)
-                    except TypeError:
-                        continue  # a shape we do not understand is not ours to delete
-                    merged[skill.name] = skill
-            except (json.JSONDecodeError, OSError):
-                merged = {}
-
+        """Write admitted skills, merging with peers and preserving the legacy shape."""
+        merged = self._current_disk_skills()
         for name, mine in self.skills.items():
             theirs = merged.get(name)
-            if theirs is None:
+            if theirs is not None:
+                mine.wins = max(mine.wins, theirs.wins)
+                mine.losses = max(mine.losses, theirs.losses)
+            observations = self._merged_observations(mine, theirs)
+            if verify_gate(observations)["ok"]:
+                mine.trials = [trial.ok for trial in observations]
+                mine.verdict = verify_gate(observations)
+                mine.scope = self._scope_for(mine)
                 merged[name] = mine
-                continue
-            mine.wins = max(mine.wins, theirs.wins)
-            mine.losses = max(mine.losses, theirs.losses)
-            merged[name] = mine
 
-        self.skills.update({n: s for n, s in merged.items() if n not in self.skills})
-        for name, skill in merged.items():
-            if name in self.skills:
-                self.skills[name].wins = skill.wins
-                self.skills[name].losses = skill.losses
+        memory = Memory(scope=CORPUS_SCOPE)
+        admitted: list[Skill] = []
+        for skill in merged.values():
+            observations = [Observation(bool(ok)) for ok in skill.trials]
+            out = memory.remember(skill.name, skill.value(), observations, scope=skill.scope)
+            if out["stored"]:
+                skill.verdict = dict(out["fact"].verdict)
+                admitted.append(skill)
 
+        self.skills = {skill.name: skill for skill in admitted}
+        self.memory = memory
+        document = {
+            "scope": memory.scope,
+            "facts": [
+                {
+                    "key": fact.key,
+                    "value": fact.value,
+                    "scope": fact.scope,
+                    "trials": [
+                        {"ok": t.ok, "seed": t.seed, "note": t.note} for t in fact.trials
+                    ],
+                    "verdict": fact.verdict,
+                }
+                for fact in memory.facts.values()
+            ],
+            "skills": [asdict(skill) for skill in admitted],
+        }
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        # Write-then-rename, so a reader never sees a half-written library and a crash
-        # mid-write cannot truncate everything learned so far.
         tmp = self.path.with_suffix(".json.tmp")
-        tmp.write_text(
-            json.dumps(
-                {"skills": [asdict(s) for s in merged.values()]}, indent=2
-            ),
-            encoding="utf-8",
-        )
+        tmp.write_text(json.dumps(document, indent=2), encoding="utf-8")
         tmp.replace(self.path)
 
-    def add(self, name, game, source, description, tags=None,
-            when_to_invoke="") -> Skill:
+    def add(
+        self,
+        name,
+        game,
+        source,
+        description,
+        tags=None,
+        when_to_invoke="",
+        trials=None,
+    ) -> Skill:
         skill = Skill(
-            name=name, game=game, source=source, description=description,
-            tags=list(tags or []), when_to_invoke=str(when_to_invoke or "")[:200],
+            name=name,
+            game=game,
+            source=source,
+            description=description,
+            tags=list(tags or []),
+            when_to_invoke=str(when_to_invoke or "")[:200],
         )
-        self.skills[name] = skill
-        self.save()
+        observations = [
+            t if isinstance(t, Observation) else Observation(bool(t)) for t in (trials or [])
+        ]
+        if self._admit(skill, observations):
+            self.save()
         return skill
 
     def record(self, name: str, won: bool) -> None:
-        skill = self.skills.get(name)
+        skill = self.skills.get(name) or self.pending.get(name)
         if not skill:
             return
         if won:
             skill.wins += 1
         else:
             skill.losses += 1
-        self.save()
+        observations = self._observations.get(name, [])
+        observations.append(Observation(bool(won)))
+        was_stored = name in self.skills
+        is_stored = self._admit(skill, observations)
+        if was_stored or is_stored:
+            self.save()
+
+    def evidence(self, name: str) -> dict | None:
+        if ev := self.memory.evidence(name):
+            return ev
+        skill = self.pending.get(name)
+        if skill is None:
+            return None
+        return {
+            "key": name,
+            "scope": skill.scope,
+            "trials": list(skill.trials),
+            "verdict": dict(skill.verdict),
+        }
 
     def available(self, game: str, tags: list[str] | None = None) -> list[Skill]:
-        """Skills worth offering: this game's first, then anything TRANSFERABLE.
-
-        Cross-game transfer is the point. "Read the board into connected components" and
-        "find the drag mapping" are facts about this benchmark, not about one environment,
-        and a library that only ever offers same-game skills compounds nothing across the
-        corpus.
-
-        Transfer needs TWO things, and the second was missing long enough to be dangerous.
-        A skill must have won somewhere -- evidence it is correct -- AND be marked general,
-        which is evidence it is about the benchmark rather than about one board. Winning
-        on game A says a skill is right; it never says it is portable.
-
-        The live library is why this is not theoretical. `sp80_generic` won on sp80, is
-        tagged "deadly", and its body is
-        `for i in range(5000): press(random.choice([1,2,2,3,4,6]))`. Under a wins-only
-        rule that was offered on bp35, where it is not a lesson but a random-input loop
-        that spends the action budget RHAE squares against you and walks into every hazard
-        on the board. `solve_vc33_level` pressed action 6 against boards it never saw.
-
-        A skill is general if it says so (`general`/`primitive`/`transferable` in tags) and
-        is not named as a solver for one game. `solve_*` is the naming convention the agent
-        already uses for "this finishes THIS game", so it is honoured rather than fought.
-        """
+        """Skills worth offering: this game's first, then earned transferable skills."""
         wanted = set(tags or [])
         out = []
         for skill in self.skills.values():
             if skill.retired:
                 continue
-            if skill.game == game:
+            if skill.game == game and skill.scope == f"arc:game:{game}":
                 out.append(skill)
                 continue
-            if skill.wins <= 0 or not skill.transferable:
+            if skill.game == game and skill.scope == CORPUS_SCOPE:
+                out.append(skill)
+                continue
+            if skill.wins <= 0 or skill.scope != CORPUS_SCOPE or not skill.transferable:
                 continue
             if not wanted or wanted & set(skill.tags):
                 out.append(skill)
@@ -234,18 +338,11 @@ class SkillLibrary:
                 f"  {skill.name}() - {skill.description} "
                 f"[{origin}, {skill.wins}W/{skill.losses}L]"
             )
-            # The condition goes on its own line and is indented under the name, so a
-            # skill from another game reads as "use it WHEN x" rather than as a
-            # description the model has to translate out of the other game's vocabulary.
             if skill.when_to_invoke:
                 lines.append(f"      USE WHEN: {skill.when_to_invoke}")
         return "\n".join(lines)
 
     # ── learned mechanics ────────────────────────────────────────────────────────────
-    #
-    # Probe results are worth exactly as much on run 2 as on run 1 and cost real score to
-    # re-acquire, because RHAE charges every action that alters the game. Storing the
-    # summary makes the second run free.
 
     def mechanics_for(self, game: str) -> str:
         path = self.path.parent / "mechanics.json"

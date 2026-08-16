@@ -50,6 +50,51 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: "3.13.14"
+      - name: Require a fresh acceptance contract
+        if: ${{ github.event_name == 'pull_request' && steps.acceptance_contract.outputs.declared == 'true' }}
+        run: |
+          set -euo pipefail
+          mapfile -t acceptance_tests < <(
+            python - .phoenix-ralph/done-check.json <<'PY'
+          import json
+          import sys
+          from pathlib import PurePosixPath
+
+          with open(sys.argv[1], encoding="utf-8") as check_file:
+              check = json.load(check_file)
+          for argument in check.get("target", []):
+              if not isinstance(argument, str):
+                  continue
+              candidate = argument.split("::", 1)[0]
+              path = PurePosixPath(candidate)
+              if (
+                  path.parts
+                  and path.parts[0] == "tests"
+                  and path.suffix == ".py"
+                  and ".." not in path.parts
+              ):
+                  print(candidate)
+          PY
+          )
+          if [ "${#acceptance_tests[@]}" -eq 0 ]; then
+            echo "The acceptance contract names no tests/*.py file, so freshness cannot be"
+            echo "checked here; the base RED gate below still has to prove it is not vacuous."
+            exit 0
+          fi
+          git fetch --no-tags origin "${{ github.base_ref }}"
+          base_sha="$(git merge-base HEAD "origin/${{ github.base_ref }}")"
+          changed="$(git diff --name-only "$base_sha" HEAD -- "${acceptance_tests[@]}")"
+          if [ -z "$changed" ]; then
+            echo "Stale acceptance contract: .phoenix-ralph/done-check.json still points at" >&2
+            printf '  %s\n' "${acceptance_tests[@]}" >&2
+            echo "and this pull request changes none of them, so the contract was inherited from" >&2
+            echo "an earlier PR that already turned it green on main. The base RED gate below" >&2
+            echo "would fail as vacuous after paying for a Rust build; failing here instead." >&2
+            echo "Point the contract at the check this pull request turns red -> green." >&2
+            exit 1
+          fi
+          echo "Acceptance contract is fresh; this pull request changes:"
+          echo "$changed"
       - name: Install Rust
         uses: dtolnay/rust-toolchain@1.94.1
       - name: Cache Rust
