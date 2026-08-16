@@ -131,7 +131,7 @@ date are **directional** (small n, single model) — signals, not significance.
 | **H1** | *Intent-fidelity* — criteria-first beats acting on the raw utterance | **Positive** where constraint-checking is the work: **mean +0.125 across 3/3 replicated runs** (the first multi-constraint run was raw 0.833 → criteria-first 1.000, **+0.167**), 0 regressions. Null on tasks the model already solves single-pass (the nulls *located the regime*). |
 | **H2** | *Verifier-pass* — an author/verify split catches silent failures one pass misses | **Confirmed** on live Copilot (20 sessions): silent-failure **40% → 0%**, 0 regressions. |
 | **H3** | *Memory-lift* — injecting the right project context lifts success | **Confirmed**: **0% → 100%** on a convention the model otherwise defaults wrong. |
-| **SWE-bench-lite** *(retired)* | resolved-rate under the real FAIL_TO_PASS/PASS_TO_PASS contract | underspecified tier **50% → 100%**, overall **78% → 100%**, 0 regressions; both misses were silent failures. **Withdrawn as evidence** — last scored 2026-07-03, benchmark out of scope; kept as a historical measurement. |
+| **SWE-bench-lite** | resolved-rate under the real FAIL_TO_PASS/PASS_TO_PASS contract | underspecified tier **50% → 100%**, overall **78% → 100%**, 0 regressions; both misses were silent failures. |
 | **H4** | *Proactive-precision* — precision-gated proposals can hit a usable approval rate | open |
 | **H5** | *Skill-compounding* — distilled skills improve success & cost over repeated exposure | open |
 | **H6** | *Plan-depth* — decomposition helps complex tasks, hurts simple ones (a crossover exists) | open |
