@@ -17,6 +17,13 @@
 //! `run_mission` additionally requires goals in topological order ("every goal's prerequisites must
 //! appear before it in the slice"). [`plan`] guarantees that ordering, and detects the cycles that
 //! would otherwise surface as an `UnknownPrerequisite` panic with a misleading message.
+//!
+//! INVARIANT: a malformed graph is returned as a value, never a panic. Inside a long-lived server a
+//! panic on caller input is not a failed tool call, it is a dead harness.
+//! INVARIANT: the emitted order is topological — every goal's prerequisites appear before it —
+//! because `run_mission` requires that and panics otherwise.
+//! INVARIANT: every planned goal carries its own task, so a goal id can never arrive at a backend
+//! as the command to execute.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;

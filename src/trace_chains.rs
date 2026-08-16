@@ -20,6 +20,14 @@
 //!
 //! Goal ids are sanitised into filenames because a goal id is caller-supplied and will eventually
 //! contain a slash. Path traversal through an audit log's filename is not a theoretical concern.
+//!
+//! INVARIANT: one chain per writer. Concurrent appenders to one chain fork it, so `verify()` reports
+//! broken and a genuine tamper becomes indistinguishable from ordinary concurrency — a corruption
+//! alarm that fires constantly is one that gets switched off.
+//! INVARIANT: every chain file resolves inside the chains directory. `.` is excluded from the
+//! filename allowlist rather than special-cased, which removes the whole `..` traversal class by
+//! construction instead of relying on one check being right.
+//! INVARIANT: a corrupt child chain does not invalidate the supervisor's own chain or any sibling's.
 
 use std::path::{Path, PathBuf};
 

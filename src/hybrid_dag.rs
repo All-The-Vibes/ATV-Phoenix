@@ -12,6 +12,11 @@
 //! stopping exactly the affected subtree, which is what this does.
 //!
 //! Pure by construction: no async runtime, no git, no network. Those ride on top of this decision.
+//!
+//! INVARIANT: a goal is runnable only when every prerequisite has succeeded. Running a goal whose
+//! prerequisite failed produces a result built on nothing, and then merges it.
+//! INVARIANT: a failure blocks exactly the affected subtree. Halting unrelated branches trades a
+//! partial failure for a total one, which is the containment property the mission depends on.
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 

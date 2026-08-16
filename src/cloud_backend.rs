@@ -13,6 +13,12 @@
 //! Polling is bounded by `max_polls` rather than a wall clock, so "the remote never settled" is a
 //! deterministic outcome instead of a flaky timeout. Running out of polls is [`BackendStatus::Failed`]
 //! with the reason attached — never a silent success, and never an unbounded loop.
+//!
+//! INVARIANT: polling is bounded by `max_polls`, and exhausting it is `Failed` with the reason
+//! attached — never a success, never an unbounded loop. This is the same class as #203: an
+//! unbounded wait on a remote that never settles is a silent stall, not a RED.
+//! INVARIANT: every terminal remote state maps to exactly one `BackendOutcome`, so an unrecognised
+//! state cannot fall through to success.
 
 use crate::execution_backend::{
     BackendOutcome, ExecutionBackend, Job, PreflightDimension, PreflightOutcome, PreflightRefusal,

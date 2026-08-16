@@ -3,6 +3,11 @@
 //! This is the ONE novel thing Phoenix adds on top of GitHub Copilot + TokenMasterX: the ability to
 //! SENSE objective failure and HEAL it within bounded, logged, reversible actions. No LLM here — only
 //! objective signals (exit codes, hashes, regex). See docs/v0-spine-design.md.
+//!
+//! No runtime invariant: module declarations and re-exports only. This file has no behaviour of its
+//! own to violate — every property worth asserting belongs to the module that implements it, and is
+//! stated there. Adding one here would restate a rule in a second place, where it can drift from
+//! the code that actually holds it.
 
 pub mod sense;
 pub mod snapshot;

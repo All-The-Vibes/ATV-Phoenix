@@ -3,6 +3,12 @@
 //! Reads .phoenix-ralph/{backlog.json,done-check.json,driver.log,completed.json}
 //! and .phoenix/trace.jsonl from the workspace (or --dir override), prints a concise
 //! status snapshot, and exits 0. Read-only: never writes anything.
+//!
+//! INVARIANT: read-only. A monitor that can write to the run state it reports on can change the
+//! answer it is being asked for, and observing a run must not perturb it.
+//! INVARIANT: a field the run state does not contain is reported absent rather than defaulted. A
+//! monitor that prints `0` for "no trace found" makes a missing instrument look like a healthy
+//! quiet one, which is the reading error §K15 exists to prevent.
 use std::path::Path;
 use serde::Serialize;
 use serde_json::Value;

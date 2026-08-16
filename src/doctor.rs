@@ -9,6 +9,12 @@
 //!     match what THIS build ships (embedded at build time). Catches the whole class of "installed
 //!     before a fix" bugs generically — no per-field hardcoding — and `fix` re-syncs from the embedded
 //!     reference, confirmed by re-running the same check (red -> green).
+//!
+//! INVARIANT: the installed copies are compared against the reference embedded in THIS build, with
+//! no per-field hardcoding, so "installed before a fix" is caught generically rather than one
+//! symptom at a time.
+//! INVARIANT: `fix` is confirmed by re-running the same check it was chosen by. A repair that
+//! reports success without re-sensing is the self-grading this crate exists to refuse.
 
 use serde::{Deserialize, Serialize};
 use std::path::Path;

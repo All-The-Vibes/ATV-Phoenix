@@ -15,6 +15,13 @@
 //! Design stance worth stating: **an unset limit means unlimited, and every limit is opt-in.** The
 //! alternative — defaulting to some "sensible" number — would silently cap missions nobody asked to
 //! cap, and the failure would look like a mysterious halt rather than a policy decision.
+//!
+//! INVARIANT: charging a goal always charges the mission too. Two independent counters that could
+//! disagree would let spend escape one of them, which is the whole failure budgets exist to prevent.
+//! INVARIANT: a refusal names both the scope and the resource. `Goal`+`Tokens` means abandon this
+//! goal and continue; `Mission`+`Tokens` means stop everything — collapsing them forces the
+//! supervisor to guess.
+//! INVARIANT: an unset limit never refuses.
 
 use std::collections::BTreeMap;
 

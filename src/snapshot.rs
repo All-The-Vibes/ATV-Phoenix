@@ -1,4 +1,10 @@
 //! `snapshot` — capture last-good state, but ONLY if a check passes (never bless a bad state).
+//!
+//! INVARIANT: `blessed` is false and no snapshot file is written whenever the check fails. A
+//! snapshot blessed against a red check is a rollback target that restores the bug, which converts
+//! recovery into a loop.
+//! INVARIANT: a restore is atomic — written to a temp path and renamed — so a crash mid-restore
+//! leaves the original intact rather than a half-copied file that parses as neither state.
 
 use crate::sense::{sense, Check, SenseResult};
 use serde::{Deserialize, Serialize};

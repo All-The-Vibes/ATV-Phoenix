@@ -1,5 +1,11 @@
 //! `trace` — append-only, hash-chained, tamper-EVIDENT event log (not tamper-proof).
 //! Same chaining scheme proven in the goose scorecard: hash = sha256(prev_hash + canonical_row_without_hash).
+//!
+//! INVARIANT: any edited row breaks verification, and an unparseable line is itself a break rather
+//! than an absent row. Dropping a damaged line leaves a shorter chain that verifies clean, which is
+//! corruption the circuit-breaker never fires on (#111).
+//! INVARIANT: `verify` counts every line it saw, so a file cannot get shorter without the row count
+//! disagreeing with the chain.
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};

@@ -33,6 +33,17 @@
 //! Every arm of `Admission` is matched explicitly: `Admitted`, `Deferred`, and
 //! `RefusedZeroCapacity`. A wildcard arm would silently swallow the next variant the type gains,
 //! which is exactly the defect that caused PR #122 to break.
+//!
+//! INVARIANT: every executed goal held both a lease and a worktree at the instant it executed.
+//! Without a lease two workers can own one goal; without a worktree they share a checkout.
+//! `MissionReport::all_executed_held_lease_and_worktree` reports it so a test can assert the
+//! property rather than trust the wiring.
+//! INVARIANT: coordination state is touched only by the scheduler thread, between batches. The
+//! trace chains are hash-linked, so a concurrent append would corrupt the very record used to prove
+//! what happened.
+//! INVARIANT: reconciliation runs at every batch boundary and again at mission end, so a lease held
+//! by a goal that stopped is always reclaimed — including when it stopped by dying, which is the
+//! case an unwind-on-failure cleanup cannot reach.
 
 use std::path::Path;
 

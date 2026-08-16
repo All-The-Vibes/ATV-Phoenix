@@ -12,6 +12,14 @@
 //!
 //! Time is a caller-supplied logical clock (`now`), never the wall clock, so the same call sequence
 //! always produces the same decisions — the same purity discipline the ready queue follows.
+//!
+//! INVARIANT: fencing tokens are strictly increasing across the registry's whole life, so a token
+//! is never reissued and "which grant was this" is always answerable.
+//! INVARIANT: a goal's committed watermark never moves backwards. This is what fences the zombie:
+//! a stalled worker that wakes after handover presents an older token and is refused by arithmetic
+//! rather than by hoping it noticed it lost the lease.
+//! INVARIANT: a write presenting anything other than the goal's current unexpired lease is `Fenced`
+//! and does not land.
 
 use std::collections::BTreeMap;
 
