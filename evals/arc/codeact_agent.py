@@ -1959,6 +1959,31 @@ def _parsed(grid):
     return {**parsed, "grid": grid.copy()} if parsed else None
 
 
+#: Actions on the current level, as a multiple of the human baseline, past which
+#: that level can no longer repay what is being spent on it. Chosen from history,
+#: not taste: of 905 levels actually cleared, p90 fell at 7.05x and p95 at
+#: 10.05x, so a cut here would have destroyed 46 clears worth 0.218 RHAE in
+#: total. Cutting at 5x would have cost 2.599 -- twelve times more.
+STALL_CUT = 10.0
+
+
+def level_exhausted(spent_here: int, par: int | None) -> bool:
+    """Has the current level stopped being able to pay for itself?
+
+    `spent_here` is actions charged to the level in progress; `par` is the human
+    baseline for it. RHAE pays `min(1.15, (par / spent) ** 2)`, so this is
+    asking whether the square has collapsed far enough that the actions are
+    buying nothing.
+
+    No baseline means no judgement. Eight of the 25 public games publish no
+    per-level baseline, and ending a run because the API was quiet would be the
+    harness inventing a failure it cannot see.
+    """
+    if not par or par <= 0:
+        return False
+    return spent_here > par * STALL_CUT
+
+
 def play(arc, game, client, deployment, max_turns, patience, action_cap,
          trace_path: str = "", seed: int = 0, start_level: int = 1,
          out_path: str = "", exec_timeout: float = 300.0) -> dict:
@@ -3113,6 +3138,17 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
             break
         if stale >= patience:
             stopped = "patience"
+            break
+        # THE LEVEL IN HAND CAN NO LONGER PAY. `patience` counts turns and
+        # accepts a learned mechanic as progress, so a run that keeps narrating
+        # discoveries while never clearing anything renews itself indefinitely;
+        # `action_cap` only sees the whole run. Neither notices that the level
+        # being attempted has passed the point where clearing it is worth the
+        # actions. Measured: 95-100% of a stalled run's budget lands after its
+        # last clear, 29,846 actions across the corpus, all of it buying nothing.
+        if level_exhausted(env.spent - sum(env.level_actions),
+                           baselines.get(env.best + 1)):
+            stopped = "level_exhausted"
             break
         if env.spent >= action_cap:
             stopped = "action_cap"
