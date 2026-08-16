@@ -156,25 +156,36 @@ jobs:
           import sys
           from pathlib import PurePosixPath
 
+          # Every file the contract names has to be restored from head before sensing base.
+          # #146 folds the sha256 of each existing target file into the check digest, so a file
+          # the pull request ADDS is absent on base, digests differently there, and `accept`
+          # then finds no RED for the head digest. Restoring only tests/*.py left that true for
+          # gate scripts, Rust integration tests, and tests living outside tests/ (#173).
+          #
+          # Anything path-shaped is a candidate; `git checkout` below tolerates the ones that do
+          # not exist at head, so over-selecting here is safe and under-selecting is not.
           with open(sys.argv[1], encoding="utf-8") as check_file:
               check = json.load(check_file)
           for argument in check.get("target", []):
               if not isinstance(argument, str):
                   continue
               candidate = argument.split("::", 1)[0]
+              if not candidate or candidate.startswith("-"):
+                  continue
               path = PurePosixPath(candidate)
-              if (
-                  path.parts
-                  and path.parts[0] == "tests"
-                  and path.suffix == ".py"
-                  and ".." not in path.parts
-              ):
-                  print(candidate)
+              if not path.parts or ".." in path.parts or path.is_absolute():
+                  continue
+              # A bare binary name on PATH ("python", "cargo") is not a file we can restore.
+              if len(path.parts) == 1 and not path.suffix:
+                  continue
+              print(candidate)
           PY
           )
           git checkout --force "$PHOENIX_BASE_SHA"
           for test_file in "${acceptance_tests[@]}"; do
-            git checkout "$PHOENIX_HEAD_SHA" -- "$test_file"
+            # Tolerated: a contract may name a path that does not exist at head (a flag that
+            # looks path-shaped, a file the PR deletes). Restoring what does exist is the point.
+            git checkout "$PHOENIX_HEAD_SHA" -- "$test_file" 2>/dev/null || true
           done
           if "$PHOENIX_MCP" sense "@$PHOENIX_CHECK_FILE"; then
             echo "Base acceptance check unexpectedly passed; proof is vacuous." >&2

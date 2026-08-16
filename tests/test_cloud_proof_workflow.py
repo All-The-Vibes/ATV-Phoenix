@@ -1,5 +1,10 @@
 from copy import deepcopy
 from pathlib import Path
+import json
+import os
+import subprocess
+import sys
+import tempfile
 
 import pytest
 import yaml
@@ -534,3 +539,63 @@ def test_validator_rejects_a_weakened_freshness_guard(mutation, expected_fragmen
     with pytest.raises(AssertionError) as error:
         validate_contract_freshness(workflow)
     assert expected_fragment in str(error.value)
+
+
+# --- #173: a contract naming a NEWLY ADDED file must still prove red on base ----------
+#
+# #146 folds the sha256 of every existing file named in `target` into the check digest, so a
+# check that names a file the pull request ADDS digests differently on base (absent) and head
+# (present). `accept` then finds no RED for the head digest and reports saw_red=false, which is
+# the ordinary write-the-failing-test-first shape being refused.
+#
+# #172 mitigated it by restoring the head revision of the contract's acceptance tests onto the
+# base tree before sensing. That restore only recognised paths matching tests/*.py, so a
+# contract naming a gate script (scripts/verify.mjs), a Rust integration test, or a test living
+# outside tests/ still diverged.
+
+CONTRACT_FILE_PATHS = (
+    "tests/test_thing.py",
+    "scripts/verify.mjs",
+    "evals/m4-okf/run_okf_eval.py",
+    "tests/sense_timeout.rs",
+)
+
+
+def contract_file_extractor(workflow, step_name):
+    """The inline python a step uses to decide which contract-named files it acts on."""
+    return str(step_by_name(workflow, step_name).get("run") or "")
+
+
+def files_selected_by(run_text, candidates):
+    """Run the step's own extractor over a synthetic contract and return what it selects."""
+    body = run_text.split("python - ", 1)[1]
+    body = body.split("<<'PY'", 1)[1].split("PY", 1)[0]
+    check = {"kind": "command_exit", "target": ["python", "-m", "pytest", *candidates]}
+    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8") as handle:
+        json.dump(check, handle)
+        check_path = handle.name
+    try:
+        completed = subprocess.run(
+            [sys.executable, "-c", body, check_path],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    finally:
+        os.unlink(check_path)
+    return [line for line in completed.stdout.splitlines() if line.strip()]
+
+
+def test_base_red_restores_every_contract_named_file_not_only_tests_py():
+    """A newly added gate script must be restored onto base, exactly like a new pytest file.
+
+    Without this the digest differs across base and head and `accept` refuses the proof.
+    """
+    workflow = load_workflow(PROOF_WORKFLOW_PATH)
+    run_text = contract_file_extractor(workflow, "Require base acceptance RED")
+    selected = files_selected_by(run_text, CONTRACT_FILE_PATHS)
+    assert sorted(selected) == sorted(CONTRACT_FILE_PATHS), (
+        "Require base acceptance RED restores only "
+        f"{selected}, so a contract naming any other added file still digests differently "
+        "on base and head"
+    )

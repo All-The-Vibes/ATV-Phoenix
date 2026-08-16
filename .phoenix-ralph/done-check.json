@@ -1,1 +1,1 @@
-{"kind":"command_exit","target":["python","-m","pytest","tests/test_auto_corpus_selector.py","-q"],"expect":0,"cwd":"."}
+{"kind":"command_exit","target":["python","-m","pytest","tests/test_cloud_proof_workflow.py","-q","-k","restores_every_contract"],"expect":0,"cwd":"."}
