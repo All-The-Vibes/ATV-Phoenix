@@ -27,6 +27,35 @@ breach, not progress — this rule outranks "compound knowledge" and the build l
 - **Unattended beats self-censor by default:** if you would not paste a line into this public repo with
   the named person standing next to you, it does not get committed. When in doubt, omit the person.
 
+## Targets are fixed; the HARNESS is the variable (non-negotiable, outranks the loop)
+
+A target, once set, is not an agent's to renegotiate. When a mission is hard, the move is **RSI —
+recursive self-improvement: engineer, research, experiment, and evolve the harness until it clears the
+bar.** Running more of the same and calling the plateau a ceiling is the failure this rule exists to
+forbid.
+
+**Forbidden, without exception:**
+- Proposing that a target be lowered, retargeted, or "re-baselined" to what the current build reaches.
+- Concluding a target is unreachable. An asymptote of the CURRENT harness is a fact about the harness,
+  never about the target — do not let the first slide into the second.
+- Offering "run it longer / more compute / more samples" as strategy.
+- Stopping to ask permission before doing the engineering. Do the work; report exceptions.
+
+**Why this is a law and not a preference — it is measured, not asserted.** The same frontier models
+score **0.18–0.51%** under ARC Prize's own harness and **95.5%** under Prime Agent's. A ~200x swing
+with the model held constant. In this repo the ARC corpus went **0.43% → 31.18% with the model fixed**,
+and every point of it came from harness fixes. When output plateaus, the harness is the thing that is
+wrong.
+
+**The escalation, when a target really looks out of reach:** state the specific mechanism blocking it,
+name the harness change that would remove it, and go build that. "It cannot be done" is only ever
+admissible with a falsification attempt attached — and the attempt is engineering, not more waves.
+
+ARC-AGI-3 (beat Prime Agent's 95.5%) is the standing **credibility check** for this thesis, not the
+repo's purpose. The law applies to every mission here; ARC is simply where it is scored.
+
+---
+
 ## The non-negotiable loop (every change, no exceptions)
 
 1. **FORMALIZE first** (`phoenix-goal`). No connector code until a **runnable `phoenix_sense` acceptance

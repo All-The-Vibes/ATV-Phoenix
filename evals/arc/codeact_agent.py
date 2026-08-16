@@ -2205,6 +2205,19 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
     # ran to the end of its turns with the game still winnable.
     stopped = "max_turns"
 
+    # THE INSTRUCTION THIS RUN PLAYS UNDER, resolved ONCE. `instruction_rsi` can adopt a
+    # new generation between runs, and reading the file per turn would let an adoption
+    # land mid-game -- the run would then be scored against an instruction it did not
+    # start with, which is unattributable and is exactly the kind of measurement this
+    # loop exists to avoid. Falls back to the hand-written SYSTEM when nothing has been
+    # adopted, so this is purely additive.
+    try:
+        from evals.arc.instruction_rsi import load_active
+
+        active_system = load_active()
+    except Exception:  # noqa: BLE001 - a broken instruction file must not end a run
+        active_system = SYSTEM
+
     for turn in range(max_turns):
         env.begin_turn()
         env.level_just_changed = False
@@ -2734,7 +2747,8 @@ def play(arc, game, client, deployment, max_turns, patience, action_cap,
             try:
                 reply = client.chat.completions.create(
                     model=deployment,
-                    messages=[{"role": "system", "content": SYSTEM}, *prune(history)],
+                    messages=[{"role": "system", "content": active_system},
+                              *prune(history)],
                     # gpt-5.6-sol rejects temperature and top_p (HTTP 400: only the default
                     # is supported) but honours seed and returns byte-identical output for
                     # it. The Arcade already defaults to seed=0, so fixing this one makes a
