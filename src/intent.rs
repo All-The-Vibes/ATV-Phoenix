@@ -11,6 +11,13 @@
 //! - **Goal count ceiling:** MAX_GOALS = 5 (revisit after H6 data).
 //! - **Independence contamination:** log warning (v1 non-fatal; v2 will enforce isolation).
 //! - **Automation types:** build, integrate, configure, notify, cron, webhook — for template selection.
+//!
+//! INVARIANT: composite `ok` is true only when ALL N goals are individually proven failure-first.
+//! One unproven goal fails the intent — an intent that accepts on a majority is an intent that
+//! ships the unproven part.
+//! INVARIANT: goal count never exceeds `MAX_GOALS`.
+//! INVARIANT: each goal is proven against its OWN trace under `.phoenix-intent/<id>/`, so one goal's
+//! RED can never be read as another's.
 
 use crate::accept::{verify_gate, GateResult};
 use crate::sense::canonical_digest;

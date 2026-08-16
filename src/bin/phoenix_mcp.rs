@@ -5,6 +5,12 @@
 //! `cargo test`, M1); this binary is the thin MCP adapter so Copilot can call sense/heal/accept mid-task.
 //!
 //! CRITICAL: stdout is JSON-RPC ONLY. All diagnostics go to stderr.
+//!
+//! INVARIANT: stdout carries JSON-RPC and nothing else. A stray `println!` corrupts the protocol
+//! stream, and the symptom is a client that fails to parse rather than a message naming the cause.
+//! INVARIANT: every tool response is the spine's own result serialised, never a summary this
+//! adapter composed. The whole point of the spine is that the arbiter's verdict reaches the caller
+//! unmediated; an adapter that reformats a verdict is an adapter that can soften one.
 
 use std::path::PathBuf;
 

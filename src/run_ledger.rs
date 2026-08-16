@@ -15,6 +15,11 @@
 //! **Crash-tolerant by construction.** A process killed mid-write leaves a partial final line. The
 //! reader surfaces that as `unreadable`, so a torn tail is visible instead of quietly changing what
 //! the ledger says.
+//!
+//! INVARIANT: the ledger is append-only. An entry that can be edited is not evidence.
+//! INVARIANT: an unparseable line is reported as unreadable, never skipped. Silently dropping a
+//! damaged row makes a truncated ledger indistinguishable from a short one — the #111 defect, not
+//! repeated here.
 
 use std::fs::OpenOptions;
 use std::io::Write;

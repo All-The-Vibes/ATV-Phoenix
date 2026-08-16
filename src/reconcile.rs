@@ -19,6 +19,13 @@
 //! * **Reclaiming uses the registry's own release path**, so the fencing watermark keeps its meaning:
 //!   a zombie worker that wakes up after cleanup is fenced out by token arithmetic exactly as it
 //!   would have been by a normal handover.
+//!
+//! INVARIANT: only goals in a terminal lifecycle state have their leases reclaimed. A parked goal
+//! (`AwaitingApproval`) still legitimately owns its lease; reclaiming it would let a second worker
+//! start on work the first has not released, because "not executing" is not "finished".
+//! INVARIANT: a lease with no lifecycle record is reported in `untracked` and never reclaimed —
+//! most likely a goal admitted between sweeps, where reclaiming would race the admission.
+//! INVARIANT: the sweep is idempotent; a second pass over the same state reclaims nothing.
 
 use crate::lease::LeaseRegistry;
 use crate::lifecycle::Lifecycle;

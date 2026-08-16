@@ -11,6 +11,12 @@
 //!
 //! `LocalBackend` executes commands directly on the local runner (argv, no shell) and
 //! reports captured process output in the outcome detail.
+//!
+//! INVARIANT: a preflight refusal names at least one dimension. An empty refusal set is
+//! unrepresentable, because "refused, reason unspecified" is indistinguishable from a bug in the
+//! refusing backend.
+//! INVARIANT: `LocalBackend` runs argv directly and never through a shell, so a goal id or task
+//! string containing shell metacharacters cannot become execution.
 
 /// A unit of work handed to an execution backend.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -1,4 +1,17 @@
 //! `sense` — objective failure detection. No LLM, no opinion. `ok=false` is honest, not a failure.
+//!
+//! INVARIANT: a `CommandExit` result's measured elapsed time does not exceed its declared
+//! `timeout_secs`. This is the #203 defect stated as a property: the field was in the public MCP
+//! schema and read nowhere, so a check declaring a 2-second bound returned GREEN after 14,505 ms.
+//! INVARIANT: `timed_out` and `exit_code` are independent facts. A process can time out AND exit 0
+//! because it trapped the signal, so `exit_code` is `None` on a kill rather than a `-1` sentinel
+//! that a genuine exit of `-1` is indistinguishable from.
+//! INVARIANT: evidence truncation never panics and keeps the tail. Subprocess output is arbitrary
+//! bytes, so slicing at a fixed offset aborts the arbiter data-dependently, and only ever while a
+//! check is already failing; the diagnosis lives at the end, the collection banner at the start.
+//! INVARIANT: `canonical_digest` is identical for one logical check across the MCP path, the CLI
+//! path, and the gate ledger — it hashes the parsed check, so `"pytest -q"` and `["pytest","-q"]`
+//! agree, and it folds every named file so editing a gate script moves the digest.
 
 use serde::{Deserialize, Serialize};
 use std::io::Read;

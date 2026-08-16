@@ -20,6 +20,10 @@
 //! Releasing is explicit and owner-checked. A goal cannot release a path it does not hold, so a
 //! stale worker cannot free its replacement's workspace out from under it — the same discipline
 //! [`crate::lease`] applies to fencing tokens.
+//!
+//! INVARIANT: every active assignment maps to a distinct path, checked on the resolved path rather
+//! than the goal id, because two distinct ids can sanitise to the same directory name.
+//! INVARIANT: `may_execute` is false for a goal with no assignment.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};

@@ -1,3 +1,10 @@
+//! `phoenix-mission` — CLI demo driver for a real four-goal diamond DAG.
+//!
+//! INVARIANT: the exit code reflects the mission's own outcome. A driver that exits 0 on a failed
+//! mission converts every downstream gate reading it into a pass-by-default.
+//! INVARIANT: a goal absent from `MIXED_ROUTES` falls back to local explicitly, so the fallback is
+//! a stated decision rather than an accident of lookup order.
+
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 

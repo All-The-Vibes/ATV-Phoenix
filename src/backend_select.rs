@@ -18,6 +18,12 @@
 //!
 //! Capacity is a *scheduling* fact, not a preflight dimension, so it is modelled separately: a job
 //! blocked only by capacity is retryable once a slot frees, while a preflight refusal is not.
+//!
+//! INVARIANT: selection never returns local when local has no free slot. Silently running locally
+//! anyway would break the supervisor's concurrency bound, which is the one invariant the ready
+//! queue exists to hold.
+//! INVARIANT: a refusal names every rejected backend and its cause; an empty rejection list is
+//! unrepresentable, so a fail-open refusal cannot be constructed.
 
 use crate::execution_backend::{ExecutionBackend, Job, Refusals};
 

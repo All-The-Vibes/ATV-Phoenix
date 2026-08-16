@@ -9,6 +9,15 @@
 //! It is the tooling-enforced version of the SWE-bench discipline "watch the check fail before you
 //! trust it pass." The agent can *propose* that an item is done; only this function (run by the
 //! driver) decides whether it actually is.
+//!
+//! INVARIANT: `ok` is true only when `trace_intact && saw_red && green_after_red && currently_green`.
+//! A check never observed failing proves nothing, and dropping any one of the four conjuncts turns
+//! the gate into a pass-by-default.
+//! INVARIANT: RED and GREEN must carry the SAME `canonical_digest`. A RED observed against a
+//! different digest — an earlier version of the gate script, a renamed test — can never satisfy this
+//! gate, because otherwise editing the check to make it pass would inherit the old failure as proof.
+//! INVARIANT: `currently_green` is re-sensed at decision time rather than read from the trace, so a
+//! fix that regressed after its GREEN is refused.
 
 use crate::sense::{canonical_digest, sense, sha256_file, Check, CheckKind};
 use crate::trace::Trace;

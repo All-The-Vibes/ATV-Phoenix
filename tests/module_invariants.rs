@@ -54,12 +54,6 @@ enum Verdict {
     Contradictory,
 }
 
-impl Verdict {
-    fn passes(&self) -> bool {
-        matches!(self, Verdict::States(_) | Verdict::Justified)
-    }
-}
-
 const INVARIANT: &str = "INVARIANT:";
 const NO_INVARIANT: &str = "No runtime invariant:";
 

@@ -6,6 +6,13 @@
 //! git, no filesystem, no network — those layers ride on top of this decision, they are not part
 //! of it. Keeping the ready queue pure is what makes the supervisor's scheduling testable and
 //! reproducible instead of a timing-dependent guess.
+//!
+//! INVARIANT: `in_flight` never exceeds `capacity`. This is the one bound every other scheduling
+//! decision rests on — [`crate::backend_select`] refuses rather than silently running locally
+//! precisely so this cannot be broken from outside.
+//! INVARIANT: deferred tasks are released in FIFO order, so the same call sequence always produces
+//! the same schedule and a starved task cannot be starved twice for the same reason.
+//! INVARIANT: a zero-capacity supervisor admits nothing, rather than admitting work it can never run.
 
 use std::collections::VecDeque;
 

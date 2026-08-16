@@ -3,6 +3,11 @@
 //! added/removed/changed prompt file, GREEN when the surface matches the blessed baseline. It is an ordinary
 //! `Check` (`CheckKind::PromptManifest`), so it flows through the same `trace` / `accept` spine as every other
 //! Phoenix check: `phoenix_accept` can prove a prompt check went red→green, the chain audits it.
+//!
+//! INVARIANT: any added, removed, or changed prompt file makes the check RED. A drift check that
+//! only notices changes to files it already knew about cannot detect an added prompt file, which is
+//! the easiest way to change an agent's behaviour unnoticed.
+//! INVARIANT: the manifest is content-addressed, so a file touched but not edited is not drift.
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;

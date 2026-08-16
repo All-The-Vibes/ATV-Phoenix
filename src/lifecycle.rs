@@ -15,6 +15,13 @@
 //! audit answer why a goal stopped without inferring it from timing.
 //!
 //! No clock and no I/O — pure state, same discipline as the rest of the supervisor spine.
+//!
+//! INVARIANT: a terminal state never changes again. A supervisor that can revive a cancelled goal
+//! has no cancellation at all — it has a suggestion.
+//! INVARIANT: a refused transition is returned as a reason, never silently ignored, because a
+//! silently-dropped cancellation looks identical to a cancellation that worked.
+//! INVARIANT: supersession carries the replacement's identity, so an audit can answer why a goal
+//! stopped without inferring it from timing.
 
 use std::collections::BTreeMap;
 

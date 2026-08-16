@@ -12,6 +12,12 @@
 //! Everything is optional except the backend name, because a backend that fails before dispatch
 //! genuinely has no task id and no usage — and inventing a zero would make "we never asked" and
 //! "it cost nothing" indistinguishable in the ledger.
+//!
+//! INVARIANT: absent and zero stay distinct. Every field a pre-dispatch failure cannot know is
+//! `Option`, so "we never asked" and "it cost nothing" never collapse into the same ledger row.
+//! INVARIANT: the human-facing summary is derived from the typed record, never parsed back out of
+//! it. Re-parsing prose to recover fields means the ledger silently records nothing the moment the
+//! wording changes.
 
 /// Token and cost accounting reported by a backend, when it reports any.
 ///

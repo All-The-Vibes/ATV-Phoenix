@@ -1,6 +1,11 @@
 //! `heal` — one bounded, logged recovery, validated by an EXTERNAL recheck (an objective sense Check).
 //! Bounded (<=3 retries / one rollback) so the harness cannot loop-burn. `healed=true` only when the
 //! independent recheck passes AFTER the action — recovery is proven, not asserted.
+//!
+//! INVARIANT: `healed` is true only when the independent recheck passed after the action ran. The
+//! action succeeding is not evidence the problem is gone; only re-sensing is.
+//! INVARIANT: `attempts` never exceeds `MAX_RETRIES`, even when a caller asks for more. An unbounded
+//! retry loop against a deterministic failure burns the whole budget and never converges.
 
 use crate::sense::{sense, Check, SenseResult};
 use crate::snapshot::restore;
