@@ -163,6 +163,12 @@ if ($baselineB -ge 1.0) {
   Write-Output "[eval-gate] SATURATED: the baseline is $baselineB, which is the highest a resolved-rate can reach. This gate can detect a regression and cannot detect an improvement, so a tie at $baselineB is not evidence that the harness got better. Tracked in issue #142."
 }
 
+# Re-enter this same interpreter rather than the name `powershell`, which does not exist on
+# Linux or macOS (they ship `pwsh`). Hardcoding it made the gate unrunnable off Windows, which
+# stayed invisible while nothing exercised it on a Linux runner.
+$psExe = (Get-Process -Id $PID).Path
+if (-not $psExe) { $psExe = "powershell" }
+
 if ($PrebuiltResults -and (Test-Path $PrebuiltResults)) {
   Write-Output "[eval-gate] Using pre-built results (test mode)"
   Copy-Item $PrebuiltResults $ResultsOut -Force
@@ -170,7 +176,7 @@ if ($PrebuiltResults -and (Test-Path $PrebuiltResults)) {
   $runSwe = Join-Path $repoRoot "evals\swe-bench-lite\run_swe.ps1"
   if (-not (Test-Path $runSwe)) { Write-Error "[eval-gate] ERROR: run_swe.ps1 not found"; exit 2 }
   Write-Output "[eval-gate] Running swe-bench-lite..."
-  powershell -NoProfile -ExecutionPolicy Bypass -File $runSwe -OutFile $ResultsOut 2>&1
+  & $psExe -NoProfile -ExecutionPolicy Bypass -File $runSwe -OutFile $ResultsOut 2>&1
   if (-not (Test-Path $ResultsOut)) { Write-Error "[eval-gate] ERROR: no results produced"; exit 2 }
 }
 
@@ -183,7 +189,7 @@ Write-Output "[eval-gate] Arm B score: $scoreB (baseline: $baselineB delta: $del
 
 $updater = Join-Path $PSScriptRoot "update-scoreboard.ps1"
 if (Test-Path $updater) {
-  powershell -NoProfile -ExecutionPolicy Bypass -File $updater -ResultsFile $ResultsOut -Trigger pr 2>&1 | Out-Null
+  & $psExe -NoProfile -ExecutionPolicy Bypass -File $updater -ResultsFile $ResultsOut -Trigger pr 2>&1 | Out-Null
 }
 
 if ($delta -lt 0) {
