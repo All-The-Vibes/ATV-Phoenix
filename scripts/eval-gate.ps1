@@ -127,6 +127,38 @@ if ($rawBytes[0] -eq 0xEF) { $rawBytes = $rawBytes[3..($rawBytes.Length-1)] }
 $board = [System.Text.Encoding]::UTF8.GetString($rawBytes) | ConvertFrom-Json
 $baselineB = $board.baseline.swe_bench_lite.arm_b_phoenix_resolved
 Write-Output "[eval-gate] Baseline Arm B: $baselineB"
+
+# Gate-instrument validity (MISSION.md, issue #171). A shipping gate counts only while its
+# instrument can still discriminate: a measurement that is missing, void, older than 14 days,
+# or saturated at a perfect score is UNKNOWN. The charter has said so since 2026-08-07 and
+# nothing enforced the age half, so every merge was gated against whatever the baseline
+# happened to be, however old. A gate blind to the age of its own instrument cannot be the
+# thing that decides whether the loop is shipping blind.
+#
+# UNKNOWN discloses and does not block, deliberately. Failing here would stop the very pull
+# requests that could refresh the baseline, which is the deadlock this rule exists to avoid.
+$maxBaselineAgeDays = 14
+$baselineValid = $board.baseline.swe_bench_lite.valid
+if ($null -ne $baselineValid -and -not $baselineValid) {
+  Write-Output "[eval-gate] UNKNOWN: the baseline measurement is marked void, so Tier 3 cannot discriminate. It neither blocks nor passes silently. Tracked in issue #171."
+}
+$baselineDateRaw = $board.baseline.date
+if ($baselineDateRaw) {
+  $parsedDate = [datetime]::MinValue
+  if ([datetime]::TryParse($baselineDateRaw, [ref]$parsedDate)) {
+    $ageDays = [int]((Get-Date).Date - $parsedDate.Date).TotalDays
+    if ($ageDays -gt $maxBaselineAgeDays) {
+      Write-Output "[eval-gate] UNKNOWN: the baseline was measured $ageDays days ago ($baselineDateRaw), past the $maxBaselineAgeDays-day window in MISSION.md. Tier 3 is gating against a measurement that can no longer discriminate; this is disclosed, not blocked, because blocking would stop the changes that could refresh it. Tracked in issue #171."
+    }
+  }
+  else {
+    Write-Output "[eval-gate] UNKNOWN: the baseline date '$baselineDateRaw' could not be parsed, so its age cannot be checked. Tracked in issue #171."
+  }
+}
+else {
+  Write-Output "[eval-gate] UNKNOWN: the baseline carries no date, so its age cannot be checked. Tracked in issue #171."
+}
+
 if ($baselineB -ge 1.0) {
   Write-Output "[eval-gate] SATURATED: the baseline is $baselineB, which is the highest a resolved-rate can reach. This gate can detect a regression and cannot detect an improvement, so a tie at $baselineB is not evidence that the harness got better. Tracked in issue #142."
 }
