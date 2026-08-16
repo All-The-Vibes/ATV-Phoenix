@@ -15,7 +15,9 @@
   <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.5.0-E07000" alt="Version 0.5.0"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-00B4D8" alt="MIT license"></a>
   <a href="Cargo.toml"><img src="https://img.shields.io/badge/core-Rust-E07000" alt="Rust core"></a>
-  <a href=".github/workflows/connector-proof.yml"><img src="https://img.shields.io/badge/proof-failure--first-00B4D8" alt="Failure-first proof"></a>
+  <a href=".github/workflows/rust.yml"><img src="https://img.shields.io/badge/tests-294%20passing-00B4D8" alt="294 tests passing"></a>
+  <a href=".github/workflows/connector-proof.yml"><img src="https://img.shields.io/badge/proof-failure--first-E07000" alt="Failure-first proof"></a>
+  <a href="#the-harness-checks-itself"><img src="https://img.shields.io/badge/invariants-27%2F27-00B4D8" alt="27 of 27 modules state an invariant"></a>
 </p>
 
 <p align="center">
@@ -23,6 +25,7 @@
   <a href="#install">Install</a> |
   <a href="#quick-start">Quick start</a> |
   <a href="#core-features">Features</a> |
+  <a href="#the-harness-checks-itself">Self-checks</a> |
   <a href="#evidence">Evidence</a> |
   <a href="#documentation">Docs</a>
 </p>
@@ -40,7 +43,7 @@ Use Phoenix for bug fixes, refactors, PR work, and unattended jobs where a runna
 the outcome.
 
 <p align="center">
-  <img src="assets/journey.png" width="760" alt="INTENT IN. OUTCOME OUT. Phoenix intent engineering across inner, outer, and learning loops">
+  <img src="assets/journey.png" width="760" alt="PROVE IT, DON'T CLAIM IT. Phoenix from intent to demonstrated outcome, with measured results and the harness self-checks">
 </p>
 
 ## Intent engineering across three loops
@@ -64,6 +67,28 @@ new RED baseline.
 
 This is **self-learning, not self-modifying**. The gate decides eligibility; it never adopts. A human must
 approve any skill or prompt change, which then needs its own failure-first Phoenix proof.
+
+## The harness checks itself
+
+A harness that verifies your code but not its own is asking for trust it refuses to give. Each rule
+below was added after a real defect proved it was missing.
+
+| Guarantee | What it prevents |
+|---|---|
+| **A hang goes RED** | `timeout_secs` sat in the public tool schema and was read nowhere, so a check declaring a 2-second bound came back green after 14 seconds. A stall was the one failure that looked like patience. Hung checks are now killed with their whole process tree and reported RED. |
+| **Killed is not the same as failed** | A process can hit its timeout *and* exit 0 because it trapped the signal. Timeout and exit code are now separate facts, so "the OOM killer took it" no longer looks identical to "it exited -1". |
+| **The useful half of the output survives** | Cutting subprocess output at a fixed byte offset crashed on non-ASCII characters — at random, and only ever while a check was already failing. Output is now cut on a character boundary and keeps the **end**, where the actual error is, instead of the start, where the banner is. |
+| **Every module states its rule** | Each file under `src/` either states a rule that can be broken, or records why it has none. **27 of 27 decided.** The audit finds modules by walking the source, not by reading a list, so a new module is covered the day it lands — and a sweep that finds nothing fails instead of quietly passing. |
+
+Run the audit yourself:
+
+```powershell
+cargo test --test module_invariants
+```
+
+The "no rule here, and here is why" answer is deliberate and expected to be common. A rule demanding
+a real invariant from every module turns into paperwork within a month. This one demands a
+**decision**, written down where a reviewer can argue with it.
 
 ## Install
 
@@ -152,6 +177,7 @@ For a full first project walkthrough, see the
 | **2. Objective checks** | `phoenix_sense` evaluates command exits, file hashes, regexes, prompt manifests, and UI behavior without asking an LLM to grade itself. |
 | **3. Self-healing** | `phoenix_snapshot` saves only passing state. `phoenix_heal` performs bounded rollback or retry, then confirms recovery with an external recheck. |
 | **4. Proven completion** | `phoenix_accept` refuses any check never observed failing, and returns success only when an intact trace proves failure first and success now. |
+| **5. Bounded execution** | A check that hangs is killed with its process tree and reported RED. A timeout and an exit code stay separate facts, so a process that traps the signal and exits 0 cannot read as a clean pass. |
 
 ### Beyond the core loop
 
@@ -162,6 +188,7 @@ For a full first project walkthrough, see the
 | **Portable knowledge** | `phoenix-okf` turns code and external knowledge into Open Knowledge Format (OKF) bundles: linked Markdown that can be validated, reviewed, and reused. |
 | **Measured learning** | `phoenix_learn` evaluates candidate prompt and skill improvements on held-out outcomes; adoption remains human-gated. |
 | **Install integrity** | `phoenix-mcp doctor` detects drift in the agent, skills, MCP registration, and binary freshness, then repairs it with `--fix`. |
+| **Self-audit** | Every module either states a rule that can be broken, or records why it has none — enforced by a test that walks the source rather than reading a hand-maintained list. See [the harness checks itself](#the-harness-checks-itself). |
 | **Multiple hosts** | GitHub Copilot uses the MCP server and agent pack. Microsoft Scout uses the same Rust binary through the CLI adapter in [`dist/scout`](dist/scout). |
 
 Browse the documented lifecycle in [`docs/skills.md`](docs/skills.md). Skill names use hyphens
@@ -212,7 +239,7 @@ verifier, and raw-run hashes. Inspect
 - A check can go red for the wrong reason. RED from a missing test file is not RED from a failing property, and the trace cannot tell the two apart. `tests/test_e2e_proof_is_not_vacuous.py` guards the end-to-end proof against that shape after it happened once.
 - The swe-bench-style gate is retired and no longer gates anything. Phoenix resolved 9 of 9 on the constructed set against its own recorded baseline of 9 of 9, so the gate could catch a regression and could never show an improvement. Rather than re-baseline a benchmark that is out of scope for this project, it was withdrawn as evidence; the recorded result stays in `evals/` as history. Tier 3 merge gating now runs under the instrument-validity rule in `MISSION.md`, which reports UNKNOWN for a measurement that is missing, void, over 14 days old, or saturated.
 - Recovery is bounded rollback and retry, not general autonomous repair.
-- Command timeouts are represented in checks but are not yet enforced in-process.
+- Command timeouts are enforced. `sense` spawns the check with pipes, drains its output on separate threads so a full buffer cannot deadlock the wait, polls against the deadline, then kills the whole process tree and waits for it to actually die. A kill that returns before the work stops trades a hung check for an orphaned process, so it waits.
 - The published evaluations use small constructed task sets and single models. Treat the deltas as evidence for these conditions, not as a universal ranking.
 - Phoenix runs when you invoke the agent or CLI. It is not a background repository daemon.
 - Self-learning is measured and human-gated. Phoenix does not rewrite or adopt its own instructions.
