@@ -52,6 +52,13 @@ sys.path.insert(0, str(ROOT))
 
 from evals.arc.rhae import load_baselines, score_run  # noqa: E402
 
+# How much of a level's value survives one more level of distance. 1.0 would
+# assume every remaining level falls; 0.0 is the horizon-of-one this replaced.
+# Deliberately a single named knob rather than a tuned curve -- the defect was
+# valuing levels at ZERO, and the checks assert that shape rather than this
+# number, so moving it does not invalidate them.
+DEPTH_DECAY = 0.6
+
 RESULTS = ROOT / "eval" / "arc-results"
 LEDGER = RESULTS / "auto-corpus-ledger.jsonl"
 STATE = RESULTS / "auto-corpus-state.json"
@@ -199,6 +206,36 @@ def barren_streaks() -> dict[str, int]:
     return out
 
 
+def ladder_room(proven: int, n_levels: int, barren: int) -> float:
+    """What the levels this game has NEVER cleared are worth to a run.
+
+    THE WHOLE LADDER, NOT THE NEXT RUNG. This scored only level `proven + 1`
+    and gave everything behind it zero. Across the corpus that was 25 of 83
+    unclear levels carrying value and 58 carrying none, which mattered because
+    efficiency is bounded: replaying every cleared level at the RHAE cap is
+    worth 18.68pp against a 64.67pp gap, so the levels being valued at nothing
+    are where the mission is actually won or lost.
+
+    Each further level is discounted by DEPTH_DECAY per step, because reaching
+    it means clearing everything before it first. That keeps the ordering
+    honest in both directions: RHAE weights a level by its index, so a game one
+    level from the end still bids high on that single rich level, while a game
+    with a long shallow ladder no longer bids zero on seven of its eight
+    remaining levels.
+
+    `barren` decays the whole thing: a game drafted repeatedly with no new level
+    is telling you the next one does not fall easily, and this term is the only
+    reason a fully-cleared game stops ranking.
+    """
+    if proven >= n_levels:
+        return 0.0
+    weight_sum = sum(range(1, n_levels + 1)) or 1
+    room = 0.0
+    for step, level in enumerate(range(proven + 1, n_levels + 1)):
+        room += (level / weight_sum * 1.15) * (DEPTH_DECAY ** step)
+    return room / (1.0 + barren)
+
+
 def rank(baselines: dict) -> list[tuple[float, str, dict]]:
     """Games ordered by expected gain from one more run."""
     runs = all_runs(baselines)
@@ -248,16 +285,14 @@ def rank(baselines: dict) -> list[tuple[float, str, dict]]:
         weight_sum = sum(range(1, n_levels + 1)) or 1
         ceiling_now = sum(range(1, proven_levels + 1)) / weight_sum * 1.15
         efficiency_room = max(0.0, ceiling_now - best)
-        next_level_room = (((proven_levels + 1) / weight_sum * 1.15)
-                           if proven_levels < n_levels else 0.0)
 
         # A game drafted repeatedly with no new level is telling you the next level
-        # does not fall easily, and next_level_room is the whole reason a capped game
-        # keeps ranking. Decaying it by the barren streak collapses a mined-out game
-        # toward its real (often zero) efficiency headroom, so ls20 at nine flat drafts
-        # stops out-ranking an untried game, while a game that just cleared a level
-        # carries no penalty and keeps its full next-level value.
-        next_level_room /= (1.0 + barren.get(game, 0))
+        # does not fall easily, and unclear-level value is the whole reason a capped
+        # game keeps ranking. Decaying it by the barren streak collapses a mined-out
+        # game toward its real (often zero) efficiency headroom, so ls20 at nine flat
+        # drafts stops out-ranking an untried game, while a game that just cleared a
+        # level carries no penalty and keeps its full value.
+        next_level_room = ladder_room(proven_levels, n_levels, barren.get(game, 0))
         headroom = (efficiency_room + next_level_room) * share
 
         # Spread of this game's OWN level-1 discovery cost, as the variance proxy.
