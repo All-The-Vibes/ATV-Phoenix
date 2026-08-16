@@ -31,6 +31,7 @@ Run: python -m evals.arc.level_monotonic_check
 
 from __future__ import annotations
 
+import ast
 import json
 import re
 import sys
@@ -46,6 +47,7 @@ CLEARED = re.compile(r"LEVEL (\d+) CLEARED in (\d+) actions")
 # Read from the harness rather than restated here, so bumping the version in one place
 # cannot leave this check silently binding the wrong generation of artifact.
 from evals.arc.codeact_agent import HARNESS_VERSION as CURRENT_HARNESS  # noqa: E402
+from evals.arc.trace_integrity import last_run_rows  # noqa: E402
 
 
 def _fail(msg: str) -> str:
@@ -57,11 +59,30 @@ def _ok(msg: str) -> str:
 
 
 def _step_source() -> str:
+    """The whole of `Env._step`, which is the function this invariant lives in.
+
+    This used to be a fixed byte window around the `self.best = max(...)` line:
+    400 characters back and 3200 forward. That is not a boundary, it is a guess,
+    and it expired the first time the function grew. Adding a three-line comment
+    above the anchor pushed `before_best = self.best` twenty-one characters out of
+    range, and the check then reported "before_best is never captured" about a line
+    that was plainly still there and still correct.
+
+    A check that fails for a reason unrelated to the property it guards is worse
+    than no check: it costs a diagnosis and it trains you to disbelieve it. The
+    window is now the function itself, so the extraction cannot drift out of step
+    with the code it reads.
+    """
     src = AGENT.read_text(encoding="utf-8")
-    i = src.find("self.best = max(self.best, self._frame.levels_completed)")
-    if i < 0:
+    try:
+        tree = ast.parse(src)
+    except SyntaxError:
         return ""
-    return src[i - 400 : i + 3200]
+    lines = src.splitlines(keepends=True)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == "_step":
+            return "".join(lines[node.lineno - 1 : node.end_lineno])
+    return ""
 
 
 def check_gate_is_the_high_water_mark() -> tuple[bool, list[str]]:
@@ -222,9 +243,15 @@ def check_traces_never_reclear_a_level() -> tuple[bool, list[str]]:
 
     examined, offenders, legacy = 0, [], []
     for path in traces:
+        # A trace holding two runs is a TAG COLLISION, not a harness regression. Reading
+        # such a file end-to-end shows level announcements of [1, 2, 3, 1, 2, 3] and
+        # reports that the monotonic gate broke, which is how twenty minutes went into
+        # measuring a game reset that never happened. Judge only the most recent run.
+        lo, hi = last_run_rows(path)
         announced: list[int] = []
         try:
             with path.open(encoding="utf-8") as fh:
+                index = -1
                 for line in fh:
                     line = line.strip()
                     if not line:
@@ -235,6 +262,10 @@ def check_traces_never_reclear_a_level() -> tuple[bool, list[str]]:
                         continue
                     if not isinstance(row, dict):
                         continue
+                    if isinstance(row.get("turn"), int):
+                        index += 1
+                        if not (lo <= index < hi):
+                            continue
                     # json-encode first: the output carries raw newlines and quotes.
                     for m in CLEARED.finditer(json.dumps(row.get("output", ""))):
                         announced.append(int(m.group(1)))
@@ -255,7 +286,17 @@ def check_traces_never_reclear_a_level() -> tuple[bool, list[str]]:
                 break
 
     if not examined:
-        return True, ["skip  no trace announced a cleared level"]
+        # See the identical guard in reset_check. The last_run_rows filter was added
+        # today; if it ever discards every row, this check would go green while reading
+        # nothing. Refusing to pass without evidence is the only defence, and it was
+        # verified by blinding the filter and watching this turn red.
+        return False, [
+            _fail(
+                f"{len(traces)} trace(s) on disk but NONE announced a cleared level. "
+                "This check cannot pass without evidence -- suspect the trace-integrity "
+                "filter."
+            )
+        ]
     if offenders:
         lines = [
             _fail(

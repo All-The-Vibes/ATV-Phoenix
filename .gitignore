@@ -52,3 +52,9 @@ build/
 # 3.9 MB of upstream game code that arc_agi.Arcade() fetches on first use; it is a
 # cache, not a source, and re-downloads on any machine that needs it.
 environment_files/
+
+# AAD bearer tokens handed from the queue runner to its agents. Short-lived, but a
+# real credential and eval/arc-results is a TRACKED directory, so this must never be
+# committable. The runner deletes it when the queue drains.
+eval/arc-results/aad-token-*.txt
+eval/arc-results/aad-token-*.tmp

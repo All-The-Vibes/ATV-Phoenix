@@ -8,6 +8,15 @@ games and 183 levels, and the target to beat is Prime Agent at 95.5% RHAE. That 
 `CORPUS_MISSION.md`, and it is the live mission. Read this one for how the harness was
 built and what it cost; read that one for what to do next.**
 
+**THE MODEL IS SETTLED: gpt-5.6-sol. It is not a variable and not an explanation.** ARC
+Prize's own basic harness scores frontier models at 0.18%-0.51%; the same class of model
+under Prime Agent's harness reaches 95.5%. Our own corpus moved 0.43% -> 19.24% with the
+model held constant, entirely on harness fixes. When something underperforms, the first
+hypothesis is that the harness lied to it, mismeasured it, or cut it short -- prove that
+wrong before proposing anything else. "The model isn't good enough" is not an available
+explanation and must never be recorded as a finding. See CORPUS_MISSION.md for the seven
+measured instances.
+
 ## The mission
 
 Phoenix + gpt-5.6-sol beats ARC-AGI-3 on game sb26, all 8 levels.

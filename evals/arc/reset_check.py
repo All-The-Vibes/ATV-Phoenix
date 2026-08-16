@@ -27,7 +27,12 @@ import importlib
 import inspect
 import json
 import re
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from evals.arc.trace_integrity import last_run_rows  # noqa: E402
 
 RESULTS = Path("eval/arc-results")
 
@@ -131,7 +136,15 @@ def check_traces_kept_their_levels() -> tuple[bool, list[str]]:
 
     examined = 0
     for path in traces:
+        # Only the most recent run in the file. A tag collision puts two runs in one
+        # trace, and reading both makes the second run's fresh start look like the first
+        # run's levels being destroyed -- which is precisely the false alarm this check
+        # raised against cd82-ev3 ("level count fell 3 -> 0. A reset really does restart
+        # the game, and the prompt fix is wrong"). cd82-ev3 holds 240 rows against a
+        # 120-turn cap.
+        lo, hi = last_run_rows(path)
         levels: list[int] = []
+        index = -1
         try:
             with path.open(encoding="utf-8") as fh:
                 for line in fh:
@@ -139,6 +152,10 @@ def check_traces_kept_their_levels() -> tuple[bool, list[str]]:
                     if not line:
                         continue
                     row = json.loads(line)
+                    if isinstance(row, dict) and isinstance(row.get("turn"), int):
+                        index += 1
+                        if not (lo <= index < hi):
+                            continue
                     if isinstance(row, dict) and isinstance(row.get("levels"), int):
                         levels.append(row["levels"])
         except (OSError, json.JSONDecodeError):
@@ -156,7 +173,18 @@ def check_traces_kept_their_levels() -> tuple[bool, list[str]]:
                 ]
 
     if not examined:
-        return True, ["skip  no trace reached level 1"]
+        # Traces exist and none of them reached level 1: either every run on disk is
+        # trivial, or the last_run_rows filter above is discarding everything. The second
+        # is a live risk because that filter was added today, and a check that examines
+        # nothing while reporting success is the exact failure mode that made eight
+        # checks vacuous this session. Verified: blinding the filter turns this green
+        # unless it is refused here.
+        return False, [
+            _fail(
+                f"{len(traces)} trace(s) on disk but NONE were examined. This check "
+                "cannot pass without evidence -- suspect the trace-integrity filter."
+            )
+        ]
     return True, [
         _ok(
             f"{examined} recorded run(s) never lost a cleared level, across every death "

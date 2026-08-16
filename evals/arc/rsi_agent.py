@@ -154,12 +154,12 @@ def extract_code(text: str) -> str:
 
 
 def make_client():
-    from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+    from azure.identity import get_bearer_token_provider
     from openai import AzureOpenAI
 
-    provider = get_bearer_token_provider(
-        DefaultAzureCredential(), "https://cognitiveservices.azure.com/.default"
-    )
+    from evals.arc import aad
+
+    provider = get_bearer_token_provider(aad.credential(), aad.SCOPE)
     return AzureOpenAI(
         azure_endpoint=ENDPOINT, azure_ad_token_provider=provider,
         api_version="2024-12-01-preview",

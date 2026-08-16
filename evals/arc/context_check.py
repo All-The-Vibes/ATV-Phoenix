@@ -7,6 +7,7 @@ still a well-formed conversation.
 """
 from __future__ import annotations
 
+import inspect
 import sys
 from pathlib import Path
 
@@ -14,7 +15,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from evals.arc.codeact_agent import prune  # noqa: E402
 
-BUDGET = 120_000
+# Read the cap from the function that owns it rather than restating it. This constant
+# was hard-coded to 120_000, the budget was deliberately raised to 480_000 with the
+# reasoning recorded in prune's docstring (the smaller cap cost a run its own memory
+# after ~20 turns while games run 130-190 turns), and the check was not updated. It then
+# reported RED for a change that was correct, which is a check that costs attention and
+# buys nothing -- the same failure mode as a check that never fails, pointed the other
+# way. Derived from the signature, it cannot go stale again.
+BUDGET = inspect.signature(prune).parameters["budget"].default
 
 
 def turn(n, with_image=True):
@@ -30,12 +38,35 @@ def turn(n, with_image=True):
 
 
 def size(messages):
+    """Every character that will be sent, images included."""
     total = 0
     for m in messages:
         c = m["content"]
         if isinstance(c, list):
             total += sum(len(p.get("text", ""))
                          or len(p.get("image_url", {}).get("url", "")) for p in c)
+        else:
+            total += len(c or "")
+    return total
+
+
+def text_size(messages):
+    """Only what the budget governs.
+
+    `prune` charges TEXT against the budget and deliberately excludes images, because a
+    base64 board is useless to a model that is being shown the current board anyway, and
+    charging it evicted several turns of the agent's reasoning -- measured at the cost of
+    a level. This check kept counting image bytes against the cap, so it reported the
+    pruner 15,783 chars over budget when the pruner was doing exactly what it was told.
+
+    Images are still bounded, by the separate "at most 2 boards carry an image" check.
+    Nothing is hidden: the total including images is printed either way.
+    """
+    total = 0
+    for m in messages:
+        c = m["content"]
+        if isinstance(c, list):
+            total += sum(len(p.get("text", "")) for p in c)
         else:
             total += len(c or "")
     return total
@@ -59,8 +90,11 @@ def main() -> int:
 
     print(f"80 turns raw            : {raw:,} chars")
     print(f"after prune             : {got:,} chars ({len(kept)} messages)")
+    text = text_size(kept)
+    print(f"  of which text          : {text:,} chars  (the part the budget governs)")
+    print(f"  of which images        : {got - text:,} chars  (excluded by design)")
 
-    under = got <= BUDGET
+    under = text <= BUDGET
     print(f"{'PASS' if under else 'FAIL'}  the trajectory is capped at {BUDGET:,}")
     ok = ok and under
 

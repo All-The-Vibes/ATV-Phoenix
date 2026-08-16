@@ -1,26 +1,81 @@
-# ARC-AGI-3 — Handoff
+# ARC-AGI-3 - Handoff
 
-**Written:** 2026-08-10 21:20 CDT
+**Written:** 2026-08-11, mid-session (master queue draining).
 **Repo:** `C:\Users\shyamsridhar\code\ATV-Phoenix`
-**Branch:** `arc/corpus-baseline-8of8` → PR #189
-**HEAD:** `7e94d18` — pushed, `origin` matches.
+**Branch:** `arc/corpus-baseline-8of8` -> PR #189
+**HEAD:** `4b468da` - pushed, `origin` matches.
 
 ---
 
 ## Read this paragraph first
 
-**Eight of the twelve "zero-level" games have never been played by the agent.** Their
-0.00% comes from `novelty.json` — a random-policy sweep dated 2026-08-08 with **0 turns
-and 0 tokens** for every game. The model was never called. A zero from a policy baseline
-and a zero from an agent that tried and failed print identically in the standings table,
-and the difference is the entire strategy: one is a capability ceiling, the other is an
-empty chair.
+Session start: **10.09% RHAE, 41 levels, 13 games on the board.**
+Now: **12.24%, 54 levels, 19 games.** Six games have never cleared a level:
+`bp35 wa30 re86 lf52 dc22` plus whatever is still queued.
 
-`wa30 sk48 re86 m0r0 ls20 lf52 g50t dc22` — never attempted.
-`ka59 cn04 bp35 ar25` — attempted, cleared nothing yet.
+The reason the corpus looked worse than it was: **eight games had never been played by
+the agent at all.** Their 0.00% came from `novelty.json`, a random-policy sweep with 0
+turns and 0 tokens. A zero from a policy baseline and a zero from an agent that tried
+print identically, and the difference is the entire strategy.
 
-**The 85-point gap is mostly unattempted, not failed.** That is the single most useful
-fact in this file.
+**A master queue is draining.** Check it, do not re-derive it:
+
+```powershell
+Get-Content eval\arc-results\queue-m1.log -Tail 10
+Get-ChildItem eval\arc-results\log-*-m1.txt | ForEach-Object { "$($_.BaseName) :: $(Get-Content $_.FullName -Tail 1)" }
+```
+
+Queue order was: bp35 ls20 sk48 g50t m0r0 dc22 re86 lf52 wa30 ar25, concurrency 3,
+`--max-turns 220 --patience 90`. **If the machine restarted, the runner is dead** -
+relaunch with the games that have no scorecard yet:
+
+```powershell
+python evals\arc\queue_runner.py --games <remaining> --tag m2 --concurrency 3 `
+  --max-turns 220 --patience 90
+```
+
+**Do not `stop_powershell` a queue runner** - it kills the process tree and takes the
+running agents with it. Measured: it killed g50t and sk48 mid-run. Per-turn
+checkpointing saved both results, which is the only reason that was recoverable.
+
+---
+
+## Four defects fixed this session, all measured
+
+**Gap 15 - a counter that falls was read as a counter that counts** (`588ba7e`).
+`frame.levels_completed` is not monotone. The transition fired nine times for two real
+levels, charged level 2 the last 49 of the 375 actions it cost, and told the agent
+"LEVEL 1 CLEARED" seven times while it stood on level 3. Now gated on a high-water
+mark. **Validated live on cn04**, a game it was never diagnosed on: the raw counter
+fell to 0 at turn 23 and the harness correctly did nothing.
+
+**Gap 11 - the lesson a death teaches is the lesson a death destroys** (`7e94d18`).
+`Died` aborts the cell, so the `mechanic()` call recording what killed you never runs.
+96 writes lost across 41 traces. A pre-scan of literal arguments recovers only 49 of 96
+and misses the death-heaviest runs entirely, so the fix replays the unreached ledger
+statements after the abort - the exec namespace outlives the exception with every
+pre-action local still bound. **Validated in production on bp35:** pre-fix, 45 turns
+and 20 deaths recorded **0** mechanics; post-fix, 67 turns recorded **3 mechanics, 1
+note, and 9 salvaged writes.**
+
+**Gap 17 - a credential refresh under load is a rate limit wearing a third name**
+(`5a5a8c4`). Three concurrent runs refresh tokens against one Azure CLI, contend, and
+one loses with `CredentialUnavailableError`. It was counted as a model failure. **It
+cost two runs in one batch:** ar25 killed at 5/8 while clearing level 5 in 59 actions,
+and ls20 killed at turn 18 of 160 and filed as 0/7. ls20 was requeued and reached
+**2/7**.
+
+**Gap 18 - a coordinate is not a rule of the game** (`4b468da`). Twelve runs called
+`mechanic()` up to 111 times and `note()` **zero** times, and they are exactly the
+stuck games. The prompt caused it: `note()` got one line, `mechanic()` got twenty-four
+plus a sentence saying mechanic() is "the thing you write the answer into". ka59
+stored level 1's coordinates as rules of the GAME, then spent 2,732 actions on level 2
+steering by them - and a mechanic is never cleared by a level change, by design. Fixed
+on both sides: the prompt states the redraw test, and the harness flags any rule naming
+a coordinate in the ledger the agent re-reads every turn.
+
+**Every stuck game was run under the broken prompt.** ka59, cn04, sp80 and bp35 are all
+worth rerunning now purely for Gap 18.
 
 ---
 

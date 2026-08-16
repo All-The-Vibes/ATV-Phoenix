@@ -31,6 +31,52 @@ Read those numbers honestly, because the caveats change what beating them means:
   not state that 95.4% figure anywhere we could fetch; PrimeIntellect attributes it to
   ARC. Treat the human number as approximate.
 
+## THE MODEL IS NOT THE VARIABLE. STOP REACHING FOR IT.
+
+**We run gpt-5.6-sol. That is settled and it is not up for re-litigation.** Prime Agent
+ran Opus 5. The difference is not the explanation, and any analysis that reaches for it
+is avoiding the work.
+
+The evidence is on our side of the table, not theirs:
+
+* ARC Prize's own harness scores frontier models -- including Opus-class -- at
+  **0.18%-0.51%**. A model that scores 0.18% under one harness and 95.5% under another
+  is not the thing that changed. **Roughly a 200x swing, same models, different
+  scaffolding.**
+* Our own corpus went **0.43% -> 19.24% with the model held constant**. Every point of
+  that came from harness fixes. Not one came from a model change.
+* Every measured win in this repo has the same shape, and it is never "a better model":
+
+  | fix | what the harness was doing | result |
+  |---|---|---|
+  | wrong objective | prompt said "scored on levels completed"; the real formula is efficiency-weighted RHAE | cd82 13.67% -> **61.68%** |
+  | Gap 10 | `reset()` documented as costing actions and restarting at level 1 -- both false | usage 8-across-61-traces -> 16/21/9 |
+  | Gap 15 | a counter that falls read as a counter that counts | told the agent "LEVEL 1 CLEARED" 7x while it stood on level 3 |
+  | Gap 11 | `Died` aborts the cell, so the write recording the death never ran | 96 lost lessons recovered |
+  | Gap 18 | `mechanic()` got 24 prompt lines, `note()` got 1 | agent stored level-1 coordinates as rules of the GAME |
+  | patience | measured "turns without COMPLETING a level" | 6/6 games no longer cut mid-learning |
+  | Gap 9 | a death reported a count and a life length, never a cause | bp35 25 -> 12 deaths, first hazard ever identified |
+
+**The mechanism is always the same: the harness was misinforming or mismeasuring the
+agent, and the agent behaved correctly given what it was told.** Seven times now. That
+is a measured pattern, not a hypothesis.
+
+So the standing rule for this corpus: when a game underperforms, the first hypothesis is
+that the harness lied to it, mismeasured it, or cut it short. Prove that wrong before
+proposing anything else. **"The model isn't good enough" is not an available explanation
+and must never be recorded as a finding.**
+
+### Corollary, and it is the harder half
+
+The Continual Harness / RLM story in PrimeIntellect's blog is THEIR stated architecture.
+We have never run Prime Agent and cannot measure it. What we CAN say from our own data is
+that the wins came from removing harness lies -- and that the one CRUD claim we did test
+directly, `retract()` (the delete we were missing), produced cd82 **1/6 -> 5/6** and
+deaths **7 -> 1**. That is the strongest confirmation of their architecture we own.
+
+Do not upgrade "most plausibly explains" into "explains". We are still 76 points short,
+which means the lies we have found are necessary and demonstrably not sufficient.
+
 Independent confirmation we did do: `corpus_survey.py` sums the per-game level counts
 from the live API to exactly **183**, matching their "183/183" claim. Their corpus
 description is accurate.
@@ -39,11 +85,32 @@ description is accurate.
 
 | | Prime Agent | Us |
 |---|---|---|
-| Corpus RHAE | **95.5%** | **10.08%** |
-| Games with a level cleared | 25 / 25 | 12 / 25 |
-| Levels completed | 183 / 183 | 39 / 183 (21%) |
-| Best single game | not broken out | sb26 **73.74%** |
-| Model | Opus 5 | gpt-5.6-sol |
+| Corpus RHAE | **95.5%** | **19.24%** |
+| Games with a level cleared | 25 / 25 | 24 / 25 |
+| Levels completed | 183 / 183 | 75 / 183 (41%) |
+| Best single game | not broken out | sb26 **78.28%** |
+| Model | Opus 5 | gpt-5.6-sol -- **fixed, not a variable, see above** |
+
+Numbers above are from `python evals/arc/standings.py` on 2026-08-12. **Never quote
+standings from memory -- that has been wrong twice. The tool is the answer.**
+
+### Where 19.24% actually sits, because this gets misread
+
+| system | score | source |
+|---|---|---|
+| Prime Agent (Opus 5, their harness) | **95.5%** | their blog + public scorecard |
+| **us (gpt-5.6-sol, this harness)** | **19.24%** | `standings.py`, this repo |
+| GPT-5.5 High, ARC's basic harness | **0.43%** | ARC Prize blog |
+| Opus 4.7 High, ARC's basic harness | **0.18%** | ARC Prize blog |
+
+**We are roughly 45x the best bare-harness number, not below it.** The comparison if
+anything understates us: ARC's 0.43%/0.18% are on the SEMI-PRIVATE set, ours is on the
+PUBLIC games, which ARC's own testing policy calls the harder set (agreement expected
+within +/-15pp).
+
+Do not read our number as "worse than a bare model". It is ~45x better than the naive
+harness and ~5x worse than Prime Agent. **The gap that matters is the 76 points to
+95.5%, and it is harness engineering.**
 
 Per game, best scorable run at `start_level: 1`, scored max-of-runs the way
 `EnvironmentScoreList.score` actually scores it. The twelve below are the CodeAct agent;
@@ -381,13 +448,26 @@ cheaply.
   `accept()`. The gate is instrumented and idle. Fixing that is the highest-value
   Phoenix-side work and is tracked as Gaps 1-6 in `HARNESS_GAPS.md`.
 * **No cross-game memory.** Prime Agent's Continual Harness (prompt / sub-agents / skills
-  / memory, all CRUD-able, <https://arxiv.org/abs/2605.09998>) is the architectural
-  difference that most plausibly explains 95.5% across 25 games. We have `skills.py`, an
-  ARC-specific store, and Gap 3 records that Phoenix has no general equivalent.
-* **We have never run a game other than sb26 with the agent.** Everything above about the
-  other 24 games is perception-layer measurement, not gameplay. The first honest corpus
-  number will come from running the agent on games it has never seen, and it should be
-  expected to be bad.
+  / memory, all CRUD-able, <https://arxiv.org/abs/2605.09998>) is their STATED
+  architecture. We have `skills.py`, an ARC-specific store, and Gap 3 records that Phoenix
+  has no general equivalent. We have never run Prime Agent, so this stays their claim
+  rather than our measurement -- but the one piece of it we tested, `retract()`, paid off
+  immediately (cd82 1/6 -> 5/6, deaths 7 -> 1).
+* **SUPERSEDED (2026-08-11): "We have never run a game other than sb26."** All 25 games
+  now have a scorable record and 24 have cleared a level. The old prediction was right --
+  the first honest corpus number WAS bad (10.09%) -- and it is now 19.24%. Kept rather
+  than deleted: a note that was wrong in a useful direction is worth more than a clean file.
+* **bp35 is the last game at 0 levels, and it is not a comprehension failure.** Across
+  three waves: 3 mechanics (all movement) -> first hazard identification -> 4 mechanics of
+  real strategy ("a clicked barrier is removed after two hits"). r5 ended `max_turns` at
+  turn 80 ALIVE, mid-execution of a written-down solution, with `clock()` reading
+  `left=52 of 64` -- 81% of its life budget unspent. Cut by a HARNESS ARTIFACT, exactly as
+  rule 5 warns. Never re-run it at 80 turns, and never record its failure as a model limit.
+* **Death forensics is blunt on repaint-on-death games.** `_death_forensics` diffs the
+  last-alive frame against the terminal one. On bp35 the death repaints 631 cells and
+  swamps the collision; on sc25 it reports a clean 9-cell `14->2` hazard; on r11l it
+  correctly identifies a BUDGET death (1 cell at y=63, the move bar) instead of inventing
+  a hazard. Fix is to diff the two frames BEFORE the terminal one. Unbuilt.
 
 ---
 
