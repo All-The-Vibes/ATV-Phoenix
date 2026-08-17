@@ -13,10 +13,13 @@
 //! 1. **Structural** — a barrier that only releases once N goals are inside `execute` at the same
 //!    time. If execution were serial the barrier could never trip and the test would time out
 //!    rather than quietly pass.
-//! 2. **Temporal** — N sleeping goals finish in well under N × sleep.
+//! 2. **Occupancy under ordinary work** — N goals sleeping a fixed duration are inside
+//!    `execute` at the same instant, with a paired capacity-1 run proving the same measurement
+//!    reads 1 when execution is serialized.
 //!
-//! Both are needed: the barrier proves genuine simultaneity, the clock proves it is the kind that
-//! actually saves time.
+//! Both are needed: the barrier proves goals can be made to meet, and the sleeping run proves
+//! ordinary work overlaps without being forced to. Neither reads a clock, because issue #214
+//! showed a wall-clock ceiling fails on a loaded machine that is executing concurrently.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
@@ -110,9 +113,22 @@ impl ExecutionBackend for RendezvousBackend {
     }
 }
 
-/// Sleeps a fixed duration per job so total wall time distinguishes serial from concurrent.
+/// Sleeps a fixed duration per job and records true simultaneous occupancy while it does.
+///
+/// The sleep is ordinary work holding a slot rather than a barrier that forces the answer, so
+/// the high-water mark measures overlap the scheduler produced on its own. Measured together
+/// with the clock on this runner: 4 jobs of 300ms, elapsed 400.5ms, peak occupancy 4.
 struct SleepBackend {
     per_job: Duration,
+    /// Live occupancy: incremented on entry to `execute`, decremented on exit.
+    inside: AtomicUsize,
+    high_water: Arc<AtomicUsize>,
+}
+
+impl SleepBackend {
+    fn new(per_job: Duration, high_water: Arc<AtomicUsize>) -> Self {
+        Self { per_job, inside: AtomicUsize::new(0), high_water }
+    }
 }
 
 impl ExecutionBackend for SleepBackend {
@@ -125,7 +141,10 @@ impl ExecutionBackend for SleepBackend {
     }
 
     fn execute(&self, job: &Job) -> BackendOutcome {
+        let occupancy = self.inside.fetch_add(1, Ordering::SeqCst) + 1;
+        self.high_water.fetch_max(occupancy, Ordering::SeqCst);
         std::thread::sleep(self.per_job);
+        self.inside.fetch_sub(1, Ordering::SeqCst);
         BackendOutcome::completed(&job.id, "sleep", "ok")
     }
 }
@@ -182,23 +201,49 @@ fn capacity_still_caps_true_simultaneous_execution() {
     );
 }
 
-#[test]
-fn concurrent_execution_actually_saves_wall_clock_time() {
+/// Run four sleeping goals at `capacity` and report the peak simultaneous occupancy observed.
+fn peak_occupancy_of_four_sleeping_goals(capacity: usize) -> usize {
     let ws = TempDir::new().unwrap();
     let goals: &[(&str, &[&str])] = &[("a", &[]), ("b", &[]), ("c", &[]), ("d", &[])];
 
-    let per_job = Duration::from_millis(300);
-    let started = Instant::now();
-    let report = run_mission(goals, MissionConfig::new(4), ws.path(), &SleepBackend { per_job });
-    let elapsed = started.elapsed();
+    let high_water = Arc::new(AtomicUsize::new(0));
+    let backend = SleepBackend::new(Duration::from_millis(300), Arc::clone(&high_water));
+
+    let report = run_mission(goals, MissionConfig::new(capacity), ws.path(), &backend);
 
     assert!(report.settled, "mission must settle");
+    high_water.load(Ordering::SeqCst)
+}
 
-    // Serial would be >= 1200ms. A generous ceiling keeps this from flaking on a loaded runner
-    // while still failing outright if execution is serialized.
-    assert!(
-        elapsed < per_job * 3,
-        "4 × {per_job:?} of work finished in {elapsed:?}; that is serial, not concurrent"
+#[test]
+fn concurrent_execution_overlaps_real_work_rather_than_serializing() {
+    // Issue #214. This was a wall-clock ceiling: 4 jobs of 300ms had to finish under 900ms.
+    // Serial is 1200ms, so a loaded machine at 949ms was genuinely concurrent and still failed.
+    // That costs more than an ordinary flake, because `cargo test` halts on the first failing
+    // binary: one trip here left 17 of 49 binaries unrun, and counting `test result:` lines read
+    // 171 passing instead of 294, which looks like a smaller green suite.
+    //
+    // Occupancy is the property the word concurrent names, and it does not move with load. A
+    // busy box slows the spawn and the sleep together, so four jobs sleeping 300ms are still
+    // inside `execute` at the same instant. Measured on this runner in one run: elapsed
+    // 400.5ms, peak occupancy 4.
+    assert_eq!(
+        peak_occupancy_of_four_sleeping_goals(4),
+        4,
+        "four sleeping goals must be inside execute at the same instant at capacity 4"
+    );
+}
+
+#[test]
+fn the_overlap_observation_reads_one_when_execution_is_serialized() {
+    // The negative control, shipped rather than run once and described. A detector that cannot
+    // report serial execution proves nothing about the case above, and the assertion this
+    // replaces had no such companion. Capacity 1 is genuine serialization and the same
+    // measurement must say so.
+    assert_eq!(
+        peak_occupancy_of_four_sleeping_goals(1),
+        1,
+        "capacity 1 is serial; the occupancy observation must be able to say so"
     );
 }
 
