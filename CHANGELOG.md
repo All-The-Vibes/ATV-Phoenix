@@ -232,6 +232,8 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Replaced the wall-clock assertion in `tests/mission_concurrency.rs` with a direct occupancy observation, and shipped its negative control alongside it (#214). The old ceiling failed a genuinely concurrent run on a loaded machine, and because `cargo test` halts on the first failing binary that left 17 of 49 binaries unrun.
+
 ### Fixed
 
 - **`Check.timeout_secs` is enforced, and evidence no longer panics the sensor (#205).** The field
