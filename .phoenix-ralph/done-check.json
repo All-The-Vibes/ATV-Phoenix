@@ -1,1 +1,1 @@
-{"kind":"command_exit","target":["cargo","test","--locked","--test","mission_concurrency"],"expect":"0","cwd":"."}
+{"kind":"command_exit","target":["cargo","test","--locked","--test","empty_target_is_red_not_a_panic"],"expect":"0","cwd":"."}

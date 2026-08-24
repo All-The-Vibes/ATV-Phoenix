@@ -408,6 +408,14 @@ fn finish_command(
 }
 
 fn sense_sha256(check: &Check) -> SenseResult {
+    if check.target.is_empty() {
+        return SenseResult {
+            ok: false,
+            signal: "file_sha256".into(),
+            evidence: "empty target (need a file path)".into(),
+            ..Default::default()
+        };
+    }
     let path = Path::new(&check.target[0]);
     match sha256_file(path) {
         Ok(got) => {
@@ -429,6 +437,14 @@ fn sense_sha256(check: &Check) -> SenseResult {
 }
 
 fn sense_regex(check: &Check) -> SenseResult {
+    if check.target.is_empty() {
+        return SenseResult {
+            ok: false,
+            signal: "regex_in_file".into(),
+            evidence: "empty target (need a file path)".into(),
+            ..Default::default()
+        };
+    }
     let path = Path::new(&check.target[0]);
     let pat = check.expect.clone().unwrap_or_default();
     let re = match regex::Regex::new(&pat) {

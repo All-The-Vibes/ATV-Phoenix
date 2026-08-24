@@ -7,6 +7,21 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **`sense` panicked instead of going RED when a check named no target (#211 groundwork).**
+  `sense_command`, `sense_prompt_manifest` and `sense_ui_behavior` each guarded `target.is_empty()`
+  and returned `ok: false`. `sense_sha256` and `sense_regex` did not: both indexed `check.target[0]`
+  on entry, so an empty target panicked at `src/sense.rs:411` with an index-out-of-bounds rather
+  than reporting a failure the caller could act on. The harness rests on `sense` returning failure
+  as a value; a sensor that takes the process down removes the one signal an autonomous loop uses
+  to tell success from failure, and removes it exactly when something has already gone wrong. Both
+  kinds now return RED with evidence naming the empty target. `tests/empty_target_is_red_not_a_panic.rs`
+  asserts the property across all five `CheckKind` variants, so a kind added later is covered by the
+  same test rather than needing its own. This is also the precondition for #211 proper: adding
+  `inputs` to `Check` means converting 19 struct-literal sites to `..Default::default()`, which means
+  deriving `Default`, whose empty `target` would have handed every one of those sites a panic.
+
 ### Added
 
 - **`phoenix_mission --backend mixed` — one mission, two backends (#86).** The decision layer for
