@@ -63,11 +63,15 @@ where
     })
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 #[schemars(inline)]
 pub enum CheckKind {
     /// Run `target` as argv (no shell); pass iff exit code == expect (default 0).
+    ///
+    /// Default variant. A default-constructed `Check` has an empty `target`, and #217 made every
+    /// kind read RED on an empty target, so the default cannot be mistaken for a passing check.
+    #[default]
     CommandExit,
     /// Pass iff sha256(file at target) == expect.
     FileSha256,
@@ -81,7 +85,7 @@ pub enum CheckKind {
     UiBehavior,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
 #[schemars(inline)]
 pub struct Check {
     pub kind: CheckKind,
@@ -100,6 +104,20 @@ pub struct Check {
     pub cwd: Option<String>,
     #[serde(default)]
     pub timeout_secs: Option<u64>,
+    /// Files this check depends on that it does not name in `target` (#211).
+    ///
+    /// `canonical_digest` folds the sha256 of every file in `target`, so editing a test file the
+    /// check names moves the digest and any recorded RED stops binding. It cannot see what that
+    /// file imports: a helper module, a fixture, the module actually under test. Those move
+    /// underneath a recorded GREEN and the GREEN keeps asserting a world that no longer exists.
+    /// Under `phoenix-mission` that is not hypothetical, because a sibling goal landing a commit
+    /// is exactly this case, and `depends_on` says so up front.
+    ///
+    /// Declaring a path here folds it into the identity, so the check goes stale when it moves.
+    /// Absent or empty leaves the digest byte-identical to a pre-#211 check, so every recorded
+    /// trace event stays valid.
+    #[serde(default)]
+    pub inputs: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -226,12 +244,43 @@ pub fn canonical_digest(check: &Check) -> String {
     } else {
         serde_json::Value::Array(file_hashes)
     };
-    let canonical = serde_json::json!({
-        "kind": check.kind,
-        "target": check.target,
-        "expect": expect,
-        "script_hash": script_hash,
-    });
+    // #211 — fold declared transitive inputs. `script_hash` above pins only the files named in
+    // `target`; anything they import is invisible to it, so a GREEN keeps binding after a helper
+    // module or the module under test moves. `inputs` is where a check declares those, and folding
+    // them makes the digest go stale exactly when they do.
+    //
+    // Sorted by path, because `inputs` is a set of dependencies rather than an ordered argv:
+    // reordering a declaration does not change what the check depends on, so it must not change
+    // the check's identity. Tagged by path for the same reason, where `script_hash` tags by argv
+    // index. A missing declared input folds the empty string rather than nothing, so deleting a
+    // file a check depends on moves the digest instead of silently reading like it was never
+    // declared.
+    let input_hashes: Vec<serde_json::Value> = {
+        let mut paths: Vec<&String> = check.inputs.iter().collect();
+        paths.sort();
+        paths.dedup();
+        paths
+            .into_iter()
+            .map(|declared| {
+                let p = std::path::Path::new(declared);
+                let h = if p.is_file() { sha256_file(p).unwrap_or_default() } else { String::new() };
+                serde_json::json!([declared, h])
+            })
+            .collect()
+    };
+
+    // The key is inserted only when inputs are declared. Adding `"inputs_hash": null` to every
+    // check would change the serialized string for checks that declare none, which would move
+    // every digest in the repo and invalidate every recorded red→green. Absent means absent.
+    let mut canonical = serde_json::Map::new();
+    canonical.insert("kind".into(), serde_json::to_value(&check.kind).unwrap_or(serde_json::Value::Null));
+    canonical.insert("target".into(), serde_json::to_value(&check.target).unwrap_or(serde_json::Value::Null));
+    canonical.insert("expect".into(), serde_json::to_value(&expect).unwrap_or(serde_json::Value::Null));
+    canonical.insert("script_hash".into(), script_hash);
+    if !input_hashes.is_empty() {
+        canonical.insert("inputs_hash".into(), serde_json::Value::Array(input_hashes));
+    }
+    let canonical = serde_json::Value::Object(canonical);
     let s = serde_json::to_string(&canonical).unwrap_or_default();
     let mut h = Sha256::new();
     h.update(s.as_bytes());

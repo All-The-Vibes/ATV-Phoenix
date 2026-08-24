@@ -23,6 +23,7 @@ fn empty(kind: CheckKind, expect: Option<&str>) -> Check {
         expect: expect.map(|s| s.to_string()),
         cwd: None,
         timeout_secs: None,
+        ..Default::default()
     }
 }
 

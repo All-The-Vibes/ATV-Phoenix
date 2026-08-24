@@ -17,6 +17,7 @@ fn command_exit(target: Vec<String>) -> Check {
         expect: Some("0".to_string()),
         cwd: None,
         timeout_secs: None,
+        ..Default::default()
     }
 }
 
