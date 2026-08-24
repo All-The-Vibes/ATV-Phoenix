@@ -7,6 +7,33 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **`Check.inputs` — a check can declare what it depends on, so a GREEN goes stale when that moves (#211).**
+  `canonical_digest` folds the sha256 of every file named in `target`, so editing a test file the check
+  names moves the digest and any recorded RED stops binding. It never saw what that file imports: a
+  helper module, a fixture, the module actually under test. Those moved underneath a recorded GREEN and
+  the GREEN kept asserting a world that no longer existed. Under `phoenix-mission` that is not
+  hypothetical, because goals declare `depends_on`, so a sibling goal landing a commit is exactly this
+  case and the DAG already knows it happened. `inputs` is where a check names those files; the digest
+  folds them sorted by path and tagged by path, because a set of dependencies has no order and
+  reordering a declaration must not change identity. A declared file that is missing folds the empty
+  string, so deleting a dependency moves the digest instead of reading as though it was never declared.
+  `tests/declared_inputs_move_the_digest.rs` pins the fold, the set semantics, the missing-file case and
+  the end-to-end refusal: `accept` reports `ok=false` and `saw_red=false` once a declared input moves,
+  while `currently_green` stays true, which is the trap the issue is about.
+
+  **Existing digests do not move.** The `inputs_hash` key is inserted only when a check declares
+  inputs. Adding it unconditionally would have changed the serialized string for every check in the
+  repo and in every live trace, silently invalidating every recorded red→green. Two digests captured
+  from `935abed` before the field existed are asserted as literals in that test.
+
+  Getting there needed `Check` and `CheckKind` to derive `Default` and the 19 struct-literal sites
+  across 13 files converted to `..Default::default()`, because Rust literals are exhaustive and a new
+  field breaks all of them. That conversion is mechanical and carries no behaviour change; the budget
+  exception for it was granted explicitly rather than taken. `CommandExit` is the default variant, and
+  a default `Check` has an empty `target`, which #217 already made read RED for every kind.
+
 ### Fixed
 
 - **`sense` panicked instead of going RED when a check named no target (#211 groundwork).**

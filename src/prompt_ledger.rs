@@ -269,6 +269,7 @@ mod tests {
             expect: None,
             cwd: None,
             timeout_secs: None,
+            ..Default::default()
         };
         let tr = Trace::default_in(ws);
 

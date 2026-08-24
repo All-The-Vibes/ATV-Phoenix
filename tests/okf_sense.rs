@@ -35,6 +35,7 @@ fn validate_check(py: &str, bundle: &str) -> Check {
         expect: Some("0".into()),
         cwd: Some(repo_root().display().to_string()),
         timeout_secs: Some(60),
+        ..Default::default()
     }
 }
 
@@ -84,6 +85,7 @@ fn spine_senses_a_broken_bundle_red() {
         expect: Some("0".into()),
         cwd: None,
         timeout_secs: Some(60),
+        ..Default::default()
     };
     let r = sense(&check);
     assert!(!r.ok, "a bundle whose concept lacks `type` must sense RED:\n{}", r.evidence);

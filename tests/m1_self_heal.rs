@@ -24,7 +24,7 @@ fn check_contains(file: &Path, needle: &str) -> Check {
     } else {
         vec!["grep".into(), "-q".into(), needle.into(), file.display().to_string()]
     };
-    Check { kind: CheckKind::CommandExit, target: argv, expect: Some("0".into()), cwd: None, timeout_secs: Some(30) }
+    Check { kind: CheckKind::CommandExit, target: argv, expect: Some("0".into()), cwd: None, timeout_secs: Some(30), ..Default::default() }
 }
 
 #[test]

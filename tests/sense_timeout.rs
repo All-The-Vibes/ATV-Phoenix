@@ -29,6 +29,7 @@ fn check(target: Vec<String>, timeout_secs: Option<u64>) -> Check {
         expect: Some("0".into()),
         cwd: None,
         timeout_secs,
+        ..Default::default()
     }
 }
 
