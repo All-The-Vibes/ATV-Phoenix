@@ -329,6 +329,11 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   are unaffected. `tests/test_cloud_proof_workflow.py` pins the guard, its position ahead of the
   Rust build, and that removing it, marking it `continue-on-error`, unscoping it from
   `pull_request`, or hollowing out its script makes the same validator fail.
+- **`phoenix-doctor` is discoverable by Copilot CLI again.** Its frontmatter description contained an
+  unquoted `: ` sequence, so Copilot's YAML loader rejected the skill even though `phoenix-mcp doctor`
+  reported all shipped files healthy. The description is now quoted, and the doctor validator rejects
+  this invalid plain-scalar pattern before it can ship again.
+
 - **Concurrent Phoenix MCP checks can no longer fork or tear `trace.jsonl`.** Trace append now holds an
   OS-level exclusive file lock while validating the existing chain, selecting `prev_hash`, and writing
   one durable JSONL row. A malformed or broken trace fails closed instead of silently restarting from

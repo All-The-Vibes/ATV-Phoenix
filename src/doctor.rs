@@ -96,6 +96,12 @@ pub fn check_skill_file(dir_name: &str, content: &str) -> SkillReport {
     match &desc {
         None => problems.push("missing `description:`".into()),
         Some(d) if d.len() < 20 => problems.push("description too short (<20 chars)".into()),
+        Some(d)
+            if !matches!(d.chars().next(), Some('"') | Some('\'') | Some('|') | Some('>'))
+                && d.contains(": ") =>
+        {
+            problems.push("unquoted description contains `: `, which is invalid YAML".into())
+        }
         _ => {}
     }
     SkillReport { name: name.unwrap_or_else(|| dir_name.to_string()), ok: problems.is_empty(), problems }

@@ -1,7 +1,7 @@
 ---
 type: Phoenix Skill
 name: phoenix-doctor
-description: Diagnose and repair a Phoenix install with the same objective discipline Phoenix gives the agent — check whether the installed agent, skills, and MCP registration match what this build ships, and re-sync any drift with a snapshot-backed fix that is re-verified red→green. Use when Copilot says "No such agent: phoenix", a skill is missing or behaving oddly, after upgrading Phoenix, or when the user says /phoenix-doctor, "doctor", "diagnose my install", "repair phoenix", or "is phoenix installed right".
+description: 'Diagnose and repair a Phoenix install with the same objective discipline Phoenix gives the agent — check whether the installed agent, skills, and MCP registration match what this build ships, and re-sync any drift with a snapshot-backed fix that is re-verified red→green. Use when Copilot says "No such agent: phoenix", a skill is missing or behaving oddly, after upgrading Phoenix, or when the user says /phoenix-doctor, "doctor", "diagnose my install", "repair phoenix", or "is phoenix installed right".'
 license: MIT
 ---
 
