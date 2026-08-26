@@ -138,3 +138,21 @@ fn read_all_still_returns_only_parseable_events() {
     assert_eq!(t.read_all().len(), 1, "read_all keeps its lenient contract for event consumers");
     assert!(!t.verify().ok, "but verify no longer shares that leniency");
 }
+
+#[test]
+fn append_refuses_to_write_through_a_broken_chain() {
+    let d = TempDir::new().unwrap();
+    let (t, p) = trace_at(&d);
+    t.append("sense", "d0", true, "command_exit", "good").unwrap();
+    let original = std::fs::read_to_string(&p).unwrap() + "{ torn tail";
+    std::fs::write(&p, &original).unwrap();
+
+    let error = t.append("sense", "d1", true, "command_exit", "must-not-write").unwrap_err();
+
+    assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+    assert_eq!(
+        std::fs::read_to_string(&p).unwrap(),
+        original,
+        "a broken trace must remain untouched for forensic recovery"
+    );
+}

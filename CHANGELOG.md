@@ -329,6 +329,10 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   are unaffected. `tests/test_cloud_proof_workflow.py` pins the guard, its position ahead of the
   Rust build, and that removing it, marking it `continue-on-error`, unscoping it from
   `pull_request`, or hollowing out its script makes the same validator fail.
+- **Concurrent Phoenix MCP checks can no longer fork or tear `trace.jsonl`.** Trace append now holds an
+  OS-level exclusive file lock while validating the existing chain, selecting `prev_hash`, and writing
+  one durable JSONL row. A malformed or broken trace fails closed instead of silently restarting from
+  `GENESIS`, and regression coverage exercises 64 simultaneous writers.
 
 - **The Tier 3 gate evidence in `tests/test_eval_gate_discloses_ceiling.py` can no longer disappear
   quietly.** `test_exit_codes_are_unchanged_by_the_disclosure` is this repository's only observation of

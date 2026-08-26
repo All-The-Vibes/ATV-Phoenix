@@ -7,9 +7,10 @@
 //! INVARIANT: `verify` counts every line it saw, so a file cannot get shorter without the row count
 //! disagreeing with the chain.
 
+use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::io::Write;
+use std::io::{Read, Seek, Write};
 use std::path::{Path, PathBuf};
 
 pub const GENESIS: &str = "GENESIS";
@@ -67,6 +68,26 @@ fn row_hash(ev: &TraceEvent) -> String {
     hex(&h.finalize())
 }
 
+fn verified_head(content: &str) -> std::io::Result<String> {
+    let mut prev = GENESIS.to_string();
+    for (index, line) in content.lines().filter(|line| !line.trim().is_empty()).enumerate() {
+        let event = serde_json::from_str::<TraceEvent>(line).map_err(|error| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("trace row {index} is not valid JSON: {error}"),
+            )
+        })?;
+        if event.prev_hash != prev || row_hash(&event) != event.hash {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("trace chain is broken at row {index}"),
+            ));
+        }
+        prev = event.hash;
+    }
+    Ok(prev)
+}
+
 impl Trace {
     pub fn at(path: PathBuf) -> Self {
         Trace { path }
@@ -76,37 +97,46 @@ impl Trace {
         Trace { path: workspace.join(".phoenix").join("trace.jsonl") }
     }
 
-    fn last_hash(&self) -> String {
-        let Ok(content) = std::fs::read_to_string(&self.path) else { return GENESIS.into() };
-        content
-            .lines()
-            .filter(|l| !l.trim().is_empty())
-            .last()
-            .and_then(|l| serde_json::from_str::<TraceEvent>(l).ok())
-            .map(|e| e.hash)
-            .unwrap_or_else(|| GENESIS.into())
-    }
-
     /// Append one hash-chained event. `input_digest` is sha256 of the tool input for replay/audit.
     pub fn append(&self, tool: &str, input_digest: &str, ok: bool, signal: &str, evidence: &str) -> std::io::Result<TraceEvent> {
         if let Some(dir) = self.path.parent() {
             std::fs::create_dir_all(dir)?;
         }
-        let prev_hash = self.last_hash();
-        let mut ev = TraceEvent {
-            ts: now_ts(),
-            tool: tool.to_string(),
-            input_digest: input_digest.to_string(),
-            ok,
-            signal: signal.to_string(),
-            evidence: evidence.to_string(),
-            prev_hash,
-            hash: String::new(),
-        };
-        ev.hash = row_hash(&ev);
-        let mut f = std::fs::OpenOptions::new().create(true).append(true).open(&self.path)?;
-        writeln!(f, "{}", serde_json::to_string(&ev)?)?;
-        Ok(ev)
+        let mut file =
+            std::fs::OpenOptions::new().create(true).read(true).append(true).open(&self.path)?;
+        file.lock_exclusive()?;
+
+        let result = (|| {
+            file.rewind()?;
+            let mut content = String::new();
+            file.read_to_string(&mut content)?;
+            let prev_hash = verified_head(&content)?;
+
+            let mut event = TraceEvent {
+                ts: now_ts(),
+                tool: tool.to_string(),
+                input_digest: input_digest.to_string(),
+                ok,
+                signal: signal.to_string(),
+                evidence: evidence.to_string(),
+                prev_hash,
+                hash: String::new(),
+            };
+            event.hash = row_hash(&event);
+            writeln!(file, "{}", serde_json::to_string(&event)?)?;
+            file.flush()?;
+            file.sync_data()?;
+            Ok(event)
+        })();
+
+        let unlock_result = FileExt::unlock(&file);
+        match result {
+            Ok(event) => {
+                unlock_result?;
+                Ok(event)
+            }
+            Err(error) => Err(error),
+        }
     }
 
     pub fn read_all(&self) -> Vec<TraceEvent> {
