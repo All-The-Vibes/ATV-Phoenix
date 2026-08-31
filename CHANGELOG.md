@@ -9,6 +9,33 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`phoenix-deps` — dependency and supply-chain work gets a gate instead of a self-graded claim (#219).**
+  Everywhere else Phoenix refuses to let an agent grade itself; dependencies were the one surface where
+  "I updated the packages" was accepted on assertion, because nothing in `skills/`, `src/`, `scripts/`, or
+  `.github/` owned that surface at all. The gate is not that the manifest changed — it is that the
+  regenerated lockfile installs clean in a fresh environment the way CI will (`npm ci`,
+  `pnpm install --frozen-lockfile`, `cargo build --locked`, `uv sync --locked`, `dotnet restore
+  --locked-mode`), with the test suite still green afterwards. An incremental install is not the gate,
+  because it passes on a lockfile CI will reject.
+
+  Two rules that the state of the art states as craft are promoted here to gates, because both are
+  dependency-shaped instances of laws this repo already has. **Stop at the no-op boundary** — no branch,
+  no commit, no pull request when nothing needed changing — is the charter's no-op bias; an empty
+  dependency PR costs a review cycle and teaches the team to skim dependency PRs, which is how the real
+  one gets waved through. **A manager that could not be audited is BLOCKED and is named** is the
+  silent-failure SLO: the defect is not the gap, it is the undisclosed gap, so coverage is reported
+  beside the result and "clean across 4 of 6 managers, Maven and NuGet blocked" replaces "dependencies
+  are clean". Remediation ranks by exploitation evidence rather than severity label — a High in CISA's
+  KEV catalog outranks an unexploited Critical, because severity is a score and exploitation is a fact.
+
+  The skill is routed from the `phoenix` meta-skill in the same change. An unrouted skill is this repo's
+  costliest documented defect class — a correct mechanism wired to nothing — so
+  `tests/test_phoenix_deps_skill.py` asserts the routing, not only the file's existence, and mirrors
+  `doctor::check_skill_file`'s frontmatter rules so drift fails pytest and not only `cargo test`. Every
+  assertion is paired with a negative fixture, including one proving that prose telling an agent to "run
+  an objective check" fails the gate that requires a runnable `command_exit` block — the exact substitution
+  of advice for enforcement the skill exists to end. Practice adapted from `jongio/skills` → `deps-doctor`
+  (MIT), credited in the skill.
 - **`Check.inputs` — a check can declare what it depends on, so a GREEN goes stale when that moves (#211).**
   `canonical_digest` folds the sha256 of every file named in `target`, so editing a test file the check
   names moves the digest and any recorded RED stops binding. It never saw what that file imports: a
