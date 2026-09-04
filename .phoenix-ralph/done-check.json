@@ -1,1 +1,1 @@
-{"kind":"command_exit","target":["python","-m","pytest","tests/test_auto_merge_gate.py","tests/test_eval_gate_discloses_ceiling.py","tests/test_eval_gate_enforces_instrument_validity.py","-q"],"expect":"0","cwd":"."}
+{"kind":"command_exit","target":["python","-m","pytest","tests/test_auto_merge_gate.py","tests/test_eval_gate_discloses_ceiling.py","tests/test_eval_gate_enforces_instrument_validity.py","-vv"],"expect":"0","cwd":"."}
