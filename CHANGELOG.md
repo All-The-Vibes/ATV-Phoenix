@@ -63,6 +63,14 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Tier 3 now abstains when its instrument is UNKNOWN (#171).** The gate already disclosed a
+  missing, void, stale, or saturated baseline but then compared against it anyway, allowing a
+  below-baseline result from an invalid instrument to block a change. It now records the score and
+  exits without accepting or rejecting; only a valid, fresh, non-saturated baseline can produce
+  PASS or REGRESSION. The same valid fixture proves an unchanged arm is accepted and a deliberately
+  regressed arm is rejected. That required observation resolves `pwsh` or `powershell` and fails
+  rather than skipping when neither is available.
+
 - **`sense` panicked instead of going RED when a check named no target (#211 groundwork).**
   `sense_command`, `sense_prompt_manifest` and `sense_ui_behavior` each guarded `target.is_empty()`
   and returned `ok: false`. `sense_sha256` and `sense_regex` did not: both indexed `check.target[0]`

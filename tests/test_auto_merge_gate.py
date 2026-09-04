@@ -1,4 +1,5 @@
 """tests/test_auto_merge_gate.py — acceptance tests for scripts/eval-gate.ps1 (issue #35)."""
+import datetime
 import json, pathlib, subprocess, shutil
 
 REPO = pathlib.Path(__file__).parent.parent
@@ -14,10 +15,18 @@ def pwsh(args, cwd=None):
 
 def pwsh_ok():
     try:
-        subprocess.run(["powershell", "--version"], capture_output=True, timeout=5)
+        subprocess.run(
+            ["powershell", "-NoProfile", "-Command", "$PSVersionTable.PSVersion"],
+            capture_output=True,
+            timeout=30,
+        )
         return True
-    except Exception:
+    except (FileNotFoundError, NotADirectoryError, PermissionError):
         return False
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            "the PowerShell probe timed out; skipping would erase the Tier 3 observation"
+        ) from exc
 
 def make_results(path, arm_b, tasks=9):
     lines = []
@@ -26,7 +35,7 @@ def make_results(path, arm_b, tasks=9):
         lines.append(json.dumps({"id":f"t{i}-B","task":f"t{i}","arm":"B_phoenix","rep":1,"f2p":1,"p2p":1,"resolved":1 if i<round(arm_b*tasks) else 0}))
     pathlib.Path(path).write_text("\n".join(lines), encoding="utf-8")
 
-def gate_env(tmp_path, arm_b, baseline_b=None):
+def gate_env(tmp_path, arm_b, baseline_b=None, baseline_date=None):
     (tmp_path/"scripts").mkdir(); (tmp_path/"eval").mkdir()
     shutil.copy(EVAL_GATE, tmp_path/"scripts"/"eval-gate.ps1")
     shutil.copy(REPO/"scripts"/"update-scoreboard.ps1", tmp_path/"scripts"/"update-scoreboard.ps1")
@@ -34,6 +43,8 @@ def gate_env(tmp_path, arm_b, baseline_b=None):
     if baseline_b is not None:
         board = json.loads((tmp_path/"eval"/"scoreboard.json").read_text(encoding="utf-8-sig"))
         board["baseline"]["swe_bench_lite"]["arm_b_phoenix_resolved"] = baseline_b
+        if baseline_date is not None:
+            board["baseline"]["date"] = baseline_date
         (tmp_path/"eval"/"scoreboard.json").write_text(json.dumps(board), encoding="utf-8")
     (tmp_path/"README.md").write_text("# Test\n", encoding="utf-8")
     results = tmp_path/"prebuilt.jsonl"
@@ -64,7 +75,12 @@ def test_missing_scoreboard_exits_2(tmp_path):
 
 def test_gate_passes_on_no_regression(tmp_path):
     if not pwsh_ok(): import pytest; pytest.skip("pwsh unavailable")
-    results = gate_env(tmp_path, arm_b=1.0)
+    results = gate_env(
+        tmp_path,
+        arm_b=0.7778,
+        baseline_b=0.7778,
+        baseline_date=datetime.date.today().isoformat(),
+    )
     r = subprocess.run(["powershell","-ExecutionPolicy","Bypass","-File",
         str(tmp_path/"scripts"/"eval-gate.ps1"),
         "-PrebuiltResults", str(results),
@@ -75,7 +91,12 @@ def test_gate_passes_on_no_regression(tmp_path):
 
 def test_gate_fails_on_regression(tmp_path):
     if not pwsh_ok(): import pytest; pytest.skip("pwsh unavailable")
-    results = gate_env(tmp_path, arm_b=0.5)
+    results = gate_env(
+        tmp_path,
+        arm_b=0.5,
+        baseline_b=0.7778,
+        baseline_date=datetime.date.today().isoformat(),
+    )
     r = subprocess.run(["powershell","-ExecutionPolicy","Bypass","-File",
         str(tmp_path/"scripts"/"eval-gate.ps1"),
         "-PrebuiltResults", str(results),

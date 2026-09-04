@@ -10,10 +10,11 @@ Every recorded run since 2026-07-03 has Arm B at exactly 1.0 with delta 0.0. The
 `PASS: Arm B 1 >= baseline 1` each time and said nothing about the ceiling, so a reader had no
 way to tell a real pass from a tie that carries no information.
 
-This is the same disclosure fix #150 shipped for the OKF eval. Exit codes do not change here,
-because the limitation is in what the number can show, not in what the gate should allow.
+The limitation changes what the gate may decide: a saturated instrument is UNKNOWN and must
+abstain, while a fresh instrument with headroom accepts a tie and rejects a deliberate drop.
 """
 import errno
+import datetime
 import json
 import pathlib
 import shutil
@@ -27,37 +28,56 @@ SCOREBOARD = REPO / "eval" / "scoreboard.json"
 UPDATER = REPO / "scripts" / "update-scoreboard.ps1"
 
 SATURATED = "SATURATED"
+POWERSHELL_CANDIDATES = ("pwsh", "powershell")
 
 
-def _pwsh_available():
-    """Report whether PowerShell can be invoked, and refuse to guess.
+def _powershell_exe():
+    """Return an invokable PowerShell, preferring the cross-platform executable.
 
     The original form caught every exception and returned False, so a
     `subprocess.TimeoutExpired` from a loaded machine read as "PowerShell is not
-    installed" and all three tests below skipped themselves while the suite exited 0.
+    installed" and the gate tests below skipped themselves while the suite exited 0.
 
-    That matters more here than in an ordinary test file. `test_exit_codes_are_unchanged_by_the_disclosure`
-    is the repository's only observation of the Tier 3 gate rejecting a deliberately
+    That matters more here than in an ordinary test file. The valid-gate test below
+    is the repository's observation of the Tier 3 gate rejecting a deliberately
     regressed arm and accepting an unchanged one, which is exactly what issue #171 asks
     for: "a gate never seen doing both is not evidence." A probe that can silently erase
     that observation erases the evidence with it, and the run still reports success.
 
-    Only a genuine absence justifies a skip. A timeout is an environment failure and
-    raises, so the run goes red and says why instead of quietly proving nothing.
-    Same defect and same fix as issue #170 in tests/test_harvest_datapoint.py.
+    Only a genuine absence justifies returning None. A timeout is an environment
+    failure and raises, so the run goes red and says why instead of quietly proving
+    nothing. Ubuntu provides `pwsh`, while Windows also provides `powershell`.
     """
-    try:
-        subprocess.run(["powershell", "-NoProfile", "-Command", "$PSVersionTable.PSVersion"],
-                       capture_output=True, timeout=30)
-        return True
-    except (FileNotFoundError, NotADirectoryError, PermissionError):
-        return False
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError(
-            "the PowerShell availability probe timed out after 30s. That is a loaded or "
-            "broken environment, not a missing interpreter. Skipping here would erase the "
-            "only observation that the Tier 3 gate rejects a regressed arm (issue #171)."
-        ) from exc
+    for name in POWERSHELL_CANDIDATES:
+        exe = shutil.which(name)
+        if exe is None:
+            continue
+        try:
+            subprocess.run(
+                [exe, "-NoProfile", "-Command", "$PSVersionTable.PSVersion"],
+                capture_output=True,
+                timeout=30,
+            )
+            return exe
+        except (FileNotFoundError, NotADirectoryError, PermissionError):
+            continue
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(
+                f"the {name} availability probe timed out after 30s. That is a loaded or "
+                "broken environment, not a missing interpreter. Skipping here would erase "
+                "the Tier 3 acceptance evidence (issue #171)."
+            ) from exc
+    return None
+
+
+def _require_powershell():
+    exe = _powershell_exe()
+    if exe is None:
+        pytest.fail(
+            "PowerShell is required: skipping would erase the unchanged and regression "
+            "observations required by issue #171"
+        )
+    return exe
 
 
 def _write_results(path, resolved_fraction, tasks=9):
@@ -71,7 +91,7 @@ def _write_results(path, resolved_fraction, tasks=9):
     pathlib.Path(path).write_text("\n".join(lines), encoding="utf-8")
 
 
-def _sandbox(tmp_path, baseline_arm_b, measured_arm_b):
+def _sandbox(tmp_path, baseline_arm_b, measured_arm_b, baseline_date=None):
     """A throwaway checkout with a chosen baseline. Never touches the real scoreboard."""
     (tmp_path / "scripts").mkdir(parents=True)
     (tmp_path / "eval").mkdir(parents=True)
@@ -80,6 +100,8 @@ def _sandbox(tmp_path, baseline_arm_b, measured_arm_b):
 
     board = json.loads(SCOREBOARD.read_bytes().lstrip(b"\xef\xbb\xbf").decode("utf-8"))
     board["baseline"]["swe_bench_lite"]["arm_b_phoenix_resolved"] = baseline_arm_b
+    if baseline_date is not None:
+        board["baseline"]["date"] = baseline_date
     (tmp_path / "eval" / "scoreboard.json").write_text(json.dumps(board, indent=2), encoding="utf-8")
 
     results = tmp_path / "prebuilt.jsonl"
@@ -87,9 +109,9 @@ def _sandbox(tmp_path, baseline_arm_b, measured_arm_b):
     return results
 
 
-def _run_gate(tmp_path, results):
+def _run_gate(tmp_path, results, exe):
     return subprocess.run(
-        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+        [exe, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
          str(tmp_path / "scripts" / "eval-gate.ps1"),
          "-PrebuiltResults", str(results),
          "-ResultsOut", str(tmp_path / "out.jsonl")],
@@ -97,24 +119,56 @@ def _run_gate(tmp_path, results):
 
 
 def test_gate_discloses_that_a_ceiling_baseline_cannot_show_improvement(tmp_path):
-    if not _pwsh_available():
+    exe = _powershell_exe()
+    if exe is None:
         pytest.skip("powershell unavailable")
-    results = _sandbox(tmp_path, baseline_arm_b=1.0, measured_arm_b=1.0)
-    r = _run_gate(tmp_path, results)
+    results = _sandbox(
+        tmp_path,
+        baseline_arm_b=1.0,
+        measured_arm_b=1.0,
+        baseline_date=datetime.date.today().isoformat(),
+    )
+    r = _run_gate(tmp_path, results, exe)
     combined = r.stdout + r.stderr
     assert r.returncode == 0, combined
+    assert "past the" not in combined
     assert SATURATED in combined, (
         "baseline 1.0 leaves no headroom, and the gate must say so instead of printing a bare PASS\n"
         + combined
     )
 
 
+def test_saturated_gate_abstains_from_a_deliberate_drop(tmp_path):
+    exe = _powershell_exe()
+    if exe is None:
+        pytest.skip("powershell unavailable")
+    results = _sandbox(
+        tmp_path,
+        baseline_arm_b=1.0,
+        measured_arm_b=0.5,
+        baseline_date=datetime.date.today().isoformat(),
+    )
+    r = _run_gate(tmp_path, results, exe)
+    combined = r.stdout + r.stderr
+    assert r.returncode == 0, combined
+    assert "UNKNOWN (SATURATED)" in combined
+    assert "past the" not in combined, "staleness must not be what makes this fixture abstain"
+    assert "ABSTAIN" in combined
+    assert "REGRESSION" not in combined
+
+
 def test_gate_stays_quiet_when_the_baseline_has_headroom(tmp_path):
     """The anti-noise control. Printed unconditionally the disclosure would mean nothing."""
-    if not _pwsh_available():
+    exe = _powershell_exe()
+    if exe is None:
         pytest.skip("powershell unavailable")
-    results = _sandbox(tmp_path, baseline_arm_b=0.778, measured_arm_b=1.0)
-    r = _run_gate(tmp_path, results)
+    results = _sandbox(
+        tmp_path,
+        baseline_arm_b=0.778,
+        measured_arm_b=1.0,
+        baseline_date=datetime.date.today().isoformat(),
+    )
+    r = _run_gate(tmp_path, results, exe)
     combined = r.stdout + r.stderr
     assert r.returncode == 0, combined
     assert SATURATED not in combined, (
@@ -122,31 +176,60 @@ def test_gate_stays_quiet_when_the_baseline_has_headroom(tmp_path):
     )
 
 
-def test_exit_codes_are_unchanged_by_the_disclosure(tmp_path):
-    """Disclosure only. A ceiling baseline must still pass on a tie and still fail on a drop."""
-    if not _pwsh_available():
-        pytest.skip("powershell unavailable")
-    tie = _sandbox(tmp_path / "tie", baseline_arm_b=1.0, measured_arm_b=1.0)
-    r_tie = _run_gate(tmp_path / "tie", tie)
-    assert r_tie.returncode == 0, r_tie.stdout + r_tie.stderr
-
-    drop = _sandbox(tmp_path / "drop", baseline_arm_b=1.0, measured_arm_b=0.5)
-    r_drop = _run_gate(tmp_path / "drop", drop)
-    combined = r_drop.stdout + r_drop.stderr
-    assert r_drop.returncode == 1, combined
-    assert "REGRESSION" in combined, combined
+@pytest.mark.parametrize(
+    ("measured_arm_b", "expected_code", "expected_marker"),
+    [(0.7778, 0, "PASS"), (0.5, 1, "REGRESSION")],
+    ids=("unchanged-accepted", "deliberate-regression-rejected"),
+)
+def test_valid_gate_decides_both_arms_on_the_same_corpus(
+    tmp_path, measured_arm_b, expected_code, expected_marker
+):
+    """Both required observations execute; absence of PowerShell is a failure, never a skip."""
+    exe = _require_powershell()
+    fresh = datetime.date.today().isoformat()
+    results = _sandbox(
+        tmp_path,
+        baseline_arm_b=0.7778,
+        measured_arm_b=measured_arm_b,
+        baseline_date=fresh,
+    )
+    result = _run_gate(tmp_path, results, exe)
+    combined = result.stdout + result.stderr
+    assert result.returncode == expected_code, combined
+    assert expected_marker in combined
+    assert "UNKNOWN" not in combined, combined
 
 
 # --- issue #171: the evidence must not be able to disappear quietly ---
 
 
-def test_probe_returns_false_when_powershell_is_genuinely_absent(monkeypatch):
-    """A missing interpreter is the one condition that justifies skipping."""
-    def _absent(*args, **kwargs):
-        raise FileNotFoundError(2, "The system cannot find the file specified")
+def test_resolver_uses_pwsh_when_windows_powershell_is_absent(monkeypatch):
+    monkeypatch.setattr(
+        shutil,
+        "which",
+        lambda exe: "C:\\tools\\pwsh.exe" if exe == "pwsh" else None,
+    )
+    calls = []
 
-    monkeypatch.setattr(subprocess, "run", _absent)
-    assert _pwsh_available() is False
+    def _run(argv, **kwargs):
+        calls.append(argv)
+        return subprocess.CompletedProcess(argv, 0)
+
+    monkeypatch.setattr(subprocess, "run", _run)
+    assert _powershell_exe() == "C:\\tools\\pwsh.exe"
+    assert calls[0][0] == "C:\\tools\\pwsh.exe"
+
+
+def test_required_acceptance_refuses_to_skip_without_powershell(monkeypatch):
+    monkeypatch.setattr(shutil, "which", lambda _exe: None)
+    with pytest.raises(pytest.fail.Exception):
+        _require_powershell()
+
+
+def test_probe_returns_none_when_powershell_is_genuinely_absent(monkeypatch):
+    """A missing interpreter is reported, but the required observations still fail on it."""
+    monkeypatch.setattr(shutil, "which", lambda _exe: None)
+    assert _powershell_exe() is None
 
 
 def test_probe_raises_when_the_probe_times_out(monkeypatch):
@@ -160,7 +243,7 @@ def test_probe_raises_when_the_probe_times_out(monkeypatch):
 
     monkeypatch.setattr(subprocess, "run", _slow)
     with pytest.raises(RuntimeError) as caught:
-        _pwsh_available()
+        _powershell_exe()
     assert "timed out" in str(caught.value)
 
 
@@ -171,17 +254,15 @@ def test_probe_does_not_swallow_unexpected_errors(monkeypatch):
 
     monkeypatch.setattr(subprocess, "run", _broken)
     with pytest.raises(OSError):
-        _pwsh_available()
+        _powershell_exe()
 
 
 def test_the_regression_observation_actually_runs_on_this_machine():
     """Fails if the gate evidence is being skipped on a machine that can run it.
 
     Issue #171 wants the Tier 3 gate observed both accepting an unchanged arm and
-    rejecting a regressed one. `test_exit_codes_are_unchanged_by_the_disclosure` is that
-    observation, and it is guarded by `_pwsh_available`. If PowerShell is on PATH and the
-    probe still says otherwise, that guard is lying and the observation is not happening.
+    rejecting a regressed one. The valid-gate test above is that
+    observation, and it is guarded by `_require_powershell`, which fails rather than
+    skipping when neither cross-platform nor Windows PowerShell is available.
     """
-    if shutil.which("powershell") is None:
-        pytest.skip("PowerShell is genuinely absent on this machine")
-    assert _pwsh_available() is True
+    assert _require_powershell()
