@@ -10,10 +10,11 @@ Every recorded run since 2026-07-03 has Arm B at exactly 1.0 with delta 0.0. The
 `PASS: Arm B 1 >= baseline 1` each time and said nothing about the ceiling, so a reader had no
 way to tell a real pass from a tie that carries no information.
 
-This is the same disclosure fix #150 shipped for the OKF eval. Exit codes do not change here,
-because the limitation is in what the number can show, not in what the gate should allow.
+The limitation changes what the gate may decide: a saturated instrument is UNKNOWN and must
+abstain, while a fresh instrument with headroom accepts a tie and rejects a deliberate drop.
 """
 import errno
+import datetime
 import json
 import pathlib
 import shutil
@@ -34,10 +35,10 @@ def _pwsh_available():
 
     The original form caught every exception and returned False, so a
     `subprocess.TimeoutExpired` from a loaded machine read as "PowerShell is not
-    installed" and all three tests below skipped themselves while the suite exited 0.
+    installed" and the gate tests below skipped themselves while the suite exited 0.
 
-    That matters more here than in an ordinary test file. `test_exit_codes_are_unchanged_by_the_disclosure`
-    is the repository's only observation of the Tier 3 gate rejecting a deliberately
+    That matters more here than in an ordinary test file. The valid-gate test below
+    is the repository's observation of the Tier 3 gate rejecting a deliberately
     regressed arm and accepting an unchanged one, which is exactly what issue #171 asks
     for: "a gate never seen doing both is not evidence." A probe that can silently erase
     that observation erases the evidence with it, and the run still reports success.
@@ -71,7 +72,7 @@ def _write_results(path, resolved_fraction, tasks=9):
     pathlib.Path(path).write_text("\n".join(lines), encoding="utf-8")
 
 
-def _sandbox(tmp_path, baseline_arm_b, measured_arm_b):
+def _sandbox(tmp_path, baseline_arm_b, measured_arm_b, baseline_date=None):
     """A throwaway checkout with a chosen baseline. Never touches the real scoreboard."""
     (tmp_path / "scripts").mkdir(parents=True)
     (tmp_path / "eval").mkdir(parents=True)
@@ -80,6 +81,8 @@ def _sandbox(tmp_path, baseline_arm_b, measured_arm_b):
 
     board = json.loads(SCOREBOARD.read_bytes().lstrip(b"\xef\xbb\xbf").decode("utf-8"))
     board["baseline"]["swe_bench_lite"]["arm_b_phoenix_resolved"] = baseline_arm_b
+    if baseline_date is not None:
+        board["baseline"]["date"] = baseline_date
     (tmp_path / "eval" / "scoreboard.json").write_text(json.dumps(board, indent=2), encoding="utf-8")
 
     results = tmp_path / "prebuilt.jsonl"
@@ -109,6 +112,18 @@ def test_gate_discloses_that_a_ceiling_baseline_cannot_show_improvement(tmp_path
     )
 
 
+def test_saturated_gate_abstains_from_a_deliberate_drop(tmp_path):
+    if not _pwsh_available():
+        pytest.skip("powershell unavailable")
+    results = _sandbox(tmp_path, baseline_arm_b=1.0, measured_arm_b=0.5)
+    r = _run_gate(tmp_path, results)
+    combined = r.stdout + r.stderr
+    assert r.returncode == 0, combined
+    assert "UNKNOWN (SATURATED)" in combined
+    assert "ABSTAIN" in combined
+    assert "REGRESSION" not in combined
+
+
 def test_gate_stays_quiet_when_the_baseline_has_headroom(tmp_path):
     """The anti-noise control. Printed unconditionally the disclosure would mean nothing."""
     if not _pwsh_available():
@@ -122,19 +137,33 @@ def test_gate_stays_quiet_when_the_baseline_has_headroom(tmp_path):
     )
 
 
-def test_exit_codes_are_unchanged_by_the_disclosure(tmp_path):
-    """Disclosure only. A ceiling baseline must still pass on a tie and still fail on a drop."""
+def test_valid_gate_accepts_unchanged_and_rejects_regression_on_the_same_corpus(tmp_path):
+    """A valid instrument must accept a tie and reject a deliberate drop for score reasons."""
     if not _pwsh_available():
         pytest.skip("powershell unavailable")
-    tie = _sandbox(tmp_path / "tie", baseline_arm_b=1.0, measured_arm_b=1.0)
+    fresh = datetime.date.today().isoformat()
+    tie = _sandbox(
+        tmp_path / "tie",
+        baseline_arm_b=0.7778,
+        measured_arm_b=0.7778,
+        baseline_date=fresh,
+    )
     r_tie = _run_gate(tmp_path / "tie", tie)
     assert r_tie.returncode == 0, r_tie.stdout + r_tie.stderr
+    assert "PASS" in r_tie.stdout
+    assert "UNKNOWN" not in r_tie.stdout
 
-    drop = _sandbox(tmp_path / "drop", baseline_arm_b=1.0, measured_arm_b=0.5)
+    drop = _sandbox(
+        tmp_path / "drop",
+        baseline_arm_b=0.7778,
+        measured_arm_b=0.5,
+        baseline_date=fresh,
+    )
     r_drop = _run_gate(tmp_path / "drop", drop)
     combined = r_drop.stdout + r_drop.stderr
     assert r_drop.returncode == 1, combined
     assert "REGRESSION" in combined, combined
+    assert "UNKNOWN" not in combined, combined
 
 
 # --- issue #171: the evidence must not be able to disappear quietly ---
@@ -178,7 +207,7 @@ def test_the_regression_observation_actually_runs_on_this_machine():
     """Fails if the gate evidence is being skipped on a machine that can run it.
 
     Issue #171 wants the Tier 3 gate observed both accepting an unchanged arm and
-    rejecting a regressed one. `test_exit_codes_are_unchanged_by_the_disclosure` is that
+    rejecting a regressed one. The valid-gate test above is that
     observation, and it is guarded by `_pwsh_available`. If PowerShell is on PATH and the
     probe still says otherwise, that guard is lying and the observation is not happening.
     """

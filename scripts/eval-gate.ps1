@@ -138,8 +138,14 @@ Write-Output "[eval-gate] Baseline Arm B: $baselineB"
 # UNKNOWN discloses and does not block, deliberately. Failing here would stop the very pull
 # requests that could refresh the baseline, which is the deadlock this rule exists to avoid.
 $maxBaselineAgeDays = 14
+$instrumentValid = $true
+if ($null -eq $baselineB) {
+  $instrumentValid = $false
+  Write-Output "[eval-gate] UNKNOWN: the baseline carries no Arm B measurement, so Tier 3 cannot discriminate. Tracked in issue #171."
+}
 $baselineValid = $board.baseline.swe_bench_lite.valid
 if ($null -ne $baselineValid -and -not $baselineValid) {
+  $instrumentValid = $false
   Write-Output "[eval-gate] UNKNOWN: the baseline measurement is marked void, so Tier 3 cannot discriminate. It neither blocks nor passes silently. Tracked in issue #171."
 }
 $baselineDateRaw = $board.baseline.date
@@ -148,19 +154,23 @@ if ($baselineDateRaw) {
   if ([datetime]::TryParse($baselineDateRaw, [ref]$parsedDate)) {
     $ageDays = [int]((Get-Date).Date - $parsedDate.Date).TotalDays
     if ($ageDays -gt $maxBaselineAgeDays) {
+      $instrumentValid = $false
       Write-Output "[eval-gate] UNKNOWN: the baseline was measured $ageDays days ago ($baselineDateRaw), past the $maxBaselineAgeDays-day window in MISSION.md. Tier 3 is gating against a measurement that can no longer discriminate; this is disclosed, not blocked, because blocking would stop the changes that could refresh it. Tracked in issue #171."
     }
   }
   else {
+    $instrumentValid = $false
     Write-Output "[eval-gate] UNKNOWN: the baseline date '$baselineDateRaw' could not be parsed, so its age cannot be checked. Tracked in issue #171."
   }
 }
 else {
+  $instrumentValid = $false
   Write-Output "[eval-gate] UNKNOWN: the baseline carries no date, so its age cannot be checked. Tracked in issue #171."
 }
 
 if ($baselineB -ge 1.0) {
-  Write-Output "[eval-gate] SATURATED: the baseline is $baselineB, which is the highest a resolved-rate can reach. This gate can detect a regression and cannot detect an improvement, so a tie at $baselineB is not evidence that the harness got better. Tracked in issue #142."
+  $instrumentValid = $false
+  Write-Output "[eval-gate] UNKNOWN (SATURATED): the baseline is $baselineB, which is the highest a resolved-rate can reach. This gate can detect a regression and cannot detect an improvement, so a tie at $baselineB is not evidence that the harness got better. Tracked in issue #171."
 }
 
 # Re-enter this same interpreter rather than the name `powershell`, which does not exist on
@@ -192,7 +202,11 @@ if (Test-Path $updater) {
   & $psExe -NoProfile -ExecutionPolicy Bypass -File $updater -ResultsFile $ResultsOut -Trigger pr 2>&1 | Out-Null
 }
 
-if ($delta -lt 0) {
+if (-not $instrumentValid) {
+  Write-Output "[eval-gate] ABSTAIN: Tier 3 is UNKNOWN, so this score is recorded but cannot accept or reject the change. Proceed on the other tiers."
+  exit 0
+}
+elseif ($delta -lt 0) {
   Write-Warning "[eval-gate] REGRESSION: Arm B $scoreB < baseline $baselineB (delta $delta)"
   exit 1
 }
