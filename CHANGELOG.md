@@ -36,6 +36,12 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **`/showoff` now runs through host-native agent primitives in GitHub Copilot CLI and VS Code.**
+  The project skill no longer depends on Claude-only environment variables, argument placeholders,
+  or tool names. Hosts without subagents execute the same read-only research lanes inline instead
+  of stopping after a partial plan, while the complete HyperFrames workflow and approval gates remain
+  intact.
+
 - **`sense` panicked instead of going RED when a check named no target (#211 groundwork).**
   `sense_command`, `sense_prompt_manifest` and `sense_ui_behavior` each guarded `target.is_empty()`
   and returned `ok: false`. `sense_sha256` and `sense_regex` did not: both indexed `check.target[0]`
