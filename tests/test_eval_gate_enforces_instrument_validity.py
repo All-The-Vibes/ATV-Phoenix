@@ -149,6 +149,41 @@ def test_unknown_does_not_block_the_change(tmp_path):
     )
 
 
+def test_unknown_cannot_reject_a_below_baseline_measurement(tmp_path):
+    """The validity guard must be load-bearing when the observed score is lower."""
+    exe = _powershell_exe()
+    if exe is None:
+        pytest.skip("no PowerShell interpreter available")
+    results = _sandbox(
+        tmp_path,
+        baseline_date=_days_ago(MAX_AGE_DAYS + 30),
+        measured_arm_b=0.5,
+    )
+    r = _run_gate(tmp_path, results, exe)
+    combined = r.stdout + r.stderr
+    assert r.returncode == 0, (
+        "an UNKNOWN instrument must abstain rather than reject a change\n" + combined
+    )
+    assert UNKNOWN in combined
+    assert "REGRESSION" not in combined
+
+
+def test_missing_measurement_is_unknown(tmp_path):
+    exe = _powershell_exe()
+    if exe is None:
+        pytest.skip("no PowerShell interpreter available")
+    results = _sandbox(tmp_path, baseline_date=_days_ago(1))
+    board_path = tmp_path / "eval" / "scoreboard.json"
+    board = json.loads(board_path.read_text(encoding="utf-8"))
+    del board["baseline"]["swe_bench_lite"]["arm_b_phoenix_resolved"]
+    board_path.write_text(json.dumps(board), encoding="utf-8")
+    r = _run_gate(tmp_path, results, exe)
+    combined = r.stdout + r.stderr
+    assert r.returncode == 0, combined
+    assert "UNKNOWN: the baseline carries no Arm B measurement" in combined
+    assert "ABSTAIN" in combined
+
+
 def test_gate_stays_quiet_when_the_baseline_is_fresh(tmp_path):
     """The anti-noise control. Printed unconditionally the disclosure would mean nothing."""
     exe = _powershell_exe()

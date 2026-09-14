@@ -26,6 +26,7 @@ Task arrives
     │     ├── proving behavior / fixing a bug? ──────────→ phoenix-test   (the test is the gate)
     │     ├── writing TypeScript? ───────────────────────→ phoenix-typescript (tsc --noEmit is the gate)
     │     ├── building/reviewing UI or animation? ───────→ phoenix-design (taste, gated by build/lint)
+    │     ├── dependencies / a CVE / a lockfile? ────────→ phoenix-deps   (clean-room install is the gate)
     │     └── keeping it simple & surgical? ─────────────→ phoenix-craft  (Karpathy guardrails)
     ├── Something broke / a check is red? ───────────────→ phoenix-debug  (triage + self-heal)
     ├── Need cheap, precise context on a big codebase? ──→ phoenix-context (graph routing, −tokens)
