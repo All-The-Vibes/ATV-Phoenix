@@ -63,6 +63,12 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **`/showoff` now runs through host-native agent primitives in GitHub Copilot CLI and VS Code.**
+  The project skill no longer depends on Claude-only environment variables, argument placeholders,
+  or tool names. Hosts without subagents execute the same read-only research lanes inline instead
+  of stopping after a partial plan, while the complete HyperFrames workflow and approval gates remain
+  intact.
+
 - **Tier 3 now abstains when its instrument is UNKNOWN (#171).** The gate already disclosed a
   missing, void, stale, or saturated baseline but then compared against it anyway, allowing a
   below-baseline result from an invalid instrument to block a change. It now records the score and
