@@ -1,1 +1,1 @@
-{"kind":"command_exit","target":["python","-m","pytest","tests/test_showoff_skill_portability.py","-q"],"expect":"0","cwd":"."}
+{"kind":"command_exit","target":["python","-m","pytest","tests/test_tokenmaster_upstream_sync.py","-q"],"expect":"0","cwd":"."}
