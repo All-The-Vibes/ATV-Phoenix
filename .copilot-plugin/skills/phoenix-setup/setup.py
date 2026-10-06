@@ -40,19 +40,26 @@ def ensure_binary(repo: Path) -> Path:
 
 
 def copilot_home() -> Path:
-    h = Path.home() / ".copilot"
+    raw = os.environ.get("COPILOT_HOME")
+    h = Path(os.path.expandvars(os.path.expanduser(raw))).resolve() if raw else Path.home() / ".copilot"
     h.mkdir(parents=True, exist_ok=True)
     return h
 
 
+def _read_mcp_config(cfg_path: Path):
+    if not cfg_path.exists():
+        return {"mcpServers": {}}
+    cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+    if not isinstance(cfg, dict):
+        raise ValueError(f"MCP config must be an object: {cfg_path}")
+    if "mcpServers" in cfg and not isinstance(cfg["mcpServers"], dict):
+        raise ValueError(f"mcpServers must be an object: {cfg_path}")
+    return cfg
+
+
 def register_mcp(binpath: Path):
     cfg_path = copilot_home() / "mcp-config.json"
-    cfg = {"mcpServers": {}}
-    if cfg_path.exists():
-        try:
-            cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
-        except Exception:
-            pass
+    cfg = _read_mcp_config(cfg_path)
     cfg.setdefault("mcpServers", {})
     cfg["mcpServers"]["phoenix"] = {"type": "stdio", "command": str(binpath).replace("\\", "/")}
     # backup once
@@ -97,10 +104,51 @@ def install_tokenmaster(repo: Path):
         return False
 
 
+def install_brainspace(repo: Path):
+    """Install the bundled, model-invoked Brainspace MCP tools."""
+    setup = repo / "vendor" / "token-master" / "skills" / "token-master" / "brainspace_setup.py"
+    if not setup.is_file():
+        print(f"[phoenix] ERROR: Brainspace installer missing: {setup}")
+        return False
+    if not shutil.which("uv"):
+        print("[phoenix] Brainspace unavailable: uv not found. Install uv, then run:")
+        print(f"          python {setup} --host=copilot")
+        return False
+    home = copilot_home()
+    try:
+        _read_mcp_config(home / "mcp-config.json")
+    except (OSError, ValueError) as error:
+        print(f"[phoenix] ERROR: Brainspace configuration was not changed: {error}")
+        return False
+    env = dict(os.environ, TOKEN_MASTER_HOST="copilot", COPILOT_HOME=str(home))
+    try:
+        result = subprocess.run(
+            [sys.executable, str(setup), str(Path.cwd()), "--host=copilot"],
+            capture_output=True, text=True, timeout=60, env=env,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        print(f"[phoenix] ERROR: Brainspace installation failed: {error}")
+        return False
+    if result.returncode != 0:
+        print(f"[phoenix] ERROR: Brainspace installer exited {result.returncode}")
+        print(result.stderr.strip() or result.stdout.strip())
+        return False
+    print("[phoenix] Brainspace (bundled): installed/refreshed; MCP-only, opt-in.")
+    if result.stdout.strip():
+        print(result.stdout.strip())
+    return True
+
+
 def check_companions(repo: Path):
-    """Install the bundled TokenMasterX (token-efficient retrieval)."""
+    """Attempt both optional TokenMasterX layers and report their coverage."""
     print("\n[phoenix] companions:")
-    install_tokenmaster(repo)
+    graph_ok = install_tokenmaster(repo)
+    brainspace_ok = install_brainspace(repo)
+    print(
+        f"[phoenix] companion coverage: graph={'installed' if graph_ok else 'unavailable'} "
+        f"brainspace={'installed' if brainspace_ok else 'unavailable'}"
+    )
+    return graph_ok and brainspace_ok
 
 
 def install_skills(repo: Path, binpath: Path):
@@ -156,5 +204,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
 

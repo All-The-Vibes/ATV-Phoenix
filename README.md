@@ -109,10 +109,15 @@ command when that optional dependency is missing. Restart the Copilot CLI sessio
 The bundled TokenMasterX runtime is pinned to upstream commit
 `426fc853389ddba4bc6e1dd35a28179a895c064f`. It also includes **Brainspace**:
 model-invoked compression and retrieval of large tool outputs, with originals held
-in a local reversible store. Its standalone Copilot installer is
+in a local reversible store. Phoenix setup attempts both optional layers; missing
+prerequisites and partial companion coverage are reported separately from the
+Phoenix spine installation. The standalone Brainspace install/repair command is
 `python vendor\token-master\skills\token-master\brainspace_setup.py --host=copilot`
 (requires `uv`). Copilot receives MCP tools, not an automatic output-rewriting hook;
 the installer declares the token-counting and Python/Rust grammar dependencies.
+Set `COPILOT_HOME` to an isolated directory to redirect Phoenix and its companion
+installers together. Existing MCP registrations are preserved, and malformed MCP
+configuration is rejected rather than replaced.
 
 If an upgrade or host change breaks the install:
 
