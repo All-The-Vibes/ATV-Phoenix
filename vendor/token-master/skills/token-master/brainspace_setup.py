@@ -46,7 +46,7 @@ SKILL_DIR = Path(__file__).resolve().parent
 # skeletonized in a real install; tiktoken gives the never-expand guard an exact
 # token count instead of the chars/4 heuristic. These are declared here, in one
 # place, so the MCP server (both hosts) and the PostToolUse hook stay in sync.
-RUN_WITH = ("mcp", "tree-sitter", "tree-sitter-python", "tree-sitter-rust", "tiktoken")
+RUN_WITH = ("mcp>=1,<2", "tree-sitter", "tree-sitter-python", "tree-sitter-rust", "tiktoken")
 
 
 def _uv_run_args(script: str) -> list:
@@ -61,8 +61,8 @@ def _uv_run_args(script: str) -> list:
 
 def _uv_run_cmd(uv: str, script: str) -> str:
     """The same invocation as a shell command string (for the hook entry)."""
-    withs = " ".join(f"--with {dep}" for dep in RUN_WITH)
-    return f'{uv} run {withs} python "{script}"'
+    withs = " ".join(f'--with "{dep}"' for dep in RUN_WITH)
+    return f'"{uv}" run {withs} python "{script}"'
 
 
 # -- host / home resolution (mirrors setup.py exactly) -------------------------

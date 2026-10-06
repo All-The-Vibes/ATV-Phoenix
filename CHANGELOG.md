@@ -74,6 +74,11 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **TokenMasterX servers start with the compatible MCP SDK.** Constrain graph
+  navigation and Brainspace launches to `mcp>=1,<2`; upstream's unbounded dependency
+  resolves to MCP v2, which removed their `FastMCP` API. Quote Brainspace shell
+  launch arguments and executable paths so version constraints and paths with
+  spaces remain literal. Routing prompt bodies are unchanged.
 - **TokenMasterX Rust implementor lookup.** Sync the bundled graph navigator to
   upstream `426fc853389ddba4bc6e1dd35a28179a895c064f`: `inheritors` now follows
   Rust trait/interface `implements` edges as well as class `inherits` edges,
