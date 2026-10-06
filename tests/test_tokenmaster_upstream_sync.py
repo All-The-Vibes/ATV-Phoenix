@@ -3,6 +3,7 @@
 import hashlib
 import importlib.util
 import json
+import subprocess
 import sys
 import types
 from pathlib import Path
@@ -170,3 +171,149 @@ def test_brainspace_mcp_noop_and_retrieval(monkeypatch, tmp_path):
     placeholders = list(PLACEHOLDER_RE.finditer(compressed))
     assert placeholders
     assert server.brainspace_retrieve(placeholders[0].group(0)) == original
+    assert "brainspace CCR store:" in server.brainspace_stats()
+    assert "entries:        1" in server.brainspace_stats()
+
+
+@pytest.fixture
+def phoenix_setup(tmp_path, monkeypatch):
+    home = tmp_path / "copilot"
+    monkeypatch.setenv("COPILOT_HOME", str(home))
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path / "fallback"))
+    setup = _load_script(
+        "phoenix_setup",
+        ROOT / ".copilot-plugin" / "skills" / "phoenix-setup" / "setup.py",
+        monkeypatch,
+    )
+    return setup, home
+
+
+def test_phoenix_home_honors_isolated_override(phoenix_setup):
+    setup, home = phoenix_setup
+    assert setup.copilot_home() == home
+
+
+def test_phoenix_attempts_both_companions_when_graph_is_unavailable(
+    phoenix_setup, monkeypatch, capsys
+):
+    setup, _ = phoenix_setup
+    calls = []
+    monkeypatch.setattr(setup, "install_tokenmaster", lambda repo: calls.append("graph") or False)
+    monkeypatch.setattr(setup, "install_brainspace", lambda repo: calls.append("brainspace") or True)
+    assert setup.check_companions(ROOT) is False
+    assert calls == ["graph", "brainspace"]
+    output = capsys.readouterr().out
+    assert "graph=unavailable" in output
+    assert "brainspace=installed" in output
+
+
+def test_phoenix_brainspace_install_preserves_config_and_is_idempotent(
+    phoenix_setup, monkeypatch
+):
+    setup, home = phoenix_setup
+    assert hasattr(setup, "install_brainspace")
+    home.mkdir()
+    config_path = home / "mcp-config.json"
+    existing = {
+        "mcpServers": {
+            "phoenix": {"type": "stdio", "command": "phoenix-mcp"},
+            "external": {"type": "stdio", "command": "external-tool"},
+        },
+        "otherSetting": True,
+    }
+    config_path.write_text(json.dumps(existing), encoding="utf-8")
+    monkeypatch.setattr(setup.shutil, "which", lambda name: sys.executable if name == "uv" else None)
+    calls = []
+
+    def run_installer(argv, **kwargs):
+        calls.append(argv)
+        assert Path(argv[1]) == SKILL / "brainspace_setup.py"
+        assert argv[-1] == "--host=copilot"
+        assert kwargs["env"]["COPILOT_HOME"] == str(home)
+        assert kwargs["timeout"] > 0
+        installer = _load_script("brainspace_setup", SKILL / "brainspace_setup.py", monkeypatch)
+        monkeypatch.setattr(sys, "argv", argv[1:])
+        result = installer.main()
+        return subprocess.CompletedProcess(argv, result, stdout="MCP-ONLY (opt-in)", stderr="")
+
+    monkeypatch.setattr(setup.subprocess, "run", run_installer)
+    assert setup.install_brainspace(ROOT) is True
+    first_config = config_path.read_bytes()
+    assert setup.install_brainspace(ROOT) is True
+    assert config_path.read_bytes() == first_config
+    assert len(calls) == 2
+    setup.register_mcp(Path("phoenix-mcp"))
+    installed = json.loads(first_config)
+    assert json.loads(config_path.read_text(encoding="utf-8")) == installed
+    assert installed["otherSetting"] is True
+    for name, entry in existing["mcpServers"].items():
+        assert installed["mcpServers"][name] == entry
+    server = installed["mcpServers"]["brainspace"]
+    assert server["type"] == "stdio"
+    for dependency in ("mcp", "tree-sitter", "tree-sitter-python", "tree-sitter-rust", "tiktoken"):
+        assert ["--with", dependency] in [
+            server["args"][index:index + 2] for index in range(len(server["args"]) - 1)
+        ]
+    assert Path(server["args"][-1]).is_file()
+    assert (home / "token-master" / "brainspace" / "ccr.py").is_file()
+    assert not (home / "settings.json").exists()
+
+
+@pytest.mark.parametrize("original", ["{", "[]", '{"mcpServers": []}'])
+def test_phoenix_brainspace_rejects_invalid_config_without_overwriting(
+    phoenix_setup, monkeypatch, capsys, original
+):
+    setup, home = phoenix_setup
+    assert hasattr(setup, "install_brainspace")
+    home.mkdir()
+    config_path = home / "mcp-config.json"
+    config_path.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(setup.shutil, "which", lambda name: sys.executable)
+    calls = []
+    monkeypatch.setattr(setup.subprocess, "run", lambda *args, **kwargs: calls.append(args))
+    assert setup.install_brainspace(ROOT) is False
+    assert config_path.read_text(encoding="utf-8") == original
+    assert calls == []
+    assert "ERROR" in capsys.readouterr().out
+    with pytest.raises(ValueError):
+        setup.register_mcp(Path("phoenix-mcp"))
+    assert config_path.read_text(encoding="utf-8") == original
+
+
+def test_phoenix_brainspace_subprocess_failure_is_reported(
+    phoenix_setup, monkeypatch, capsys
+):
+    setup, _ = phoenix_setup
+    monkeypatch.setattr(setup.shutil, "which", lambda name: sys.executable)
+    monkeypatch.setattr(
+        setup.subprocess,
+        "run",
+        lambda argv, **kwargs: subprocess.CompletedProcess(argv, 7, stdout="", stderr="installer-error"),
+    )
+    assert setup.install_brainspace(ROOT) is False
+    output = capsys.readouterr().out
+    assert "ERROR" in output
+    assert "installer-error" in output
+
+
+def test_phoenix_brainspace_missing_uv_is_reported(
+    phoenix_setup, monkeypatch, capsys
+):
+    setup, _ = phoenix_setup
+    monkeypatch.setattr(setup.shutil, "which", lambda name: None)
+    assert setup.install_brainspace(ROOT) is False
+    output = capsys.readouterr().out
+    assert "uv" in output
+    assert "brainspace_setup.py" in output
+
+
+def test_phoenix_brainspace_timeout_is_reported(phoenix_setup, monkeypatch, capsys):
+    setup, _ = phoenix_setup
+    monkeypatch.setattr(setup.shutil, "which", lambda name: sys.executable)
+
+    def timed_out(argv, **kwargs):
+        raise subprocess.TimeoutExpired(argv, kwargs["timeout"])
+
+    monkeypatch.setattr(setup.subprocess, "run", timed_out)
+    assert setup.install_brainspace(ROOT) is False
+    assert "ERROR" in capsys.readouterr().out
