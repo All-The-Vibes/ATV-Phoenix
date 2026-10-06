@@ -3,12 +3,14 @@
 import hashlib
 import importlib.util
 import json
+import shlex
 import subprocess
 import sys
 import types
 from pathlib import Path
 
 import pytest
+import yaml
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -29,7 +31,8 @@ BRAINSPACE_SHA256 = {
     "brainspace_benchmark.py": "e5a231070a77a5cc4010ecb790d32d8288499c47e34c30ff76dfe005951fa1be",
     "brainspace_mcp.py": "c775d8701c4bef1bae42c39837445f76f1ed7f4d346f761e08ae10cc0824b38c",
     "brainspace_posttooluse.py": "960f96f7072a6155c63f0170cf5b82e220dd192f569037dd02ac90f6c61ec1b2",
-    "brainspace_setup.py": "5f2f88daa8b8c445945333d4cf209d4c3064c5ee2277e13d74945abb30688397",
+    # Approved local patch: constrain MCP to v1 and quote shell launch arguments.
+    "brainspace_setup.py": "d4171561a848b308ff0588321e4edf9a19cdb367c869185df232bce733d8dd85",
 }
 
 
@@ -105,6 +108,7 @@ def test_empty_and_unknown_subtype_queries_are_explicit(navigation):
     "relative,digest", BRAINSPACE_SHA256.items(), ids=BRAINSPACE_SHA256
 )
 def test_brainspace_sources_match_upstream(relative, digest):
+    """Match pinned upstream except the documented installer compatibility patch."""
     content = (SKILL / relative).read_text(encoding="utf-8")
     assert hashlib.sha256(content.encode("utf-8")).hexdigest() == digest
 
@@ -250,7 +254,7 @@ def test_phoenix_brainspace_install_preserves_config_and_is_idempotent(
         assert installed["mcpServers"][name] == entry
     server = installed["mcpServers"]["brainspace"]
     assert server["type"] == "stdio"
-    for dependency in ("mcp", "tree-sitter", "tree-sitter-python", "tree-sitter-rust", "tiktoken"):
+    for dependency in ("mcp>=1,<2", "tree-sitter", "tree-sitter-python", "tree-sitter-rust", "tiktoken"):
         assert ["--with", dependency] in [
             server["args"][index:index + 2] for index in range(len(server["args"]) - 1)
         ]
@@ -317,3 +321,51 @@ def test_phoenix_brainspace_timeout_is_reported(phoenix_setup, monkeypatch, caps
     monkeypatch.setattr(setup.subprocess, "run", timed_out)
     assert setup.install_brainspace(ROOT) is False
     assert "ERROR" in capsys.readouterr().out
+
+
+def test_brainspace_both_launch_forms_use_quoted_mcp_v1(monkeypatch):
+    installer = _load_script("brainspace_launch", SKILL / "brainspace_setup.py", monkeypatch)
+    script = "C:/Program Files/tools/brainspace_mcp.py"
+    uv = "C:/Program Files/tools/uv.exe"
+    arguments = installer._uv_run_args(script)
+    assert arguments[:3] == ["run", "--with", "mcp>=1,<2"]
+    command = installer._uv_run_cmd(uv, script)
+    assert '--with "mcp>=1,<2"' in command
+    assert shlex.split(command) == [uv] + arguments
+
+
+def test_graph_both_hosts_launch_mcp_v1(monkeypatch, tmp_path):
+    template = (SKILL / "agent.template.copilot.md").read_text(encoding="utf-8")
+    frontmatter = yaml.safe_load(template.split("---", 2)[1])
+    args = frontmatter["mcp-servers"]["graphify-nav"]["args"]
+    assert args[:3] == ["run", "--with", "mcp>=1,<2"]
+    installer = _load_script("graph_launch", SKILL / "setup.py", monkeypatch)
+    config_path = tmp_path / "claude-mcp.json"
+    config_path.write_text('{"mcpServers":{"external":{"command":"external-tool"}}}', encoding="utf-8")
+    monkeypatch.setattr(installer, "_claude_mcp_config_path", lambda: config_path)
+    installer._write_claude_mcp_servers("uv", "graphify_mcp.py", None, None)
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    assert config["mcpServers"]["graphify-nav"]["args"][:3] == ["run", "--with", "mcp>=1,<2"]
+    assert config["mcpServers"]["external"] == {"command": "external-tool"}
+
+
+@pytest.mark.parametrize(
+    "relative,pinned_literal,original_literal,upstream_digest",
+    [
+        (
+            "setup.py", '"mcp>=1,<2"', '"mcp"',
+            "aa98580a8ccd522392b2e38e152567b5591098e82a2e627a374b6d94a2676179",
+        ),
+        (
+            "agent.template.copilot.md", "'mcp>=1,<2'", "'mcp'",
+            "7734ba8f8a770744962cdb4172c32795b5fffbfc2033cf80369a34d379627bd5",
+        ),
+    ],
+)
+def test_graph_compatibility_patch_changes_only_launch_dependency(
+    relative, pinned_literal, original_literal, upstream_digest
+):
+    content = (SKILL / relative).read_text(encoding="utf-8")
+    assert content.count(pinned_literal) == 1
+    original = content.replace(pinned_literal, original_literal)
+    assert hashlib.sha256(original.encode("utf-8")).hexdigest() == upstream_digest

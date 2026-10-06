@@ -321,7 +321,7 @@ def _write_claude_mcp_servers(uv: str, mcp_script: str, node_path, shim_path) ->
 
     servers["graphify-nav"] = {
         "command": uv,
-        "args": ["run", "--with", "mcp", "python", mcp_script],
+        "args": ["run", "--with", "mcp>=1,<2", "python", mcp_script],
         "env": {"GRAPH_PATH": ".token-master/graph.json"},
     }
     if node_path and shim_path:
