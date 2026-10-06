@@ -106,6 +106,14 @@ pack, and runs an install-integrity check. It also attempts to install TokenMast
 graph-routing plugin. TokenMasterX requires `graphify` on `PATH`; setup prints the exact follow-up
 command when that optional dependency is missing. Restart the Copilot CLI session after setup.
 
+The bundled TokenMasterX runtime is pinned to upstream commit
+`426fc853389ddba4bc6e1dd35a28179a895c064f`. It also includes **Brainspace**:
+model-invoked compression and retrieval of large tool outputs, with originals held
+in a local reversible store. Its standalone Copilot installer is
+`python vendor\token-master\skills\token-master\brainspace_setup.py --host=copilot`
+(requires `uv`). Copilot receives MCP tools, not an automatic output-rewriting hook;
+the installer declares the token-counting and Python/Rust grammar dependencies.
+
 If an upgrade or host change breaks the install:
 
 ```powershell

@@ -9,6 +9,12 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Bundled TokenMasterX Brainspace compression layer.** Import the runtime source
+  from upstream `426fc853389ddba4bc6e1dd35a28179a895c064f`, including reversible
+  content storage, JSON/log/prose compression, Python/Rust code skeletonization,
+  MCP tools, host installers, and the self-serve benchmark. Copilot compression
+  is model-invoked, not a transparent output-rewriting hook.
+
 - **`phoenix-deps` — dependency and supply-chain work gets a gate instead of a self-graded claim (#219).**
   Everywhere else Phoenix refuses to let an agent grade itself; dependencies were the one surface where
   "I updated the packages" was accepted on assertion, because nothing in `skills/`, `src/`, `scripts/`, or
