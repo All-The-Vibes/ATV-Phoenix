@@ -63,6 +63,11 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **TokenMasterX Rust implementor lookup.** Sync the bundled graph navigator to
+  upstream `426fc853389ddba4bc6e1dd35a28179a895c064f`: `inheritors` now follows
+  Rust trait/interface `implements` edges as well as class `inherits` edges,
+  preserving method listings and identifying which relationship matched.
+
 - **`/showoff` now runs through host-native agent primitives in GitHub Copilot CLI and VS Code.**
   The project skill no longer depends on Claude-only environment variables, argument placeholders,
   or tool names. Hosts without subagents execute the same read-only research lanes inline instead

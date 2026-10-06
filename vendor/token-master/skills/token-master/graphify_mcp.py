@@ -281,23 +281,33 @@ def impact(symbol: str, depth: int = 3) -> str:
     return "\n".join(out)
 
 
+# Reverse edges that mean "is a `symbol`": class inheritance (`inherits`) and,
+# for languages without inheritance, trait/interface implementation
+# (`implements`, e.g. Rust `impl Trait for Type`). Both answer "what are the
+# subtypes / implementors of `symbol`", so a single tool serves both worlds.
+_SUBTYPE_RELS = ("inherits", "implements")
+
+
 @mcp.tool()
 def inheritors(symbol: str) -> str:
-    """List classes that inherit from `symbol` (reverse `inherits` edges) and,
-    for each, the methods it defines (so you can see overrides)."""
+    """List types that derive from `symbol` and the methods each defines.
+
+    Covers both class inheritance (reverse `inherits`) and trait/interface
+    implementation (reverse `implements`, e.g. Rust `impl Trait for Type`), so
+    "what implements/overrides X" works across OOP and trait-based languages."""
     err = _ensure_loaded()
     if err:
         return err
     _log("inheritors", symbol)
     ids = _resolve(symbol)
     if not ids:
-        return f"No class node found for '{symbol}'."
+        return f"No type node found for '{symbol}'."
     if len(ids) > MAX_DEFS:
         return _ambiguity_msg(symbol, ids)
     rows = []
     for tid in ids:
         for rel, sid, _link in _STATE["IN"].get(tid, []):
-            if rel != "inherits":
+            if rel not in _SUBTYPE_RELS:
                 continue
             c = _STATE["NODES"].get(sid, {})
             methods = [
@@ -306,14 +316,15 @@ def inheritors(symbol: str) -> str:
                 if r2 == "method"
             ]
             mlist = ", ".join(m for m in methods if m) or "(no methods in graph)"
-            rows.append(f"  - {c.get('label')}  [{_loc(c)}]\n      methods: {mlist}")
+            verb = "implements" if rel == "implements" else "subclasses"
+            rows.append(f"  - {c.get('label')}  ({verb})  [{_loc(c)}]\n      methods: {mlist}")
     if not rows:
-        return f"No subclasses of '{symbol}' in graph."
+        return f"No subtypes/implementors of '{symbol}' in graph."
     total = len(rows)
     capped = rows[:MAX_ROWS]
     if total > MAX_ROWS:
         capped.append(f"  ... (+{total - MAX_ROWS} more)")
-    return f"Subclasses of '{symbol}' ({total}):\n" + "\n".join(capped)
+    return f"Subtypes/implementors of '{symbol}' ({total}):\n" + "\n".join(capped)
 
 
 @mcp.tool()
