@@ -1,1 +1,1 @@
-{"kind":"command_exit","target":["python","-m","pytest","tests/test_tokenmaster_upstream_sync.py","-q"],"expect":"0","cwd":"."}
+{"kind":"command_exit","target":["python","-m","pytest","tests/test_gate_contract.py","tests/test_harvest_datapoint.py","-q"],"expect":"0","cwd":"."}

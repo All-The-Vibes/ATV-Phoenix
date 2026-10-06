@@ -10,6 +10,7 @@ import os
 import pathlib
 import subprocess
 import shutil
+import sys
 import tempfile
 
 REPO = pathlib.Path(__file__).parent.parent
@@ -269,7 +270,7 @@ def test_red_before_fix_emitted_task_is_executable(tmp_path):
 
     def _pytest(target):
         return subprocess.run(
-            ["python", "-m", "pytest", target, "-q"],
+            [sys.executable, "-m", "pytest", target, "-q"],
             cwd=str(scratch), capture_output=True, text=True, timeout=120).returncode
 
     assert _pytest("test_f2p.py") != 0, "Emitted task is vacuous: f2p passes before any fix"
