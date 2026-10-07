@@ -395,15 +395,22 @@ def test_relative_direct_executable_runs_the_file_bound_from_contract_cwd(
     state.mkdir()
     gate_dir.mkdir()
     gate = gate_dir / ("bound-gate.exe" if os.name == "nt" else "bound-gate")
-    shutil.copy2(sys.executable, gate)
-    if os.name != "nt":
+    if os.name == "nt":
+        shutil.copy2(os.environ["ComSpec"], gate)
+        gate_args = ["/d", "/c", "exit", "0"]
+    else:
+        shutil.copy2(sys.executable, gate)
         gate.chmod(0o755)
+        gate_args = ["-c", "raise SystemExit(0)"]
+    assert subprocess.run(
+        [str(gate), *gate_args], cwd=gate_dir, capture_output=True
+    ).returncode == 0
     check = state / "relative-executable.json"
     check.write_text(
         json.dumps(
             {
                 "kind": "command_exit",
-                "target": [gate.name, "-c", "raise SystemExit(0)"],
+                "target": [gate.name, *gate_args],
                 "expect": 0,
                 "cwd": "gatecwd",
             }

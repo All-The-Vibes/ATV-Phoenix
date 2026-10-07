@@ -10,6 +10,7 @@ import os
 import pathlib
 import subprocess
 import shutil
+import sys
 import tempfile
 
 REPO = pathlib.Path(__file__).parent.parent
@@ -269,7 +270,7 @@ def test_red_before_fix_emitted_task_is_executable(tmp_path):
 
     def _pytest(target):
         return subprocess.run(
-            ["python", "-m", "pytest", target, "-q"],
+            [sys.executable, "-m", "pytest", target, "-q"],
             cwd=str(scratch), capture_output=True, text=True, timeout=120).returncode
 
     assert _pytest("test_f2p.py") != 0, "Emitted task is vacuous: f2p passes before any fix"
@@ -281,6 +282,36 @@ def test_red_before_fix_emitted_task_is_executable(tmp_path):
 
     assert _pytest("test_f2p.py") == 0, "f2p still fails after the documented fix"
     assert _pytest("test_p2p.py") == 0, "fix regressed p2p"
+
+
+def test_emitted_task_replay_uses_current_interpreter(tmp_path, monkeypatch):
+    module = sys.modules[__name__]
+    emitted = tmp_path / "emitted"
+    task_dir = emitted / "99-test-issue"
+    task_dir.mkdir(parents=True)
+    _, solution, f2p, p2p = _make_inputs(tmp_path)
+    for source, name in (
+        (solution, "solution.py"), (f2p, "test_f2p.py"), (p2p, "test_p2p.py")
+    ):
+        shutil.copy(source, task_dir / name)
+    monkeypatch.setattr(module, "_pwsh_available", lambda: True)
+    monkeypatch.setattr(
+        module, "_run_harvest",
+        lambda *args, **kwargs: (
+            subprocess.CompletedProcess([], 0, stdout="", stderr=""), emitted
+        ),
+    )
+    targets = []
+
+    def run_replay(argv, **kwargs):
+        assert argv[:3] == [sys.executable, "-m", "pytest"]
+        assert pathlib.Path(kwargs["cwd"]).name == "score"
+        targets.append(argv[3])
+        return subprocess.CompletedProcess(argv, 1 if len(targets) == 1 else 0)
+
+    monkeypatch.setattr(subprocess, "run", run_replay)
+    test_red_before_fix_emitted_task_is_executable(tmp_path)
+    assert targets == ["test_f2p.py", "test_p2p.py", "test_f2p.py", "test_p2p.py"]
 
 
 def test_dogfood_set_accepted_by_run_swe(tmp_path):
