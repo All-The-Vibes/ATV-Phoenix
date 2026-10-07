@@ -1,1 +1,1 @@
-{"kind":"command_exit","target":["python","-m","pytest","tests/test_gate_contract.py","tests/test_harvest_datapoint.py","-q"],"expect":"0","cwd":"."}
+{"kind":"command_exit","target":["python","-m","pytest","tests/test_gate_contract.py::test_relative_direct_executable_runs_the_file_bound_from_contract_cwd","tests/test_harvest_datapoint.py::test_emitted_task_replay_uses_current_interpreter","-q"],"expect":"0","cwd":"."}
