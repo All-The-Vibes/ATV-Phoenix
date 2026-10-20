@@ -63,6 +63,17 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A check gets no stdin when it declares `timeout_secs` (#228).** `sense_command` starts a check
+  with `Command::output()` when there is no deadline and with `spawn()` when there is one. std gives
+  `output()` a null stdin and has `spawn()` inherit the parent's, so declaring a deadline changed what
+  the check could read. Under `phoenix-mcp` serving MCP over stdio, the inherited handle is the open
+  JSON-RPC channel: a check that read stdin blocked until the deadline killed it and returned
+  `ok=false, timed_out=true`. A trace row has no `timed_out` field and `accept` counts any failed row
+  as RED, so that kill could stand as failure-first evidence the code under test never produced. The
+  `Command` now gets `Stdio::null()` before the branch, so both paths give a check the same stdin.
+  `tests/deadline_check_gets_no_stdin.rs` drives the real server over stdio with its stdin held open,
+  using a fixture that reads stdin to EOF and exits 0 (`sort.exe` on Windows, `cat` on Unix).
+
 - **`/showoff` now runs through host-native agent primitives in GitHub Copilot CLI and VS Code.**
   The project skill no longer depends on Claude-only environment variables, argument placeholders,
   or tool names. Hosts without subagents execute the same read-only research lanes inline instead
