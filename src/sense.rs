@@ -3,6 +3,8 @@
 //! INVARIANT: a `CommandExit` result's measured elapsed time does not exceed its declared
 //! `timeout_secs`. This is the #203 defect stated as a property: the field was in the public MCP
 //! schema and read nowhere, so a check declaring a 2-second bound returned GREEN after 14,505 ms.
+//! INVARIANT: a `CommandExit` check gets a null stdin whether or not it declares `timeout_secs`.
+//! A deadline bounds how long a check may run; it never changes what the check can read (#228).
 //! INVARIANT: `timed_out` and `exit_code` are independent facts. A process can time out AND exit 0
 //! because it trapped the signal, so `exit_code` is `None` on a kill rather than a `-1` sentinel
 //! that a genuine exit of `-1` is indistinguishable from.
@@ -327,6 +329,12 @@ fn sense_command(check: &Check) -> SenseResult {
     if let Some(dir) = &check.cwd {
         cmd.current_dir(dir);
     }
+    // #228: a check is non-interactive, so it gets no stdin on either path. `output()` already
+    // defaults stdin to null; `spawn()` below defaults to inheriting it, and under `phoenix-mcp`
+    // serving stdio the inherited handle is the open JSON-RPC channel. A check that read it blocked
+    // until the deadline killed it, and that kill was recorded as a RED. Set once, before the
+    // branch, so the two paths cannot drift apart again.
+    cmd.stdin(Stdio::null());
 
     // No deadline declared: keep the historical behaviour exactly.
     let Some(budget) = check.timeout_secs else {
