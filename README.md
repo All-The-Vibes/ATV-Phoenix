@@ -119,6 +119,12 @@ Set `COPILOT_HOME` to an isolated directory to redirect Phoenix and its companio
 installers together. Existing MCP registrations are preserved, and malformed MCP
 configuration is rejected rather than replaced.
 
+The bundle carries a small compatibility patch beyond pinned upstream: graph and
+Brainspace server launches constrain the MCP SDK to `mcp>=1,<2`, because their
+`FastMCP` API was removed in MCP v2. Brainspace shell/hook arguments are quoted so
+the constraint is not interpreted as shell redirection. The Copilot routing
+template's prompt body is unchanged; only its MCP launch dependency differs.
+
 If an upgrade or host change breaks the install:
 
 ```powershell
