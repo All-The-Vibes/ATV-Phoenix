@@ -9,6 +9,11 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Brainspace is wired into Phoenix's Copilot setup.** Setup attempts graph routing
+  and the separate Brainspace installer independently, reports partial companion
+  coverage and failures, and preserves the MCP-only opt-in limitation. `COPILOT_HOME`
+  redirects the spine and both companions together. MCP registration rejects malformed
+  configuration without overwriting it.
 - **Bundled TokenMasterX Brainspace compression layer.** Import the runtime source
   from upstream `426fc853389ddba4bc6e1dd35a28179a895c064f`, including reversible
   content storage, JSON/log/prose compression, Python/Rust code skeletonization,
@@ -69,6 +74,11 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **TokenMasterX servers start with the compatible MCP SDK.** Constrain graph
+  navigation and Brainspace launches to `mcp>=1,<2`; upstream's unbounded dependency
+  resolves to MCP v2, which removed their `FastMCP` API. Quote Brainspace shell
+  launch arguments and executable paths so version constraints and paths with
+  spaces remain literal. Routing prompt bodies are unchanged.
 - **TokenMasterX Rust implementor lookup.** Sync the bundled graph navigator to
   upstream `426fc853389ddba4bc6e1dd35a28179a895c064f`: `inheritors` now follows
   Rust trait/interface `implements` edges as well as class `inherits` edges,
