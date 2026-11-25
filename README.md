@@ -106,6 +106,25 @@ pack, and runs an install-integrity check. It also attempts to install TokenMast
 graph-routing plugin. TokenMasterX requires `graphify` on `PATH`; setup prints the exact follow-up
 command when that optional dependency is missing. Restart the Copilot CLI session after setup.
 
+The bundled TokenMasterX runtime is pinned to upstream commit
+`426fc853389ddba4bc6e1dd35a28179a895c064f`. It also includes **Brainspace**:
+model-invoked compression and retrieval of large tool outputs, with originals held
+in a local reversible store. Phoenix setup attempts both optional layers; missing
+prerequisites and partial companion coverage are reported separately from the
+Phoenix spine installation. The standalone Brainspace install/repair command is
+`python vendor\token-master\skills\token-master\brainspace_setup.py --host=copilot`
+(requires `uv`). Copilot receives MCP tools, not an automatic output-rewriting hook;
+the installer declares the token-counting and Python/Rust grammar dependencies.
+Set `COPILOT_HOME` to an isolated directory to redirect Phoenix and its companion
+installers together. Existing MCP registrations are preserved, and malformed MCP
+configuration is rejected rather than replaced.
+
+The bundle carries a small compatibility patch beyond pinned upstream: graph and
+Brainspace server launches constrain the MCP SDK to `mcp>=1,<2`, because their
+`FastMCP` API was removed in MCP v2. Brainspace shell/hook arguments are quoted so
+the constraint is not interpreted as shell redirection. The Copilot routing
+template's prompt body is unchanged; only its MCP launch dependency differs.
+
 If an upgrade or host change breaks the install:
 
 ```powershell

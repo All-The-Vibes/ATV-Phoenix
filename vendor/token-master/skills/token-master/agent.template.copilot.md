@@ -6,7 +6,7 @@ mcp-servers:
   graphify-nav:
     type: stdio
     command: __UV__
-    args: ['run', '--with', 'mcp', 'python', '__MCP_SCRIPT__']
+    args: ['run', '--with', 'mcp>=1,<2', 'python', '__MCP_SCRIPT__']
     tools: ['*']
     env:
       GRAPH_PATH: '.token-master/graph.json'
